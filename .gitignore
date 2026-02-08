@@ -1,0 +1,43 @@
+# Environment variables (contains API keys!)
+.env
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+venv/
+.venv/
+
+# SQLite databases (local data)
+*.db
+
+# Node.js
+node_modules/
+frontend/node_modules/
+
+# Build output
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Claude memory (personal)
+.claude/
+
+# Test/temp files
+backend/_*.ps1
+backend/_*.txt
