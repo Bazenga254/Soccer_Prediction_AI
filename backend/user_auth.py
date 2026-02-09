@@ -181,6 +181,7 @@ def _send_verification_email(to_email: str, code: str, display_name: str = "") -
     smtp_email = os.environ.get("SMTP_EMAIL", "")
     smtp_password = os.environ.get("SMTP_PASSWORD", "")
     smtp_from_name = os.environ.get("SMTP_FROM_NAME", "Spark AI Prediction")
+    smtp_from_email = os.environ.get("SMTP_FROM_EMAIL", smtp_email)
 
     if not smtp_email or not smtp_password:
         print("[WARN] SMTP not configured - skipping email send")
@@ -215,14 +216,14 @@ def _send_verification_email(to_email: str, code: str, display_name: str = "") -
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"{smtp_from_name} <{smtp_email}>"
+        msg["From"] = f"{smtp_from_name} <{smtp_from_email}>"
         msg["To"] = to_email
         msg.attach(MIMEText(f"Your Spark AI verification code is: {code}", "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
         with smtplib.SMTP_SSL("smtp.zoho.com", 465) as server:
             server.login(smtp_email, smtp_password)
-            server.sendmail(smtp_email, to_email, msg.as_string())
+            server.sendmail(smtp_from_email, to_email, msg.as_string())
         return True
     except Exception as e:
         print(f"[ERROR] Failed to send email to {to_email}: {e}")
@@ -234,6 +235,7 @@ def _send_welcome_email(to_email: str, display_name: str = "") -> bool:
     smtp_email = os.environ.get("SMTP_EMAIL", "")
     smtp_password = os.environ.get("SMTP_PASSWORD", "")
     smtp_from_name = os.environ.get("SMTP_FROM_NAME", "Spark AI Prediction")
+    smtp_from_email = os.environ.get("SMTP_FROM_EMAIL", smtp_email)
 
     if not smtp_email or not smtp_password:
         return False
@@ -274,14 +276,14 @@ def _send_welcome_email(to_email: str, display_name: str = "") -> bool:
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "Welcome to Spark AI Prediction!"
-        msg["From"] = f"{smtp_from_name} <{smtp_email}>"
+        msg["From"] = f"{smtp_from_name} <{smtp_from_email}>"
         msg["To"] = to_email
         msg.attach(MIMEText(f"Welcome to Spark AI Prediction, {greeting}! Your account has been created successfully. Visit https://www.spark-ai-prediction.com to get started.", "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
         with smtplib.SMTP_SSL("smtp.zoho.com", 465) as server:
             server.login(smtp_email, smtp_password)
-            server.sendmail(smtp_email, to_email, msg.as_string())
+            server.sendmail(smtp_from_email, to_email, msg.as_string())
         return True
     except Exception as e:
         print(f"[ERROR] Failed to send welcome email to {to_email}: {e}")
