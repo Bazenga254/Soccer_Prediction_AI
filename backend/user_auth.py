@@ -9,9 +9,9 @@ import secrets
 import random
 import string
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import json as _json
+import urllib.request
+import urllib.parse
 import jwt
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
@@ -176,19 +176,80 @@ def _generate_verification_code() -> str:
     return str(random.randint(100000, 999999))
 
 
-def _send_verification_email(to_email: str, code: str, display_name: str = "") -> bool:
-    """Send a 6-digit verification code via Zoho SMTP."""
-    smtp_email = os.environ.get("SMTP_EMAIL", "")
-    smtp_password = os.environ.get("SMTP_PASSWORD", "")
-    smtp_from_name = os.environ.get("SMTP_FROM_NAME", "Spark AI Prediction")
-    smtp_from_email = os.environ.get("SMTP_FROM_EMAIL", smtp_email)
+def _get_zoho_access_token() -> str:
+    """Get a fresh Zoho access token using the refresh token."""
+    client_id = os.environ.get("ZOHO_CLIENT_ID", "")
+    client_secret = os.environ.get("ZOHO_CLIENT_SECRET", "")
+    refresh_token = os.environ.get("ZOHO_REFRESH_TOKEN", "")
 
-    if not smtp_email or not smtp_password:
-        print("[WARN] SMTP not configured - skipping email send")
+    if not all([client_id, client_secret, refresh_token]):
+        print("[WARN] Zoho OAuth not configured")
+        return ""
+
+    try:
+        data = urllib.parse.urlencode({
+            "grant_type": "refresh_token",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+        }).encode()
+        req = urllib.request.Request("https://accounts.zoho.com/oauth/v2/token", data=data, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = _json.loads(resp.read().decode())
+            return result.get("access_token", "")
+    except Exception as e:
+        print(f"[ERROR] Failed to get Zoho access token: {e}")
+        return ""
+
+
+def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email: str = "") -> bool:
+    """Send an email via Zoho Mail API (HTTPS). Bypasses SMTP port blocking."""
+    account_id = os.environ.get("ZOHO_ACCOUNT_ID", "")
+    if not from_email:
+        from_email = os.environ.get("ZOHO_FROM_EMAIL", "")
+
+    if not account_id or not from_email:
+        print("[WARN] Zoho Mail API not configured - skipping email send")
         return False
 
-    subject = f"Your verification code: {code}"
+    access_token = _get_zoho_access_token()
+    if not access_token:
+        return False
+
+    try:
+        payload = _json.dumps({
+            "fromAddress": from_email,
+            "toAddress": to_email,
+            "subject": subject,
+            "content": html_content,
+            "askReceipt": "no",
+        }).encode()
+
+        req = urllib.request.Request(
+            f"https://mail.zoho.com/api/accounts/{account_id}/messages",
+            data=payload,
+            method="POST",
+            headers={
+                "Authorization": f"Zoho-oauthtoken {access_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = _json.loads(resp.read().decode())
+            if result.get("status", {}).get("code") == 200:
+                print(f"[OK] Email sent to {to_email}: {subject}")
+                return True
+            print(f"[ERROR] Zoho API error: {result}")
+            return False
+    except Exception as e:
+        print(f"[ERROR] Failed to send email to {to_email}: {e}")
+        return False
+
+
+def _send_verification_email(to_email: str, code: str, display_name: str = "") -> bool:
+    """Send a 6-digit verification code via Zoho Mail API."""
     greeting = display_name or "there"
+    subject = f"Your verification code: {code}"
 
     html_body = f"""
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
@@ -213,34 +274,11 @@ def _send_verification_email(to_email: str, code: str, display_name: str = "") -
     </div>
     """
 
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"{smtp_from_name} <{smtp_from_email}>"
-        msg["To"] = to_email
-        msg.attach(MIMEText(f"Your Spark AI verification code is: {code}", "plain"))
-        msg.attach(MIMEText(html_body, "html"))
-
-        with smtplib.SMTP("smtp.zoho.com", 587) as server:
-            server.starttls()
-            server.login(smtp_email, smtp_password)
-            server.sendmail(smtp_from_email, to_email, msg.as_string())
-        return True
-    except Exception as e:
-        print(f"[ERROR] Failed to send email to {to_email}: {e}")
-        return False
+    return _send_zoho_email(to_email, subject, html_body)
 
 
 def _send_welcome_email(to_email: str, display_name: str = "") -> bool:
-    """Send a welcome email to new users."""
-    smtp_email = os.environ.get("SMTP_EMAIL", "")
-    smtp_password = os.environ.get("SMTP_PASSWORD", "")
-    smtp_from_name = os.environ.get("SMTP_FROM_NAME", "Spark AI Prediction")
-    smtp_from_email = os.environ.get("SMTP_FROM_EMAIL", smtp_email)
-
-    if not smtp_email or not smtp_password:
-        return False
-
+    """Send a welcome email to new users via Zoho Mail API."""
     greeting = display_name or "there"
 
     html_body = f"""
@@ -274,22 +312,7 @@ def _send_welcome_email(to_email: str, display_name: str = "") -> bool:
     </div>
     """
 
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "Welcome to Spark AI Prediction!"
-        msg["From"] = f"{smtp_from_name} <{smtp_from_email}>"
-        msg["To"] = to_email
-        msg.attach(MIMEText(f"Welcome to Spark AI Prediction, {greeting}! Your account has been created successfully. Visit https://www.spark-ai-prediction.com to get started.", "plain"))
-        msg.attach(MIMEText(html_body, "html"))
-
-        with smtplib.SMTP("smtp.zoho.com", 587) as server:
-            server.starttls()
-            server.login(smtp_email, smtp_password)
-            server.sendmail(smtp_from_email, to_email, msg.as_string())
-        return True
-    except Exception as e:
-        print(f"[ERROR] Failed to send welcome email to {to_email}: {e}")
-        return False
+    return _send_zoho_email(to_email, "Welcome to Spark AI Prediction!", html_body)
 
 
 def _is_disposable_email(email: str) -> bool:
@@ -351,9 +374,6 @@ AVATAR_COLORS = [
 
 def google_login(google_token: str, referral_code: str = "") -> Dict:
     """Authenticate via Google OAuth. Creates account if new, logs in if existing."""
-    import urllib.request
-    import json as _json
-
     # Verify the Google ID token
     try:
         url = f"https://oauth2.googleapis.com/tokeninfo?id_token={google_token}"
