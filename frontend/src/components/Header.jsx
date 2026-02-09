@@ -1,4 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
+import NotificationDropdown from './NotificationDropdown'
+import EarningsDropdown from './EarningsDropdown'
+import UserMenuDropdown from './UserMenuDropdown'
 
 const COMPETITIONS = [
   // Top 5 Leagues
@@ -18,20 +21,14 @@ const COMPETITIONS = [
   { id: 'WC', name: 'World Cup', shortName: 'World Cup', flag: '🌍' },
 ]
 
-export default function Header() {
+export default function Header({ user, logout }) {
   const location = useLocation()
 
-  // Extract current competition from URL or default to PL
   const getCurrentCompetition = () => {
-    // Check for competition page: /competition/:id
     const compMatch = location.pathname.match(/^\/competition\/([^/]+)/)
     if (compMatch) return compMatch[1]
-
-    // Check for match analysis page: /match/:competitionId/:homeId/:awayId
     const matchMatch = location.pathname.match(/^\/match\/([^/]+)\//)
     if (matchMatch) return matchMatch[1]
-
-    // Default to Premier League
     return 'PL'
   }
 
@@ -50,6 +47,14 @@ export default function Header() {
             <span className="logo-subtitle">Smart Match Analysis & Predictions</span>
           </div>
         </Link>
+
+        {user && (
+          <div className="header-user-controls">
+            <EarningsDropdown />
+            <NotificationDropdown />
+            <UserMenuDropdown user={user} logout={logout} />
+          </div>
+        )}
       </div>
 
       <nav className="competition-nav">

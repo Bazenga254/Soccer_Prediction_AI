@@ -69,6 +69,13 @@
 
 .disclaimer-icon { font-size: 15px; flex-shrink: 0; }
 
+/* ===== HEADER USER CONTROLS (Fiverr-style) ===== */
+.header-user-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ===== COMPETITION NAVIGATION ===== */
 .competition-nav {
   display: flex;
@@ -5443,24 +5450,41 @@
   position: relative;
 }
 
-.notification-bell-btn,
-.earnings-btn {
-  background: rgba(148, 163, 184, 0.1);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+.notification-bell-btn {
+  background: transparent;
+  border: none;
   color: #94a3b8;
-  padding: 5px 8px;
-  border-radius: 6px;
+  padding: 8px;
+  border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
   position: relative;
 }
 
-.notification-bell-btn:hover,
+.notification-bell-btn:hover {
+  background: rgba(148, 163, 184, 0.15);
+  color: #f1f5f9;
+}
+
+.earnings-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
 .earnings-btn:hover {
-  background: rgba(148, 163, 184, 0.2);
+  background: rgba(148, 163, 184, 0.15);
   color: #f1f5f9;
 }
 
@@ -5481,10 +5505,10 @@
   padding: 0 4px;
 }
 
-.earnings-badge-amount {
-  font-size: 11px;
+.earnings-inline-amount {
+  font-size: 13px;
   font-weight: 600;
-  color: #22c55e;
+  color: #f1f5f9;
 }
 
 .notification-dropdown,
@@ -5739,6 +5763,167 @@
   text-align: center;
   color: #64748b;
   font-size: 13px;
+}
+
+/* ===== USER MENU DROPDOWN (Fiverr-style) ===== */
+.user-menu-wrapper {
+  position: relative;
+}
+
+.user-avatar-btn {
+  background: none;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: border-color 0.2s;
+}
+
+.user-avatar-btn:hover {
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.user-avatar-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 260px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.user-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid #334155;
+}
+
+.user-menu-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.user-menu-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.user-menu-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f1f5f9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-username {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.user-menu-tier {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: fit-content;
+}
+
+.user-menu-tier.free {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.user-menu-tier.pro {
+  background: rgba(250, 204, 21, 0.15);
+  color: #facc15;
+}
+
+.user-menu-divider {
+  height: 1px;
+  background: #334155;
+}
+
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  color: #cbd5e1;
+  font-size: 14px;
+  text-decoration: none;
+  transition: background 0.15s;
+  cursor: pointer;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.user-menu-item:hover {
+  background: rgba(59, 130, 246, 0.08);
+  color: #f1f5f9;
+}
+
+.user-menu-item svg {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.user-menu-item:hover svg {
+  color: #94a3b8;
+}
+
+.user-menu-item.upgrade-item {
+  color: #f59e0b;
+}
+
+.user-menu-item.upgrade-item svg {
+  color: #f59e0b;
+}
+
+.user-menu-item.logout-item {
+  color: #f87171;
+}
+
+.user-menu-item.logout-item svg {
+  color: #f87171;
+}
+
+.user-menu-item.logout-item:hover {
+  background: rgba(239, 68, 68, 0.08);
 }
 
 /* ===== ADMIN PAGE ===== */

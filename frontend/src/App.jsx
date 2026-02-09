@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Header from './components/Header'
 import FixturesList from './components/FixturesList'
 import MatchAnalysis from './pages/MatchAnalysis'
@@ -11,8 +11,6 @@ import Community from './pages/Community'
 import Upgrade from './pages/Upgrade'
 import CreatorDashboard from './pages/CreatorDashboard'
 import BetSlip from './components/BetSlip'
-import NotificationDropdown from './components/NotificationDropdown'
-import EarningsDropdown from './components/EarningsDropdown'
 import { BetSlipProvider } from './context/BetSlipContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import './App.css'
@@ -38,26 +36,7 @@ function ProtectedApp() {
   return (
     <BetSlipProvider>
       <div className="app">
-        <Header />
-        {user && (
-          <div className="access-bar">
-            <span className="user-bar-info">
-              <span className="user-avatar-small" style={{ background: user.avatar_color }}>
-                {(user.display_name || user.username || '?')[0].toUpperCase()}
-              </span>
-              <strong>{user.display_name || user.username}</strong>
-              <span className={`tier-badge ${user.tier}`}>{user.tier === 'pro' ? 'PRO' : 'FREE'}</span>
-            </span>
-            <span className="user-bar-actions">
-              <EarningsDropdown />
-              <NotificationDropdown />
-              <Link to="/creator" className="creator-link-btn">Creator</Link>
-              {user.tier !== 'pro' && <Link to="/upgrade" className="upgrade-link-btn">Upgrade</Link>}
-              <Link to="/profile" className="profile-link-btn">Profile</Link>
-              <button className="logout-btn" onClick={logout}>Logout</button>
-            </span>
-          </div>
-        )}
+        <Header user={user} logout={logout} />
         <main className="main-content">
           <Routes>
             <Route path="/" element={<FixturesList competition="PL" />} />

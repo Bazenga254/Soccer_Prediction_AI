@@ -8,6 +8,11 @@ export default function EarningsDropdown() {
   const [loading, setLoading] = useState(false)
   const dropdownRef = useRef(null)
 
+  // Fetch balance on mount so it always shows
+  useEffect(() => {
+    fetchEarnings()
+  }, [])
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -28,7 +33,7 @@ export default function EarningsDropdown() {
       })
       setEarnings(res.data)
     } catch (err) {
-      console.error('Failed to fetch earnings:', err)
+      // Silently fail - will show $0.00
     } finally {
       setLoading(false)
     }
@@ -41,27 +46,16 @@ export default function EarningsDropdown() {
     setIsOpen(!isOpen)
   }
 
-  const timeAgo = (dateStr) => {
-    const diff = Date.now() - new Date(dateStr).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return 'Just now'
-    if (mins < 60) return `${mins}m ago`
-    const hours = Math.floor(mins / 60)
-    if (hours < 24) return `${hours}h ago`
-    const days = Math.floor(hours / 24)
-    return `${days}d ago`
-  }
+  const balance = earnings ? earnings.balance_usd : 0
 
   return (
     <div className="earnings-dropdown-wrapper" ref={dropdownRef}>
       <button className="earnings-btn" onClick={handleOpen} title="Earnings">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="12" y1="1" x2="12" y2="23" />
           <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
         </svg>
-        {earnings && earnings.balance_usd > 0 && (
-          <span className="earnings-badge-amount">${earnings.balance_usd.toFixed(0)}</span>
-        )}
+        <span className="earnings-inline-amount">${balance.toFixed(2)}</span>
       </button>
 
       {isOpen && (
