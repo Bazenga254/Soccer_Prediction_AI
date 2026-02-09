@@ -1,9 +1,12 @@
 import { createContext, useContext, useState, useCallback } from 'react'
+import axios from 'axios'
 
 const BetSlipContext = createContext(null)
 
 export function BetSlipProvider({ children }) {
   const [selectedBets, setSelectedBets] = useState([])
+  const [confirming, setConfirming] = useState(false)
+  const [confirmResult, setConfirmResult] = useState(null)
 
   const addBet = useCallback((bet) => {
     setSelectedBets(prev => {
@@ -23,14 +26,17 @@ export function BetSlipProvider({ children }) {
       // Add new bet
       return [...filteredBets, bet]
     })
+    setConfirmResult(null)
   }, [])
 
   const removeBet = useCallback((matchId) => {
     setSelectedBets(prev => prev.filter(b => b.matchId !== matchId))
+    setConfirmResult(null)
   }, [])
 
   const clearAllBets = useCallback(() => {
     setSelectedBets([])
+    setConfirmResult(null)
   }, [])
 
   const isBetSelected = useCallback((matchId, category, outcome) => {
@@ -41,6 +47,37 @@ export function BetSlipProvider({ children }) {
 
   const hasMatchSelection = useCallback((matchId) => {
     return selectedBets.some(b => b.matchId === matchId)
+  }, [selectedBets])
+
+  const confirmPredictions = useCallback(async (options = {}) => {
+    const { visibility = 'private', isPaid = false, priceUsd = 0, analysisNotes = '' } = options
+    setConfirming(true)
+    setConfirmResult(null)
+    try {
+      const res = await axios.post('/api/predictions/confirm', {
+        predictions: selectedBets,
+        visibility,
+        is_paid: isPaid,
+        price_usd: priceUsd,
+        analysis_notes: analysisNotes,
+      })
+      if (res.data.success) {
+        setConfirmResult({
+          success: true,
+          count: res.data.confirmed_count,
+          shared: res.data.shared,
+          isPaid: res.data.is_paid,
+        })
+        setSelectedBets([])
+      }
+      return res.data
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Failed to confirm predictions'
+      setConfirmResult({ success: false, error: msg })
+      return { success: false, error: msg }
+    } finally {
+      setConfirming(false)
+    }
   }, [selectedBets])
 
   // Calculate combined probability (multiply all probabilities)
@@ -60,6 +97,10 @@ export function BetSlipProvider({ children }) {
     clearAllBets,
     isBetSelected,
     hasMatchSelection,
+    confirmPredictions,
+    confirming,
+    confirmResult,
+    setConfirmResult,
     combinedProbability: Math.round(combinedProbability * 100) / 100,
     riskScore,
     betCount: selectedBets.length,

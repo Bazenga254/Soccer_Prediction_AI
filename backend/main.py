@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
 
@@ -387,20 +387,6 @@ async def predict(request: PredictRequest):
         odds = generate_odds_comparison(outcome, request.team_a_id, request.team_b_id)
 
     risks = _build_risks(team_a, team_b, h2h, players_a, players_b, outcome, odds)
-
-    # Store prediction for track record
-    try:
-        prediction_tracker.store_prediction(
-            team_a_id=request.team_a_id,
-            team_b_id=request.team_b_id,
-            team_a_name=team_a["name"],
-            team_b_name=team_b["name"],
-            competition=request.competition,
-            outcome=outcome,
-            top_predictions=[],  # Will be populated by frontend callback
-        )
-    except Exception as e:
-        print(f"Failed to store prediction: {e}")
 
     return {
         "match_info": {
@@ -946,6 +932,112 @@ async def clear_predictions():
     """Clear all stored predictions."""
     result = prediction_tracker.clear_all_predictions()
     return result
+
+
+class PredictionItem(BaseModel):
+    matchId: str
+    matchName: str
+    category: str
+    outcome: str
+    probability: float
+
+class ConfirmPredictionsRequest(BaseModel):
+    predictions: List[PredictionItem]
+    visibility: str = "private"
+    is_paid: bool = False
+    price_usd: float = 0
+    analysis_notes: str = ""
+
+
+@app.post("/api/predictions/confirm")
+async def confirm_predictions(request: ConfirmPredictionsRequest, authorization: str = Header(None)):
+    """Confirm predictions from My Predictions slip. Stores to track record and optionally shares to community."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not request.predictions:
+        raise HTTPException(status_code=400, detail="No predictions to confirm")
+
+    # Validate: if selling, require at least 30 words in notes
+    if request.is_paid and len(request.analysis_notes.split()) < 30:
+        raise HTTPException(status_code=400, detail="Paid predictions require at least 30 words of analysis notes")
+
+    profile = user_auth.get_user_profile(payload["user_id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    confirmed = []
+    for pred in request.predictions:
+        # Parse team names from matchName (format: "TeamA vs TeamB")
+        parts = pred.matchName.split(" vs ")
+        team_a_name = parts[0].strip() if len(parts) >= 2 else pred.matchName
+        team_b_name = parts[1].strip() if len(parts) >= 2 else ""
+
+        # Parse team IDs from matchId (format: "homeId-awayId")
+        id_parts = pred.matchId.split("-")
+        team_a_id = int(id_parts[0]) if len(id_parts) >= 2 and id_parts[0].isdigit() else 0
+        team_b_id = int(id_parts[1]) if len(id_parts) >= 2 and id_parts[1].isdigit() else 0
+
+        # Store in prediction tracker
+        try:
+            outcome = {}
+            if "Win" in pred.outcome:
+                if team_a_name in pred.outcome:
+                    outcome = {"team_a_win": pred.probability, "draw": 0, "team_b_win": 0}
+                else:
+                    outcome = {"team_a_win": 0, "draw": 0, "team_b_win": pred.probability}
+            elif pred.outcome == "Draw":
+                outcome = {"team_a_win": 0, "draw": pred.probability, "team_b_win": 0}
+            else:
+                outcome = {"team_a_win": pred.probability, "draw": 0, "team_b_win": 0}
+
+            prediction_tracker.store_prediction(
+                team_a_id=team_a_id,
+                team_b_id=team_b_id,
+                team_a_name=team_a_name,
+                team_b_name=team_b_name,
+                competition="",
+                outcome=outcome,
+                top_predictions=[],
+            )
+            confirmed.append(pred.matchId)
+        except Exception as e:
+            print(f"Failed to store prediction for {pred.matchId}: {e}")
+
+    # Share to community if public
+    if request.visibility == "public" and confirmed:
+        for pred in request.predictions:
+            parts = pred.matchName.split(" vs ")
+            team_a_name = parts[0].strip() if len(parts) >= 2 else pred.matchName
+            team_b_name = parts[1].strip() if len(parts) >= 2 else ""
+            fixture_id = f"{pred.matchId}-{datetime.now().strftime('%Y%m%d')}"
+            try:
+                community.share_prediction(
+                    user_id=profile["id"],
+                    username=profile["username"],
+                    display_name=profile["display_name"],
+                    avatar_color=profile["avatar_color"],
+                    fixture_id=fixture_id,
+                    team_a_name=team_a_name,
+                    team_b_name=team_b_name,
+                    competition="",
+                    predicted_result=f"{pred.category}: {pred.outcome}",
+                    predicted_result_prob=pred.probability,
+                    analysis_summary=request.analysis_notes,
+                    visibility="public",
+                    is_paid=request.is_paid,
+                    price_usd=request.price_usd if request.is_paid else 0,
+                )
+            except Exception as e:
+                print(f"Failed to share prediction for {pred.matchId}: {e}")
+
+    return {
+        "success": True,
+        "confirmed_count": len(confirmed),
+        "shared": request.visibility == "public",
+        "is_paid": request.is_paid,
+    }
 
 
 # ==================== END TRACK RECORD ENDPOINTS ====================

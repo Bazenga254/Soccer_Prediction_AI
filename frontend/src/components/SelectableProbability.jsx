@@ -28,7 +28,7 @@ export default function SelectableProbability({
     <div
       className={`selectable-probability ${className} ${isSelected ? 'selected' : ''}`}
       onClick={handleClick}
-      title={isSelected ? 'Click to remove from bet slip' : 'Click to add to bet slip'}
+      title={isSelected ? 'Click to remove from predictions' : 'Click to add to predictions'}
     >
       {children}
       <div className="selection-indicator">
