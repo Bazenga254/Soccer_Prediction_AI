@@ -8,6 +8,10 @@ import hashlib
 import secrets
 import random
 import string
+import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import jwt
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
@@ -61,6 +65,25 @@ def init_user_db():
             is_active INTEGER DEFAULT 1
         );
     """)
+
+    # Add email verification columns (migration for existing installs)
+    for col_sql in [
+        "ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN verification_code TEXT",
+        "ALTER TABLE users ADD COLUMN verification_code_expires TEXT",
+        "ALTER TABLE users ADD COLUMN verification_attempts INTEGER DEFAULT 0",
+    ]:
+        try:
+            conn.execute(col_sql)
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+    # Auto-verify all existing users (created before verification was required)
+    conn.execute("""
+        UPDATE users SET email_verified = 1
+        WHERE email_verified = 0 AND verification_code IS NULL
+    """)
+
     conn.commit()
     conn.close()
 
@@ -148,6 +171,112 @@ def verify_token(token: str) -> Optional[Dict]:
         return None
 
 
+def _generate_verification_code() -> str:
+    """Generate a 6-digit numeric verification code."""
+    return str(random.randint(100000, 999999))
+
+
+def _send_verification_email(to_email: str, code: str, display_name: str = "") -> bool:
+    """Send a 6-digit verification code via Gmail SMTP."""
+    smtp_email = os.environ.get("SMTP_EMAIL", "")
+    smtp_password = os.environ.get("SMTP_PASSWORD", "")
+    smtp_from_name = os.environ.get("SMTP_FROM_NAME", "Spark AI Prediction")
+
+    if not smtp_email or not smtp_password:
+        print("[WARN] SMTP not configured - skipping email send")
+        return False
+
+    subject = f"Your verification code: {code}"
+    greeting = display_name or "there"
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
+                background: #0f172a; color: #f1f5f9; padding: 40px; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <span style="font-size: 48px;">&#9917;</span>
+            <h1 style="color: #f1f5f9; margin: 8px 0;">Spark AI Prediction</h1>
+        </div>
+        <p style="color: #94a3b8;">Hey {greeting},</p>
+        <p style="color: #94a3b8;">Your verification code is:</p>
+        <div style="text-align: center; margin: 24px 0;">
+            <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px;
+                         color: #3b82f6; background: rgba(59,130,246,0.1);
+                         padding: 16px 32px; border-radius: 12px;
+                         border: 1px solid rgba(59,130,246,0.3);">
+                {code}
+            </span>
+        </div>
+        <p style="color: #64748b; font-size: 13px;">
+            This code expires in 10 minutes. If you didn't request this, ignore this email.
+        </p>
+    </div>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"{smtp_from_name} <{smtp_email}>"
+        msg["To"] = to_email
+        msg.attach(MIMEText(f"Your Spark AI verification code is: {code}", "plain"))
+        msg.attach(MIMEText(html_body, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(smtp_email, smtp_password)
+            server.sendmail(smtp_email, to_email, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to send email to {to_email}: {e}")
+        return False
+
+
+def _is_disposable_email(email: str) -> bool:
+    """Check if an email uses a known disposable/temporary email domain."""
+    domain = email.lower().strip().split("@")[-1]
+    return domain in DISPOSABLE_EMAIL_DOMAINS
+
+
+DISPOSABLE_EMAIL_DOMAINS = {
+    "10minutemail.com", "guerrillamail.com", "guerrillamail.net", "guerrillamail.org",
+    "guerrillamailblock.com", "mailinator.com", "maildrop.cc", "tempmail.com",
+    "throwaway.email", "temp-mail.org", "fakeinbox.com", "sharklasers.com",
+    "guerrillamail.info", "grr.la", "guerrillamail.biz", "guerrillamail.de",
+    "tempail.com", "dispostable.com", "yopmail.com", "yopmail.fr", "yopmail.net",
+    "cool.fr.nf", "jetable.fr.nf", "nospam.ze.tc", "nomail.xl.cx",
+    "mega.zik.dj", "speed.1s.fr", "courriel.fr.nf", "moncourrier.fr.nf",
+    "monemail.fr.nf", "monmail.fr.nf", "mailnesia.com", "mailcatch.com",
+    "trashmail.com", "trashmail.me", "trashmail.net", "trashmail.org",
+    "trashmail.at", "trashmail.ws", "trashmail.io", "0-mail.com",
+    "bugmenot.com", "deadaddress.com", "discard.email", "discardmail.com",
+    "discardmail.de", "emailondeck.com", "example.com",
+    "fakemailgenerator.com", "getnada.com", "getairmail.com",
+    "harakirimail.com", "inboxkitten.com",
+    "jetable.org", "kostenloseemail.de", "kurzepost.de",
+    "luxusmail.org", "mailexpire.com", "mailforspam.com", "mailhub.top",
+    "mailnator.com", "mailsac.com", "mailtemp.info", "mailtothis.com",
+    "mohmal.com", "mt2015.com", "mytemp.email", "mytrashmail.com",
+    "nowmymail.com", "objectmail.com", "one-time.email",
+    "rcpt.at", "reallymymail.com", "safetymail.info",
+    "shieldedmail.com", "spamavert.com",
+    "spambox.us", "spamfree24.com", "spamfree24.de",
+    "spamfree24.eu", "spamfree24.info", "spamfree24.net", "spamfree24.org",
+    "spamgourmet.com", "spamgourmet.net", "spamgourmet.org",
+    "spamherelots.com", "spamhereplease.com", "tempemail.co.za",
+    "tempemail.net", "tempinbox.com", "tempinbox.co.uk",
+    "tempomail.fr", "temporaryemail.net", "temporaryemail.us",
+    "temporaryforwarding.com", "temporaryinbox.com", "temporarymailaddress.com",
+    "thankyou2010.com", "thisisnotmyrealemail.com", "throwam.com",
+    "tmail.ws", "tmpmail.net", "tmpmail.org", "trash-mail.at",
+    "trash-mail.com", "trash-mail.de", "trash2009.com", "trashdevil.com",
+    "trashdevil.de", "trashymail.com", "trashymail.net",
+    "wegwerfmail.de", "wegwerfmail.net", "wegwerfmail.org",
+    "wh4f.org", "za.com", "zehnminutenmail.de", "zoemail.org",
+    "tempmailo.com", "burpcollaborator.net", "mailseal.de",
+    "crazymailing.com", "tempmailer.com", "mailtemp.net", "emailfake.com",
+    "cuvox.de", "armyspy.com", "dayrep.com", "einrot.com", "fleckens.hu",
+    "gustr.com", "jourrapide.com", "rhyta.com", "superrito.com", "teleworm.us",
+}
+
+
 # --- API Functions ---
 
 AVATAR_COLORS = [
@@ -157,8 +286,114 @@ AVATAR_COLORS = [
 ]
 
 
+def google_login(google_token: str, referral_code: str = "") -> Dict:
+    """Authenticate via Google OAuth. Creates account if new, logs in if existing."""
+    import urllib.request
+    import json as _json
+
+    # Verify the Google ID token
+    try:
+        url = f"https://oauth2.googleapis.com/tokeninfo?id_token={google_token}"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status != 200:
+                return {"success": False, "error": "Invalid Google token"}
+            google_data = _json.loads(resp.read().decode())
+    except Exception:
+        return {"success": False, "error": "Invalid Google token"}
+
+    email = google_data.get("email", "").lower().strip()
+    if not email:
+        return {"success": False, "error": "No email in Google token"}
+
+    email_verified = google_data.get("email_verified", "false")
+    if email_verified != "true":
+        return {"success": False, "error": "Google email not verified"}
+
+    google_name = google_data.get("name", "")
+
+    conn = _get_db()
+    existing = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+
+    if existing:
+        # Existing user - log them in
+        if not existing["is_active"]:
+            conn.close()
+            return {"success": False, "error": "Account has been suspended"}
+
+        now = datetime.now().isoformat()
+        # Auto-verify if logging in with Google
+        conn.execute(
+            "UPDATE users SET last_login = ?, login_count = login_count + 1, email_verified = 1 WHERE id = ?",
+            (now, existing["id"]),
+        )
+        conn.commit()
+        conn.close()
+
+        token = _create_token(existing["id"], existing["username"], existing["tier"], bool(existing["is_admin"]))
+        return {
+            "success": True,
+            "token": token,
+            "user": {
+                "id": existing["id"],
+                "email": existing["email"],
+                "display_name": existing["display_name"],
+                "username": existing["username"],
+                "avatar_color": existing["avatar_color"],
+                "tier": existing["tier"],
+                "referral_code": existing["referral_code"],
+                "is_admin": bool(existing["is_admin"]),
+                "created_at": existing["created_at"],
+            },
+        }
+    else:
+        # New user - create account
+        username = _generate_unique_username(conn)
+        password_hash = _hash_password(secrets.token_hex(32))
+        ref_code = _generate_referral_code()
+        avatar_color = random.choice(AVATAR_COLORS)
+        now = datetime.now().isoformat()
+        display_name = google_name or username
+
+        referred_by = None
+        if referral_code:
+            referrer = conn.execute(
+                "SELECT id FROM users WHERE referral_code = ?", (referral_code.upper().strip(),)
+            ).fetchone()
+            if referrer:
+                referred_by = referrer["id"]
+
+        conn.execute(
+            """INSERT INTO users (email, password_hash, display_name, username, avatar_color,
+               referral_code, referred_by, created_at, email_verified)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+            (email, password_hash, display_name, username, avatar_color, ref_code, referred_by, now),
+        )
+        conn.commit()
+
+        user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        conn.close()
+
+        token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]))
+        return {
+            "success": True,
+            "token": token,
+            "user": {
+                "id": user["id"],
+                "email": user["email"],
+                "display_name": user["display_name"],
+                "username": user["username"],
+                "avatar_color": user["avatar_color"],
+                "tier": user["tier"],
+                "referral_code": user["referral_code"],
+                "is_admin": bool(user["is_admin"]),
+                "created_at": user["created_at"],
+            },
+        }
+
+
 def register_user(email: str, password: str, display_name: str = "", referral_code: str = "") -> Dict:
-    """Register a new user."""
+    """Register a new user. Sends verification code instead of granting immediate access."""
     email = email.lower().strip()
 
     if len(password) < 6:
@@ -167,11 +402,32 @@ def register_user(email: str, password: str, display_name: str = "", referral_co
     if not email or "@" not in email:
         return {"success": False, "error": "Valid email is required"}
 
+    # Block disposable emails
+    if _is_disposable_email(email):
+        return {"success": False, "error": "Temporary/disposable email addresses are not allowed. Please use a real email."}
+
     conn = _get_db()
 
     # Check if email exists
-    existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    existing = conn.execute("SELECT id, email_verified FROM users WHERE email = ?", (email,)).fetchone()
     if existing:
+        if not existing["email_verified"]:
+            # Unverified user trying to register again - resend code
+            code = _generate_verification_code()
+            expires = (datetime.now() + timedelta(minutes=10)).isoformat()
+            conn.execute(
+                "UPDATE users SET verification_code = ?, verification_code_expires = ?, verification_attempts = 0 WHERE id = ?",
+                (code, expires, existing["id"]),
+            )
+            conn.commit()
+            conn.close()
+            _send_verification_email(email, code, display_name or email.split("@")[0])
+            return {
+                "success": True,
+                "requires_verification": True,
+                "email": email,
+                "message": "Verification code sent to your email",
+            }
         conn.close()
         return {"success": False, "error": "Email already registered"}
 
@@ -193,33 +449,27 @@ def register_user(email: str, password: str, display_name: str = "", referral_co
         if referrer:
             referred_by = referrer["id"]
 
+    # Generate verification code
+    code = _generate_verification_code()
+    expires = (datetime.now() + timedelta(minutes=10)).isoformat()
+
     conn.execute(
         """INSERT INTO users (email, password_hash, display_name, username, avatar_color,
-           referral_code, referred_by, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (email, password_hash, display_name, username, avatar_color, ref_code, referred_by, now),
+           referral_code, referred_by, created_at, email_verified, verification_code, verification_code_expires)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""",
+        (email, password_hash, display_name, username, avatar_color, ref_code, referred_by, now, code, expires),
     )
     conn.commit()
-
-    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
     conn.close()
 
-    token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]))
+    # Send verification email
+    _send_verification_email(email, code, display_name)
 
     return {
         "success": True,
-        "token": token,
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "display_name": user["display_name"],
-            "username": user["username"],
-            "avatar_color": user["avatar_color"],
-            "tier": user["tier"],
-            "referral_code": user["referral_code"],
-            "is_admin": bool(user["is_admin"]),
-            "created_at": user["created_at"],
-        },
+        "requires_verification": True,
+        "email": email,
+        "message": "Account created! Check your email for a verification code.",
     }
 
 
@@ -240,6 +490,25 @@ def login_user(email: str, password: str) -> Dict:
     if not _verify_password(password, user["password_hash"]):
         conn.close()
         return {"success": False, "error": "Invalid email or password"}
+
+    # Check email verification
+    if not user["email_verified"]:
+        # Resend verification code
+        code = _generate_verification_code()
+        expires = (datetime.now() + timedelta(minutes=10)).isoformat()
+        conn.execute(
+            "UPDATE users SET verification_code = ?, verification_code_expires = ?, verification_attempts = 0 WHERE id = ?",
+            (code, expires, user["id"]),
+        )
+        conn.commit()
+        conn.close()
+        _send_verification_email(email, code, user["display_name"])
+        return {
+            "success": False,
+            "error": "Please verify your email. A new code has been sent.",
+            "requires_verification": True,
+            "email": email,
+        }
 
     # Update login stats
     now = datetime.now().isoformat()
@@ -267,6 +536,111 @@ def login_user(email: str, password: str) -> Dict:
             "created_at": user["created_at"],
         },
     }
+
+
+def verify_email(email: str, code: str) -> Dict:
+    """Verify email with the 6-digit code. Returns JWT token on success."""
+    email = email.lower().strip()
+    conn = _get_db()
+
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "Account not found"}
+
+    if user["email_verified"]:
+        conn.close()
+        return {"success": False, "error": "Email already verified"}
+
+    # Check attempts (max 5 to prevent brute force)
+    if (user["verification_attempts"] or 0) >= 5:
+        conn.close()
+        return {"success": False, "error": "Too many failed attempts. Request a new code."}
+
+    # Check expiry
+    expires = user["verification_code_expires"]
+    if not expires or datetime.fromisoformat(expires) < datetime.now():
+        conn.close()
+        return {"success": False, "error": "Verification code has expired. Request a new one."}
+
+    # Check code
+    if user["verification_code"] != code.strip():
+        conn.execute(
+            "UPDATE users SET verification_attempts = COALESCE(verification_attempts, 0) + 1 WHERE id = ?",
+            (user["id"],),
+        )
+        conn.commit()
+        remaining = 5 - (user["verification_attempts"] or 0) - 1
+        conn.close()
+        return {"success": False, "error": f"Invalid code. {remaining} attempts remaining."}
+
+    # Success - mark as verified, clear code
+    now = datetime.now().isoformat()
+    conn.execute(
+        """UPDATE users SET email_verified = 1, verification_code = NULL,
+           verification_code_expires = NULL, verification_attempts = 0,
+           last_login = ?, login_count = login_count + 1 WHERE id = ?""",
+        (now, user["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]))
+
+    return {
+        "success": True,
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "display_name": user["display_name"],
+            "username": user["username"],
+            "avatar_color": user["avatar_color"],
+            "tier": user["tier"],
+            "referral_code": user["referral_code"],
+            "is_admin": bool(user["is_admin"]),
+            "created_at": user["created_at"],
+        },
+    }
+
+
+def resend_verification_code(email: str) -> Dict:
+    """Resend a verification code. Rate limited to 1 per 60 seconds."""
+    email = email.lower().strip()
+    conn = _get_db()
+
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    if not user:
+        conn.close()
+        return {"success": True, "message": "If that email is registered, a new code has been sent."}
+
+    if user["email_verified"]:
+        conn.close()
+        return {"success": False, "error": "Email is already verified"}
+
+    # Rate limit: check if current code was sent less than 60 seconds ago
+    if user["verification_code_expires"]:
+        expires = datetime.fromisoformat(user["verification_code_expires"])
+        created_at = expires - timedelta(minutes=10)
+        seconds_since_sent = (datetime.now() - created_at).total_seconds()
+        if seconds_since_sent < 60:
+            wait = int(60 - seconds_since_sent)
+            conn.close()
+            return {"success": False, "error": f"Please wait {wait} seconds before requesting a new code."}
+
+    # Generate and store new code
+    code = _generate_verification_code()
+    expires = (datetime.now() + timedelta(minutes=10)).isoformat()
+    conn.execute(
+        "UPDATE users SET verification_code = ?, verification_code_expires = ?, verification_attempts = 0 WHERE id = ?",
+        (code, expires, user["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    _send_verification_email(email, code, user["display_name"])
+
+    return {"success": True, "message": "A new verification code has been sent to your email."}
 
 
 def get_user_profile(user_id: int) -> Optional[Dict]:

@@ -11,6 +11,7 @@ export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [pendingVerification, setPendingVerification] = useState(null)
 
   // Set up axios interceptor for auth token
   useEffect(() => {
@@ -66,6 +67,11 @@ export function AuthProvider({ children }) {
       }
       return { success: false, error: response.data.error }
     } catch (err) {
+      // Handle 403 = needs verification
+      if (err.response?.status === 403 && err.response?.data?.requires_verification) {
+        setPendingVerification({ email: err.response.data.email })
+        return { success: false, requires_verification: true, error: err.response.data.detail }
+      }
       const msg = err.response?.data?.detail || 'Login failed. Please try again.'
       return { success: false, error: msg }
     }
@@ -80,6 +86,10 @@ export function AuthProvider({ children }) {
         referral_code: referralCode,
       })
       if (response.data.success) {
+        if (response.data.requires_verification) {
+          setPendingVerification({ email: response.data.email })
+          return { success: true, requires_verification: true }
+        }
         const { token, user: userData } = response.data
         localStorage.setItem('spark_token', token)
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
@@ -94,6 +104,60 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  const googleLogin = useCallback(async (googleToken, referralCode = '') => {
+    try {
+      const response = await axios.post('/api/user/google-login', {
+        token: googleToken,
+        referral_code: referralCode,
+      })
+      if (response.data.success) {
+        const { token, user: userData } = response.data
+        localStorage.setItem('spark_token', token)
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        setUser(userData)
+        setIsAuthenticated(true)
+        return { success: true }
+      }
+      return { success: false, error: response.data.error }
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Google login failed. Please try again.'
+      return { success: false, error: msg }
+    }
+  }, [])
+
+  const verifyEmail = useCallback(async (email, code) => {
+    try {
+      const response = await axios.post('/api/user/verify-email', { email, code })
+      if (response.data.success) {
+        const { token, user: userData } = response.data
+        localStorage.setItem('spark_token', token)
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        setUser(userData)
+        setIsAuthenticated(true)
+        setPendingVerification(null)
+        return { success: true }
+      }
+      return { success: false, error: response.data.error }
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Verification failed.'
+      return { success: false, error: msg }
+    }
+  }, [])
+
+  const resendCode = useCallback(async (email) => {
+    try {
+      const response = await axios.post('/api/user/resend-code', { email })
+      return { success: true, message: response.data.message }
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Failed to resend code.'
+      return { success: false, error: msg }
+    }
+  }, [])
+
+  const cancelVerification = useCallback(() => {
+    setPendingVerification(null)
+  }, [])
+
   const logout = useCallback(() => {
     clearAuth()
   }, [])
@@ -106,10 +170,15 @@ export function AuthProvider({ children }) {
     isAuthenticated,
     user,
     loading,
+    pendingVerification,
     login,
     register,
+    googleLogin,
     logout,
     updateUser,
+    verifyEmail,
+    resendCode,
+    cancelVerification,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

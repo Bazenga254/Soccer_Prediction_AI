@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -681,6 +681,17 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class GoogleLoginRequest(BaseModel):
+    token: str
+    referral_code: str = ""
+
+class VerifyEmailRequest(BaseModel):
+    email: str
+    code: str
+
+class ResendCodeRequest(BaseModel):
+    email: str
+
 class UpdateUsernameRequest(BaseModel):
     username: str
 
@@ -698,7 +709,7 @@ def _get_current_user(authorization: str = Header(None)) -> Optional[dict]:
 
 @app.post("/api/user/register")
 async def register(request: RegisterRequest):
-    """Register a new user account."""
+    """Register a new user account. Returns requires_verification if email needs to be verified."""
     result = user_auth.register_user(
         email=request.email,
         password=request.password,
@@ -715,7 +726,48 @@ async def login(request: LoginRequest):
     """Login with email and password."""
     result = user_auth.login_user(email=request.email, password=request.password)
     if not result["success"]:
+        if result.get("requires_verification"):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "success": False,
+                    "requires_verification": True,
+                    "email": result.get("email"),
+                    "detail": result["error"],
+                }
+            )
         raise HTTPException(status_code=401, detail=result["error"])
+    return result
+
+
+@app.post("/api/user/google-login")
+async def google_login(request: GoogleLoginRequest):
+    """Login or register via Google OAuth."""
+    result = user_auth.google_login(
+        google_token=request.token,
+        referral_code=request.referral_code,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=401, detail=result["error"])
+    return result
+
+
+@app.post("/api/user/verify-email")
+async def verify_email(request: VerifyEmailRequest):
+    """Verify email with 6-digit code."""
+    result = user_auth.verify_email(email=request.email, code=request.code)
+    if not result["success"]:
+        status = 429 if "wait" in result.get("error", "").lower() else 400
+        raise HTTPException(status_code=status, detail=result["error"])
+    return result
+
+
+@app.post("/api/user/resend-code")
+async def resend_code(request: ResendCodeRequest):
+    """Resend verification code to email."""
+    result = user_auth.resend_verification_code(email=request.email)
+    if not result["success"]:
+        raise HTTPException(status_code=429, detail=result["error"])
     return result
 
 
