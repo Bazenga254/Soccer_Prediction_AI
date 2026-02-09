@@ -221,7 +221,8 @@ def _send_verification_email(to_email: str, code: str, display_name: str = "") -
         msg.attach(MIMEText(f"Your Spark AI verification code is: {code}", "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP_SSL("smtp.zoho.com", 465) as server:
+        with smtplib.SMTP("smtp.zoho.com", 587) as server:
+            server.starttls()
             server.login(smtp_email, smtp_password)
             server.sendmail(smtp_from_email, to_email, msg.as_string())
         return True
@@ -281,7 +282,8 @@ def _send_welcome_email(to_email: str, display_name: str = "") -> bool:
         msg.attach(MIMEText(f"Welcome to Spark AI Prediction, {greeting}! Your account has been created successfully. Visit https://www.spark-ai-prediction.com to get started.", "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP_SSL("smtp.zoho.com", 465) as server:
+        with smtplib.SMTP("smtp.zoho.com", 587) as server:
+            server.starttls()
             server.login(smtp_email, smtp_password)
             server.sendmail(smtp_from_email, to_email, msg.as_string())
         return True
