@@ -1257,6 +1257,58 @@ async def get_unread_count(authorization: str = Header(None)):
     return {"unread_count": community.get_unread_count(payload["user_id"])}
 
 
+# ==================== DIRECT MESSAGES ====================
+
+class SendMessageRequest(BaseModel):
+    receiver_id: int
+    content: str
+
+@app.post("/api/messages/send")
+async def send_message(request: SendMessageRequest, authorization: str = Header(None)):
+    """Send a direct message to another user."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    sender = user_auth.get_user_profile(payload["user_id"])
+    if not sender:
+        raise HTTPException(status_code=401, detail="User not found")
+    receiver = user_auth.get_user_profile(request.receiver_id)
+    if not receiver:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    return community.send_message(
+        sender_id=sender["id"],
+        receiver_id=request.receiver_id,
+        sender_username=sender["username"],
+        sender_display_name=sender["display_name"],
+        sender_avatar_color=sender["avatar_color"],
+        content=request.content,
+    )
+
+@app.get("/api/messages/conversations")
+async def get_conversations(authorization: str = Header(None)):
+    """Get list of conversations for the current user."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"conversations": community.get_conversations(payload["user_id"])}
+
+@app.get("/api/messages/{other_id}")
+async def get_messages(other_id: int, authorization: str = Header(None)):
+    """Get messages between current user and another user."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"messages": community.get_messages(payload["user_id"], other_id)}
+
+@app.get("/api/messages-unread-count")
+async def get_unread_messages_count(authorization: str = Header(None)):
+    """Get unread message count."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"unread_count": community.get_unread_messages_count(payload["user_id"])}
+
+
 # ==================== END COMMUNITY ENDPOINTS ====================
 
 

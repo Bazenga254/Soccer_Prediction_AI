@@ -106,6 +106,22 @@ def init_community_db():
             user_id INTEGER PRIMARY KEY,
             last_read_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS direct_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id INTEGER NOT NULL,
+            receiver_id INTEGER NOT NULL,
+            sender_username TEXT NOT NULL,
+            sender_display_name TEXT NOT NULL,
+            sender_avatar_color TEXT DEFAULT '#6c5ce7',
+            content TEXT NOT NULL,
+            is_read INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_dm_sender ON direct_messages(sender_id);
+        CREATE INDEX IF NOT EXISTS idx_dm_receiver ON direct_messages(receiver_id);
+        CREATE INDEX IF NOT EXISTS idx_dm_created ON direct_messages(created_at);
     """)
     conn.commit()
     conn.close()
@@ -860,5 +876,129 @@ def get_unread_count(user_id: int) -> int:
         JOIN community_predictions cp ON cp.id = pc.prediction_id
         WHERE cp.user_id = ? AND pc.user_id != ? AND pc.created_at > ?
     """, (user_id, user_id, last_read_at)).fetchone()["c"]
+    conn.close()
+    return count
+
+
+# ==================== DIRECT MESSAGES ====================
+
+def send_message(
+    sender_id: int, receiver_id: int,
+    sender_username: str, sender_display_name: str,
+    sender_avatar_color: str, content: str
+) -> Dict:
+    """Send a direct message to another user."""
+    content = content.strip()
+    if not content or len(content) > 1000:
+        return {"success": False, "error": "Message must be 1-1000 characters"}
+    if sender_id == receiver_id:
+        return {"success": False, "error": "Cannot message yourself"}
+
+    conn = _get_db()
+    now = datetime.now().isoformat()
+    conn.execute("""
+        INSERT INTO direct_messages (sender_id, receiver_id, sender_username,
+            sender_display_name, sender_avatar_color, content, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (sender_id, receiver_id, sender_username, sender_display_name,
+          sender_avatar_color, content, now))
+    conn.commit()
+    msg_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+
+    return {"success": True, "message_id": msg_id}
+
+
+def get_conversations(user_id: int) -> List[Dict]:
+    """Get list of conversations (grouped by other user) with last message preview."""
+    conn = _get_db()
+
+    # Get all unique conversation partners with the latest message
+    rows = conn.execute("""
+        SELECT
+            CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END as other_id,
+            CASE WHEN sender_id = ? THEN
+                (SELECT dm2.sender_display_name FROM direct_messages dm2
+                 WHERE (dm2.sender_id = receiver_id OR dm2.receiver_id = sender_id)
+                   AND dm2.sender_id = receiver_id LIMIT 1)
+            ELSE sender_display_name END as other_name,
+            CASE WHEN sender_id = ? THEN
+                (SELECT dm2.sender_username FROM direct_messages dm2
+                 WHERE dm2.sender_id = receiver_id LIMIT 1)
+            ELSE sender_username END as other_username,
+            CASE WHEN sender_id = ? THEN
+                (SELECT dm2.sender_avatar_color FROM direct_messages dm2
+                 WHERE dm2.sender_id = receiver_id LIMIT 1)
+            ELSE sender_avatar_color END as other_avatar,
+            content as last_message,
+            created_at as last_message_at,
+            sender_id
+        FROM direct_messages
+        WHERE sender_id = ? OR receiver_id = ?
+        ORDER BY created_at DESC
+    """, (user_id, user_id, user_id, user_id, user_id, user_id)).fetchall()
+
+    # Deduplicate by other_id, keep only the latest message per conversation
+    seen = {}
+    for r in rows:
+        other_id = r["other_id"]
+        if other_id not in seen:
+            # Count unread in this conversation
+            unread = conn.execute("""
+                SELECT COUNT(*) as c FROM direct_messages
+                WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
+            """, (other_id, user_id)).fetchone()["c"]
+
+            seen[other_id] = {
+                "other_id": other_id,
+                "other_name": r["other_name"] or f"User {other_id}",
+                "other_username": r["other_username"] or "",
+                "other_avatar": r["other_avatar"] or "#6c5ce7",
+                "last_message": r["last_message"],
+                "last_message_at": r["last_message_at"],
+                "is_mine": r["sender_id"] == user_id,
+                "unread_count": unread,
+            }
+
+    conn.close()
+    return list(seen.values())
+
+
+def get_messages(user_id: int, other_id: int, limit: int = 50) -> List[Dict]:
+    """Get messages between two users."""
+    conn = _get_db()
+
+    # Mark messages from other user as read
+    conn.execute("""
+        UPDATE direct_messages SET is_read = 1
+        WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
+    """, (other_id, user_id))
+    conn.commit()
+
+    rows = conn.execute("""
+        SELECT id, sender_id, receiver_id, content, is_read, created_at
+        FROM direct_messages
+        WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)
+        ORDER BY created_at ASC
+        LIMIT ?
+    """, (user_id, other_id, other_id, user_id, limit)).fetchall()
+    conn.close()
+
+    return [{
+        "id": r["id"],
+        "sender_id": r["sender_id"],
+        "is_mine": r["sender_id"] == user_id,
+        "content": r["content"],
+        "created_at": r["created_at"],
+    } for r in rows]
+
+
+def get_unread_messages_count(user_id: int) -> int:
+    """Get total unread message count for a user."""
+    conn = _get_db()
+    count = conn.execute(
+        "SELECT COUNT(*) as c FROM direct_messages WHERE receiver_id = ? AND is_read = 0",
+        (user_id,)
+    ).fetchone()["c"]
     conn.close()
     return count

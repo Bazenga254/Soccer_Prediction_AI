@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import NotificationDropdown from './NotificationDropdown'
+import MessagesDropdown from './MessagesDropdown'
 import EarningsDropdown from './EarningsDropdown'
 import UserMenuDropdown from './UserMenuDropdown'
 
@@ -52,6 +53,7 @@ export default function Header({ user, logout }) {
           <div className="header-user-controls">
             <EarningsDropdown />
             <NotificationDropdown />
+            <MessagesDropdown />
             <UserMenuDropdown user={user} logout={logout} />
           </div>
         )}
