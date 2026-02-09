@@ -229,6 +229,65 @@ def _send_verification_email(to_email: str, code: str, display_name: str = "") -
         return False
 
 
+def _send_welcome_email(to_email: str, display_name: str = "") -> bool:
+    """Send a welcome email to new users."""
+    smtp_email = os.environ.get("SMTP_EMAIL", "")
+    smtp_password = os.environ.get("SMTP_PASSWORD", "")
+    smtp_from_name = os.environ.get("SMTP_FROM_NAME", "Spark AI Prediction")
+
+    if not smtp_email or not smtp_password:
+        return False
+
+    greeting = display_name or "there"
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
+                background: #0f172a; color: #f1f5f9; padding: 40px; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <span style="font-size: 48px;">&#9917;</span>
+            <h1 style="color: #f1f5f9; margin: 8px 0;">Welcome to Spark AI!</h1>
+        </div>
+        <p style="color: #94a3b8;">Hey {greeting},</p>
+        <p style="color: #94a3b8;">
+            Your account has been created successfully! You now have access to:
+        </p>
+        <ul style="color: #94a3b8; line-height: 1.8;">
+            <li>AI-powered match predictions</li>
+            <li>Live match tracking &amp; odds</li>
+            <li>Community predictions &amp; tips</li>
+            <li>Personalized match analysis</li>
+        </ul>
+        <div style="text-align: center; margin: 28px 0;">
+            <a href="https://www.spark-ai-prediction.com"
+               style="display: inline-block; background: #3b82f6; color: #ffffff;
+                      text-decoration: none; padding: 14px 32px; border-radius: 8px;
+                      font-weight: bold; font-size: 16px;">
+                Start Exploring
+            </a>
+        </div>
+        <p style="color: #64748b; font-size: 13px; text-align: center;">
+            Thank you for joining Spark AI Prediction!
+        </p>
+    </div>
+    """
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Welcome to Spark AI Prediction!"
+        msg["From"] = f"{smtp_from_name} <{smtp_email}>"
+        msg["To"] = to_email
+        msg.attach(MIMEText(f"Welcome to Spark AI Prediction, {greeting}! Your account has been created successfully. Visit https://www.spark-ai-prediction.com to get started.", "plain"))
+        msg.attach(MIMEText(html_body, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(smtp_email, smtp_password)
+            server.sendmail(smtp_email, to_email, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to send welcome email to {to_email}: {e}")
+        return False
+
+
 def _is_disposable_email(email: str) -> bool:
     """Check if an email uses a known disposable/temporary email domain."""
     domain = email.lower().strip().split("@")[-1]
@@ -373,6 +432,9 @@ def google_login(google_token: str, referral_code: str = "") -> Dict:
 
         user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         conn.close()
+
+        # Send welcome email to new Google user
+        _send_welcome_email(email, display_name)
 
         token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]))
         return {
@@ -584,6 +646,9 @@ def verify_email(email: str, code: str) -> Dict:
     )
     conn.commit()
     conn.close()
+
+    # Send welcome email after successful verification
+    _send_welcome_email(email, user["display_name"])
 
     token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]))
 
