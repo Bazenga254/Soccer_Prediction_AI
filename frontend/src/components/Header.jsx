@@ -38,6 +38,7 @@ export default function Header() {
   const currentCompetition = getCurrentCompetition()
   const isLivePage = location.pathname === '/live'
   const isMyPredictions = location.pathname === '/my-predictions'
+  const isCommunity = location.pathname === '/community'
 
   return (
     <header className="header">
@@ -45,8 +46,8 @@ export default function Header() {
         <Link to="/" className="header-logo" style={{ textDecoration: 'none' }}>
           <span className="logo-icon">⚽</span>
           <div className="logo-text">
-            <h1>Soccer Prediction AI</h1>
-            <span className="logo-subtitle">Match Outcome & Odds Analysis System</span>
+            <h1>Spark AI Prediction</h1>
+            <span className="logo-subtitle">Smart Match Analysis & Predictions</span>
           </div>
         </Link>
       </div>
@@ -65,6 +66,13 @@ export default function Header() {
         >
           <span className="comp-flag">📊</span>
           <span className="comp-name">My Predictions</span>
+        </Link>
+        <Link
+          to="/community"
+          className={`competition-tab ${isCommunity ? 'active' : ''}`}
+        >
+          <span className="comp-flag">👥</span>
+          <span className="comp-name">Community</span>
         </Link>
         {COMPETITIONS.map(comp => (
           <Link

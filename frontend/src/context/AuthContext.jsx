@@ -9,56 +9,107 @@ export function useAuth() {
 
 export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [accessInfo, setAccessInfo] = useState(null)
+  const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Check stored access code on mount
+  // Set up axios interceptor for auth token
   useEffect(() => {
-    const storedCode = localStorage.getItem('soccer_ai_access_code')
-    if (storedCode) {
-      verifyCode(storedCode, true)
+    const token = localStorage.getItem('spark_token')
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    }
+  }, [])
+
+  // Check stored token on mount
+  useEffect(() => {
+    const token = localStorage.getItem('spark_token')
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      fetchProfile()
     } else {
       setLoading(false)
     }
   }, [])
 
-  const verifyCode = useCallback(async (code, silent = false) => {
+  const fetchProfile = async () => {
     try {
-      const response = await axios.post('/api/auth/verify', { code: code.toUpperCase().trim() })
-      if (response.data.valid) {
+      const response = await axios.get('/api/user/me')
+      if (response.data.user) {
+        setUser(response.data.user)
         setIsAuthenticated(true)
-        setAccessInfo(response.data)
-        localStorage.setItem('soccer_ai_access_code', code.toUpperCase().trim())
-        setLoading(false)
-        return { success: true, data: response.data }
       } else {
-        if (!silent) {
-          localStorage.removeItem('soccer_ai_access_code')
-        }
-        setIsAuthenticated(false)
-        setAccessInfo(null)
-        setLoading(false)
-        return { success: false, message: response.data.reason }
+        clearAuth()
       }
+    } catch {
+      clearAuth()
+    }
+    setLoading(false)
+  }
+
+  const clearAuth = () => {
+    setIsAuthenticated(false)
+    setUser(null)
+    localStorage.removeItem('spark_token')
+    delete axios.defaults.headers.common['Authorization']
+  }
+
+  const login = useCallback(async (email, password) => {
+    try {
+      const response = await axios.post('/api/user/login', { email, password })
+      if (response.data.success) {
+        const { token, user: userData } = response.data
+        localStorage.setItem('spark_token', token)
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        setUser(userData)
+        setIsAuthenticated(true)
+        return { success: true }
+      }
+      return { success: false, error: response.data.error }
     } catch (err) {
-      setIsAuthenticated(false)
-      setLoading(false)
-      return { success: false, message: 'Could not verify code. Please try again.' }
+      const msg = err.response?.data?.detail || 'Login failed. Please try again.'
+      return { success: false, error: msg }
+    }
+  }, [])
+
+  const register = useCallback(async (email, password, displayName = '', referralCode = '') => {
+    try {
+      const response = await axios.post('/api/user/register', {
+        email,
+        password,
+        display_name: displayName,
+        referral_code: referralCode,
+      })
+      if (response.data.success) {
+        const { token, user: userData } = response.data
+        localStorage.setItem('spark_token', token)
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        setUser(userData)
+        setIsAuthenticated(true)
+        return { success: true }
+      }
+      return { success: false, error: response.data.error }
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Registration failed. Please try again.'
+      return { success: false, error: msg }
     }
   }, [])
 
   const logout = useCallback(() => {
-    setIsAuthenticated(false)
-    setAccessInfo(null)
-    localStorage.removeItem('soccer_ai_access_code')
+    clearAuth()
+  }, [])
+
+  const updateUser = useCallback((updates) => {
+    setUser(prev => prev ? { ...prev, ...updates } : null)
   }, [])
 
   const value = {
     isAuthenticated,
-    accessInfo,
+    user,
     loading,
-    verifyCode,
+    login,
+    register,
     logout,
+    updateUser,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

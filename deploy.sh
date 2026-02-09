@@ -4,7 +4,7 @@
 
 set -e
 
-echo "=== Soccer Prediction AI - Deployment ==="
+echo "=== Spark AI Prediction - Deployment ==="
 
 # 1. Install system dependencies
 echo "[1/6] Installing system dependencies..."
@@ -36,7 +36,7 @@ npm run build
 echo "[4/6] Creating systemd service..."
 sudo tee /etc/systemd/system/soccer-ai.service > /dev/null <<EOF
 [Unit]
-Description=Soccer Prediction AI Backend
+Description=Spark AI Prediction Backend
 After=network.target
 
 [Service]

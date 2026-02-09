@@ -3,6 +3,8 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import PlayerImpact from '../components/PlayerImpact'
 import { useBetSlip } from '../context/BetSlipContext'
+import { useAuth } from '../context/AuthContext'
+import AdBanner from '../components/AdBanner'
 
 function formatDateTime(dateStr) {
   if (!dateStr) return ''
@@ -1967,6 +1969,167 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
           </div>
         </div>
       </div>
+
+      <AdBanner format="banner" slot="analysis-bottom" />
+
+      {/* Share to Community */}
+      <SharePrediction
+        teamAName={teamAName}
+        teamBName={teamBName}
+        outcome={outcome}
+        allPredictions={allPredictions}
+      />
+    </div>
+  )
+}
+
+function SharePrediction({ teamAName, teamBName, outcome, allPredictions }) {
+  const { user } = useAuth()
+  const [showShare, setShowShare] = useState(false)
+  const [visibility, setVisibility] = useState('public')
+  const [summary, setSummary] = useState('')
+  const [sharing, setSharing] = useState(false)
+  const [shared, setShared] = useState(false)
+  const [isPaid, setIsPaid] = useState(false)
+  const [price, setPrice] = useState('2.00')
+
+  if (!user) return null
+
+  // Determine the main prediction
+  const teamAWin = outcome.team_a_win || 0
+  const draw = outcome.draw || 0
+  const teamBWin = outcome.team_b_win || 0
+  let predictedResult, resultProb
+  if (teamAWin >= draw && teamAWin >= teamBWin) {
+    predictedResult = `${teamAName} Win`
+    resultProb = teamAWin
+  } else if (teamBWin >= draw) {
+    predictedResult = `${teamBName} Win`
+    resultProb = teamBWin
+  } else {
+    predictedResult = 'Draw'
+    resultProb = draw
+  }
+
+  // Find over2.5 and btts
+  let over25 = null, btts = null, bestValue = null
+  for (const p of allPredictions) {
+    if (!over25 && p.bet?.includes('Over 2.5')) over25 = 'Over'
+    if (!over25 && p.bet?.includes('Under 2.5')) over25 = 'Under'
+    if (!btts && p.bet?.includes('Both Teams to Score - Yes')) btts = 'Yes'
+    if (!btts && p.bet?.includes('Both Teams to Score - No')) btts = 'No'
+  }
+  if (allPredictions.length > 0) {
+    bestValue = allPredictions[0]
+  }
+
+  const handleShare = async () => {
+    setSharing(true)
+    try {
+      const fixtureId = `${teamAName}-${teamBName}-${new Date().toISOString().slice(0,10)}`
+      const priceNum = isPaid ? parseFloat(price) : 0
+      await axios.post('/api/community/share', {
+        fixture_id: fixtureId,
+        team_a_name: teamAName,
+        team_b_name: teamBName,
+        predicted_result: predictedResult,
+        predicted_result_prob: resultProb,
+        predicted_over25: over25,
+        predicted_btts: btts,
+        best_value_bet: bestValue?.bet || null,
+        best_value_prob: bestValue?.probability || null,
+        analysis_summary: summary,
+        visibility: isPaid ? 'public' : visibility,
+        is_paid: isPaid,
+        price_usd: priceNum,
+      })
+      setShared(true)
+    } catch { /* ignore */ }
+    setSharing(false)
+  }
+
+  if (shared) {
+    return (
+      <div className="share-section">
+        <div className="share-success">
+          Prediction shared {isPaid ? `as paid ($${price})` : visibility === 'public' ? 'publicly' : 'privately'}!
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="share-section">
+      {!showShare ? (
+        <button className="share-toggle-btn" onClick={() => setShowShare(true)}>
+          Share to Community
+        </button>
+      ) : (
+        <div className="share-form">
+          <h4>Share This Prediction</h4>
+
+          {/* Share Type */}
+          <div className="share-type-toggle">
+            <button
+              className={`type-btn ${!isPaid ? 'active' : ''}`}
+              onClick={() => setIsPaid(false)}
+            >Free Share</button>
+            <button
+              className={`type-btn paid ${isPaid ? 'active' : ''}`}
+              onClick={() => { setIsPaid(true); setVisibility('public') }}
+            >Sell Prediction</button>
+          </div>
+
+          {isPaid ? (
+            <div className="paid-settings">
+              <div className="price-input-row">
+                <span className="price-currency">$</span>
+                <input
+                  type="number"
+                  className="price-input"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  min="0.50"
+                  max="50.00"
+                  step="0.50"
+                />
+                <span className="price-label">USD</span>
+              </div>
+              <div className="paid-info">
+                <span>You earn 70% (${(parseFloat(price || 0) * 0.7).toFixed(2)})</span>
+                <span className="paid-info-sep">|</span>
+                <span>Platform fee 30%</span>
+              </div>
+            </div>
+          ) : (
+            <div className="share-visibility">
+              <button
+                className={`vis-btn ${visibility === 'public' ? 'active' : ''}`}
+                onClick={() => setVisibility('public')}
+              >Public</button>
+              <button
+                className={`vis-btn ${visibility === 'private' ? 'active' : ''}`}
+                onClick={() => setVisibility('private')}
+              >Private</button>
+            </div>
+          )}
+
+          <textarea
+            className="share-summary-input"
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            placeholder={isPaid ? "Add your analysis notes (buyers will see this after purchase)..." : "Add your analysis notes (optional)..."}
+            maxLength={300}
+            rows={3}
+          />
+          <div className="share-actions">
+            <button className="share-submit-btn" onClick={handleShare} disabled={sharing}>
+              {sharing ? 'Sharing...' : isPaid ? `Sell for $${price}` : `Share ${visibility === 'public' ? 'Publicly' : 'Privately'}`}
+            </button>
+            <button className="share-cancel-btn" onClick={() => setShowShare(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

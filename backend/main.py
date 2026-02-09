@@ -22,11 +22,14 @@ import football_api
 import config
 import access_codes
 import prediction_tracker
+import user_auth
+import community
+import subscriptions
 
 # Admin password for managing access codes
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "SoccerAI2026Admin")
 
-app = FastAPI(title="Soccer Match Prediction AI")
+app = FastAPI(title="Spark AI Prediction")
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,7 +51,7 @@ class PredictRequest(BaseModel):
 @app.on_event("startup")
 async def startup():
     print("=" * 50)
-    print("Soccer Match Prediction AI - Starting...")
+    print("Spark AI Prediction - Starting...")
     print("=" * 50)
 
     # Check API keys
@@ -73,6 +76,21 @@ async def startup():
     print("[OK] Access code system initialized")
 
     prediction_tracker.init_predictions_db()
+
+    # Initialize user auth database
+    user_auth.init_user_db()
+    print("[OK] User authentication system initialized")
+
+    # Initialize community predictions database
+    community.init_community_db()
+    print("[OK] Community predictions system initialized")
+
+    # Initialize subscriptions
+    subscriptions.init_subscriptions_db()
+    expired = subscriptions.check_expired_subscriptions()
+    if expired:
+        print(f"[OK] Expired {expired} subscription(s)")
+    print("[OK] Subscription system initialized")
     print("=" * 50)
 
 
@@ -560,7 +578,281 @@ async def revoke_code(code: str, x_admin_password: str = Header(None)):
         return {"message": f"Code {code} revoked"}
     raise HTTPException(status_code=404, detail="Code not found")
 
-# ==================== END ACCESS CODE ENDPOINTS ====================
+
+# ==================== ADMIN DASHBOARD ENDPOINTS ====================
+
+@app.get("/api/admin/dashboard-stats")
+async def admin_dashboard_stats(x_admin_password: str = Header(None)):
+    """Get full dashboard statistics for admin panel."""
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    user_stats = user_auth.get_user_stats()
+    community_stats = community.get_community_stats()
+    prediction_stats = prediction_tracker.get_accuracy_stats()
+    sub_stats = subscriptions.get_subscription_stats()
+
+    return {
+        "users": user_stats,
+        "community": community_stats,
+        "predictions": prediction_stats,
+        "subscriptions": sub_stats,
+    }
+
+
+@app.get("/api/admin/users")
+async def admin_list_users(x_admin_password: str = Header(None)):
+    """List all users for admin management."""
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    users = user_auth.list_all_users()
+    return {"users": users}
+
+
+class SetTierRequest(BaseModel):
+    tier: str
+
+class SetActiveRequest(BaseModel):
+    is_active: bool
+
+
+@app.post("/api/admin/users/{user_id}/set-tier")
+async def admin_set_tier(user_id: int, request: SetTierRequest, x_admin_password: str = Header(None)):
+    """Change a user's tier (free/pro)."""
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if request.tier not in ("free", "pro"):
+        raise HTTPException(status_code=400, detail="Tier must be 'free' or 'pro'")
+    result = user_auth.set_user_tier(user_id, request.tier)
+    return result
+
+
+@app.post("/api/admin/users/{user_id}/toggle-active")
+async def admin_toggle_active(user_id: int, request: SetActiveRequest, x_admin_password: str = Header(None)):
+    """Suspend or unsuspend a user."""
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = user_auth.toggle_user_active(user_id, 1 if request.is_active else 0)
+    return result
+
+
+@app.delete("/api/admin/community/{prediction_id}")
+async def admin_delete_prediction(prediction_id: int, x_admin_password: str = Header(None)):
+    """Admin: delete a community prediction."""
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = community.delete_prediction(prediction_id)
+    if not result["success"]:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@app.delete("/api/admin/comment/{comment_id}")
+async def admin_delete_comment(comment_id: int, x_admin_password: str = Header(None)):
+    """Admin: delete a specific comment."""
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = community.delete_comment(comment_id)
+    if not result["success"]:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@app.get("/api/admin/referral-stats")
+async def admin_referral_stats(x_admin_password: str = Header(None)):
+    """Get referral leaderboard for admin."""
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"referrals": user_auth.get_all_referral_stats()}
+
+
+# ==================== END ACCESS CODE / ADMIN ENDPOINTS ====================
+
+
+# ==================== USER AUTH ENDPOINTS ====================
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    display_name: str = ""
+    referral_code: str = ""
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class UpdateUsernameRequest(BaseModel):
+    username: str
+
+class UpdateDisplayNameRequest(BaseModel):
+    display_name: str
+
+
+def _get_current_user(authorization: str = Header(None)) -> Optional[dict]:
+    """Extract user from Authorization header."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.replace("Bearer ", "")
+    return user_auth.verify_token(token)
+
+
+@app.post("/api/user/register")
+async def register(request: RegisterRequest):
+    """Register a new user account."""
+    result = user_auth.register_user(
+        email=request.email,
+        password=request.password,
+        display_name=request.display_name,
+        referral_code=request.referral_code,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/user/login")
+async def login(request: LoginRequest):
+    """Login with email and password."""
+    result = user_auth.login_user(email=request.email, password=request.password)
+    if not result["success"]:
+        raise HTTPException(status_code=401, detail=result["error"])
+    return result
+
+
+@app.get("/api/user/me")
+async def get_me(authorization: str = Header(None)):
+    """Get current user profile from token."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    profile = user_auth.get_user_profile(payload["user_id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"user": profile}
+
+
+@app.put("/api/user/username")
+async def update_username(request: UpdateUsernameRequest, authorization: str = Header(None)):
+    """Update username (must be unique)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = user_auth.update_username(payload["user_id"], request.username)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.put("/api/user/display-name")
+async def update_display_name(request: UpdateDisplayNameRequest, authorization: str = Header(None)):
+    """Update display name."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = user_auth.update_display_name(payload["user_id"], request.display_name)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.get("/api/user/check-username/{username}")
+async def check_username(username: str):
+    """Check if a username is available."""
+    available = user_auth.check_username_available(username)
+    return {"available": available, "username": username}
+
+
+@app.get("/api/user/referral-stats")
+async def get_referral_stats(authorization: str = Header(None)):
+    """Get current user's referral statistics."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    stats = user_auth.get_referral_stats(payload["user_id"])
+    return stats
+
+
+# ==================== END USER AUTH ENDPOINTS ====================
+
+
+# ==================== SUBSCRIPTION ENDPOINTS ====================
+
+@app.get("/api/subscription/plans")
+async def get_plans():
+    """Get available subscription plans."""
+    return {"plans": subscriptions.get_plans()}
+
+
+@app.get("/api/subscription/limits")
+async def get_tier_limits(authorization: str = Header(None)):
+    """Get feature limits for current user's tier."""
+    payload = _get_current_user(authorization)
+    tier = payload["tier"] if payload else "free"
+    return {"tier": tier, "limits": subscriptions.get_tier_limits(tier)}
+
+
+@app.get("/api/subscription/status")
+async def get_subscription_status(authorization: str = Header(None)):
+    """Get current user's subscription status."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    sub = subscriptions.get_active_subscription(payload["user_id"])
+    return {
+        "has_subscription": sub is not None,
+        "subscription": sub,
+        "tier": payload["tier"],
+    }
+
+
+class SubscribeRequest(BaseModel):
+    plan_id: str
+    payment_method: str = ""
+    payment_ref: str = ""
+
+
+@app.post("/api/subscription/subscribe")
+async def subscribe(request: SubscribeRequest, authorization: str = Header(None)):
+    """Create a new subscription (after payment confirmation)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    result = subscriptions.create_subscription(
+        user_id=payload["user_id"],
+        plan_id=request.plan_id,
+        payment_method=request.payment_method,
+        payment_ref=request.payment_ref,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/subscription/cancel")
+async def cancel_subscription(authorization: str = Header(None)):
+    """Cancel current subscription."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    result = subscriptions.cancel_subscription(payload["user_id"])
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.get("/api/subscription/history")
+async def get_subscription_history(authorization: str = Header(None)):
+    """Get subscription history."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"history": subscriptions.get_subscription_history(payload["user_id"])}
+
+
+# ==================== END SUBSCRIPTION ENDPOINTS ====================
 
 
 # ==================== PREDICTION TRACK RECORD ENDPOINTS ====================
@@ -607,11 +899,190 @@ async def clear_predictions():
 # ==================== END TRACK RECORD ENDPOINTS ====================
 
 
+# ==================== COMMUNITY PREDICTIONS ENDPOINTS ====================
+
+class SharePredictionRequest(BaseModel):
+    fixture_id: str
+    team_a_name: str
+    team_b_name: str
+    competition: str = ""
+    predicted_result: str
+    predicted_result_prob: float = 0
+    predicted_over25: Optional[str] = None
+    predicted_btts: Optional[str] = None
+    best_value_bet: Optional[str] = None
+    best_value_prob: Optional[float] = None
+    analysis_summary: str = ""
+    visibility: str = "public"
+    is_paid: bool = False
+    price_usd: float = 0
+
+class RatingRequest(BaseModel):
+    rating: int
+
+class CommentRequest(BaseModel):
+    content: str
+
+
+@app.post("/api/community/share")
+async def share_prediction(request: SharePredictionRequest, authorization: str = Header(None)):
+    """Share a prediction to the community."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    profile = user_auth.get_user_profile(payload["user_id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    result = community.share_prediction(
+        user_id=profile["id"],
+        username=profile["username"],
+        display_name=profile["display_name"],
+        avatar_color=profile["avatar_color"],
+        fixture_id=request.fixture_id,
+        team_a_name=request.team_a_name,
+        team_b_name=request.team_b_name,
+        competition=request.competition,
+        predicted_result=request.predicted_result,
+        predicted_result_prob=request.predicted_result_prob,
+        predicted_over25=request.predicted_over25,
+        predicted_btts=request.predicted_btts,
+        best_value_bet=request.best_value_bet,
+        best_value_prob=request.best_value_prob,
+        analysis_summary=request.analysis_summary,
+        visibility=request.visibility,
+        is_paid=request.is_paid,
+        price_usd=request.price_usd,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.get("/api/community/predictions")
+async def get_community_predictions(page: int = 1, per_page: int = 20):
+    """Get public community predictions."""
+    return community.get_public_predictions(page=page, per_page=per_page)
+
+
+@app.get("/api/community/my-shared")
+async def get_my_shared_predictions(authorization: str = Header(None)):
+    """Get current user's shared predictions."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"predictions": community.get_user_predictions(payload["user_id"])}
+
+
+@app.post("/api/community/{prediction_id}/rate")
+async def rate_prediction(prediction_id: int, request: RatingRequest, authorization: str = Header(None)):
+    """Rate a community prediction (1-5 stars)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    result = community.rate_prediction(prediction_id, payload["user_id"], request.rating)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/community/{prediction_id}/comment")
+async def add_comment(prediction_id: int, request: CommentRequest, authorization: str = Header(None)):
+    """Add a comment to a community prediction."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    profile = user_auth.get_user_profile(payload["user_id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    result = community.add_comment(
+        prediction_id=prediction_id,
+        user_id=profile["id"],
+        username=profile["username"],
+        display_name=profile["display_name"],
+        avatar_color=profile["avatar_color"],
+        content=request.content,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.get("/api/community/{prediction_id}/comments")
+async def get_comments(prediction_id: int):
+    """Get comments for a prediction."""
+    return {"comments": community.get_comments(prediction_id)}
+
+
+@app.get("/api/community/top-predictors")
+async def get_top_predictors():
+    """Get leaderboard of top predictors."""
+    return {"predictors": community.get_top_predictors()}
+
+
+# --- Paid Predictions Endpoints ---
+
+class PurchasePredictionRequest(BaseModel):
+    payment_method: str = ""
+    payment_ref: str = ""
+
+
+@app.get("/api/community/paid")
+async def get_paid_predictions(page: int = 1, per_page: int = 20, authorization: str = Header(None)):
+    """Get paid predictions feed with purchase status."""
+    payload = _get_current_user(authorization)
+    viewer_id = payload["user_id"] if payload else None
+    return community.get_paid_predictions_feed(page=page, per_page=per_page, viewer_id=viewer_id)
+
+
+@app.post("/api/community/{prediction_id}/purchase")
+async def purchase_prediction(prediction_id: int, request: PurchasePredictionRequest, authorization: str = Header(None)):
+    """Purchase a paid prediction."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    result = community.purchase_prediction(
+        prediction_id=prediction_id,
+        buyer_id=payload["user_id"],
+        payment_method=request.payment_method,
+        payment_ref=request.payment_ref,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.get("/api/community/my-purchases")
+async def get_my_purchases(authorization: str = Header(None)):
+    """Get current user's purchased predictions."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"purchases": community.get_user_purchases(payload["user_id"])}
+
+
+@app.get("/api/creator/dashboard")
+async def get_creator_dashboard(authorization: str = Header(None)):
+    """Get creator dashboard with wallet, sales, and paid predictions."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return community.get_creator_dashboard(payload["user_id"])
+
+
+# ==================== END COMMUNITY ENDPOINTS ====================
+
+
 @app.get("/api/health")
 async def health():
     return {
         "status": "ok",
-        "message": "Soccer Prediction AI is running",
+        "message": "Spark AI Prediction is running",
         "using_live_data": is_using_live_data(),
         "api_configured": {
             "api_football": bool(config.API_FOOTBALL_KEY),
