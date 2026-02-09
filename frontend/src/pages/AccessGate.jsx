@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 
-const GOOGLE_CLIENT_ID = '407084571160-tl71m0aq8v10cg7omt9drgcqr65sdfku.apps.googleusercontent.com'
+const GOOGLE_CLIENT_ID = '905871526482-4i8pfv8435p4eq10226j0agks7j007ag.apps.googleusercontent.com'
 
 export default function AccessGate() {
   const [mode, setMode] = useState('login') // 'login' or 'signup'
