@@ -101,6 +101,11 @@ def init_community_db():
         CREATE INDEX IF NOT EXISTS idx_purchases_buyer ON prediction_purchases(buyer_id);
         CREATE INDEX IF NOT EXISTS idx_purchases_pred ON prediction_purchases(prediction_id);
         CREATE INDEX IF NOT EXISTS idx_wallets_user ON creator_wallets(user_id);
+
+        CREATE TABLE IF NOT EXISTS notification_reads (
+            user_id INTEGER PRIMARY KEY,
+            last_read_at TEXT NOT NULL
+        );
     """)
     conn.commit()
     conn.close()
@@ -725,3 +730,135 @@ def get_paid_predictions_feed(page: int = 1, per_page: int = 20, viewer_id: int 
         "per_page": per_page,
         "total_pages": (total + per_page - 1) // per_page,
     }
+
+
+# ==================== NOTIFICATIONS & EARNINGS ====================
+
+def get_user_notifications(user_id: int, limit: int = 30) -> Dict:
+    """Get notifications for a user (comments on their predictions by others)."""
+    conn = _get_db()
+
+    # Get last read timestamp
+    read_row = conn.execute(
+        "SELECT last_read_at FROM notification_reads WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    last_read_at = read_row["last_read_at"] if read_row else "2000-01-01T00:00:00"
+
+    # Get comments on user's predictions (by other users)
+    rows = conn.execute("""
+        SELECT pc.id, pc.prediction_id, pc.user_id as commenter_id,
+               pc.username as commenter_username, pc.display_name as commenter_name,
+               pc.avatar_color as commenter_avatar, pc.content, pc.created_at,
+               cp.team_a_name, cp.team_b_name, cp.predicted_result
+        FROM prediction_comments pc
+        JOIN community_predictions cp ON cp.id = pc.prediction_id
+        WHERE cp.user_id = ? AND pc.user_id != ?
+        ORDER BY pc.created_at DESC
+        LIMIT ?
+    """, (user_id, user_id, limit)).fetchall()
+
+    # Count unread
+    unread_count = conn.execute("""
+        SELECT COUNT(*) as c
+        FROM prediction_comments pc
+        JOIN community_predictions cp ON cp.id = pc.prediction_id
+        WHERE cp.user_id = ? AND pc.user_id != ? AND pc.created_at > ?
+    """, (user_id, user_id, last_read_at)).fetchone()["c"]
+
+    conn.close()
+
+    notifications = [{
+        "id": r["id"],
+        "type": "comment",
+        "prediction_id": r["prediction_id"],
+        "commenter_name": r["commenter_name"],
+        "commenter_username": r["commenter_username"],
+        "commenter_avatar": r["commenter_avatar"],
+        "content": r["content"],
+        "match": f"{r['team_a_name']} vs {r['team_b_name']}",
+        "predicted_result": r["predicted_result"],
+        "created_at": r["created_at"],
+        "is_read": r["created_at"] <= last_read_at,
+    } for r in rows]
+
+    return {
+        "notifications": notifications,
+        "unread_count": unread_count,
+    }
+
+
+def mark_notifications_read(user_id: int) -> Dict:
+    """Mark all notifications as read for a user."""
+    conn = _get_db()
+    now = datetime.now().isoformat()
+    conn.execute("""
+        INSERT INTO notification_reads (user_id, last_read_at)
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET last_read_at = ?
+    """, (user_id, now, now))
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
+
+def get_earnings_summary(user_id: int) -> Dict:
+    """Get earnings summary for the access bar dropdown."""
+    conn = _get_db()
+
+    # Wallet info
+    wallet = conn.execute(
+        "SELECT * FROM creator_wallets WHERE user_id = ?", (user_id,)
+    ).fetchone()
+
+    # Count total predictions
+    total_preds = conn.execute(
+        "SELECT COUNT(*) as c FROM community_predictions WHERE user_id = ?", (user_id,)
+    ).fetchone()["c"]
+
+    # Count paid predictions
+    paid_preds = conn.execute(
+        "SELECT COUNT(*) as c FROM community_predictions WHERE user_id = ? AND is_paid = 1",
+        (user_id,)
+    ).fetchone()["c"]
+
+    # Recent sales (last 5)
+    sales = conn.execute("""
+        SELECT pp.price_amount, pp.created_at, cp.team_a_name, cp.team_b_name
+        FROM prediction_purchases pp
+        JOIN community_predictions cp ON cp.id = pp.prediction_id
+        WHERE pp.seller_id = ?
+        ORDER BY pp.created_at DESC LIMIT 5
+    """, (user_id,)).fetchall()
+
+    conn.close()
+
+    return {
+        "balance_usd": wallet["balance_usd"] if wallet else 0,
+        "total_earned_usd": wallet["total_earned_usd"] if wallet else 0,
+        "total_sales": wallet["total_sales"] if wallet else 0,
+        "total_predictions": total_preds,
+        "paid_predictions": paid_preds,
+        "recent_sales": [{
+            "amount": s["price_amount"],
+            "match": f"{s['team_a_name']} vs {s['team_b_name']}",
+            "created_at": s["created_at"],
+        } for s in sales],
+    }
+
+
+def get_unread_count(user_id: int) -> int:
+    """Quick count of unread notifications."""
+    conn = _get_db()
+    read_row = conn.execute(
+        "SELECT last_read_at FROM notification_reads WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    last_read_at = read_row["last_read_at"] if read_row else "2000-01-01T00:00:00"
+
+    count = conn.execute("""
+        SELECT COUNT(*) as c
+        FROM prediction_comments pc
+        JOIN community_predictions cp ON cp.id = pc.prediction_id
+        WHERE cp.user_id = ? AND pc.user_id != ? AND pc.created_at > ?
+    """, (user_id, user_id, last_read_at)).fetchone()["c"]
+    conn.close()
+    return count

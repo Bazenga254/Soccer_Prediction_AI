@@ -1219,6 +1219,44 @@ async def get_creator_dashboard(authorization: str = Header(None)):
     return community.get_creator_dashboard(payload["user_id"])
 
 
+# ==================== NOTIFICATIONS & EARNINGS ====================
+
+@app.get("/api/user/notifications")
+async def get_notifications(authorization: str = Header(None)):
+    """Get user's notifications (comments on their predictions)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return community.get_user_notifications(payload["user_id"])
+
+
+@app.post("/api/user/notifications/read")
+async def mark_notifications_read(authorization: str = Header(None)):
+    """Mark all notifications as read."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return community.mark_notifications_read(payload["user_id"])
+
+
+@app.get("/api/user/earnings")
+async def get_earnings(authorization: str = Header(None)):
+    """Get earnings summary for the user."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return community.get_earnings_summary(payload["user_id"])
+
+
+@app.get("/api/user/unread-count")
+async def get_unread_count(authorization: str = Header(None)):
+    """Quick endpoint to get unread notification count."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"unread_count": community.get_unread_count(payload["user_id"])}
+
+
 # ==================== END COMMUNITY ENDPOINTS ====================
 
 

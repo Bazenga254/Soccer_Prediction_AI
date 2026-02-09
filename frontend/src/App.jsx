@@ -11,6 +11,8 @@ import Community from './pages/Community'
 import Upgrade from './pages/Upgrade'
 import CreatorDashboard from './pages/CreatorDashboard'
 import BetSlip from './components/BetSlip'
+import NotificationDropdown from './components/NotificationDropdown'
+import EarningsDropdown from './components/EarningsDropdown'
 import { BetSlipProvider } from './context/BetSlipContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import './App.css'
@@ -47,6 +49,8 @@ function ProtectedApp() {
               <span className={`tier-badge ${user.tier}`}>{user.tier === 'pro' ? 'PRO' : 'FREE'}</span>
             </span>
             <span className="user-bar-actions">
+              <EarningsDropdown />
+              <NotificationDropdown />
               <Link to="/creator" className="creator-link-btn">Creator</Link>
               {user.tier !== 'pro' && <Link to="/upgrade" className="upgrade-link-btn">Upgrade</Link>}
               <Link to="/profile" className="profile-link-btn">Profile</Link>
