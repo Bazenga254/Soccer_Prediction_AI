@@ -667,24 +667,6 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           </button>
         </form>
 
-        {/* CAPTCHA for Google login pending */}
-        {googlePendingToken && !captchaToken && (
-          <div className="captcha-container" style={{ marginTop: '16px' }}>
-            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '12px', textAlign: 'center' }}>
-              Complete CAPTCHA to continue with Google
-            </p>
-            <HCaptcha
-              ref={captchaRef}
-              sitekey={HCAPTCHA_SITE_KEY}
-              onVerify={handleCaptchaVerify}
-              onExpire={handleCaptchaExpire}
-              onError={handleCaptchaError}
-              theme="dark"
-              size="normal"
-            />
-          </div>
-        )}
-
         <div className="gate-footer">
           {mode === 'login' ? (
             <p>Don't have an account? <button className="link-btn" onClick={() => setMode('signup')}>Sign up for free</button></p>
