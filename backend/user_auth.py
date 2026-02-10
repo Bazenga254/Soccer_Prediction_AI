@@ -112,6 +112,80 @@ def record_login_attempt(ip_address: str, email: str, success: bool):
     conn.close()
 
 
+MAX_LOGIN_ATTEMPTS = 5
+
+
+def check_account_locked(email: str) -> Dict:
+    """Check if an account is locked. Returns lock status and remaining time."""
+    conn = _get_db()
+    user = conn.execute(
+        "SELECT locked_until FROM users WHERE email = ?",
+        (email.lower().strip(),)
+    ).fetchone()
+    conn.close()
+
+    if not user or not user["locked_until"]:
+        return {"locked": False}
+
+    locked_until = datetime.fromisoformat(user["locked_until"])
+    now = datetime.now()
+
+    if now >= locked_until:
+        # Lock expired - clear it
+        conn = _get_db()
+        conn.execute(
+            "UPDATE users SET locked_until = NULL WHERE email = ?",
+            (email.lower().strip(),)
+        )
+        conn.commit()
+        conn.close()
+        return {"locked": False}
+
+    remaining_seconds = int((locked_until - now).total_seconds())
+    return {
+        "locked": True,
+        "locked_until": user["locked_until"],
+        "remaining_seconds": remaining_seconds,
+    }
+
+
+def get_failed_attempt_count(email: str) -> int:
+    """Get the number of consecutive failed password attempts for this email (last 24h)."""
+    conn = _get_db()
+    # Count failed attempts since the last successful login (or in the last 24h)
+    cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+
+    # Get the last successful attempt time
+    last_success = conn.execute(
+        "SELECT MAX(attempted_at) as last_ok FROM login_attempts WHERE email = ? AND success = 1 AND attempted_at > ?",
+        (email.lower().strip(), cutoff),
+    ).fetchone()
+
+    since = cutoff
+    if last_success and last_success["last_ok"]:
+        since = last_success["last_ok"]
+
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM login_attempts WHERE email = ? AND attempted_at > ? AND success = 0",
+        (email.lower().strip(), since),
+    ).fetchone()
+    conn.close()
+
+    return row["cnt"] if row else 0
+
+
+def lock_account(email: str):
+    """Lock an account for 24 hours."""
+    conn = _get_db()
+    locked_until = (datetime.now() + timedelta(hours=24)).isoformat()
+    conn.execute(
+        "UPDATE users SET locked_until = ? WHERE email = ?",
+        (locked_until, email.lower().strip()),
+    )
+    conn.commit()
+    conn.close()
+
+
 def init_user_db():
     """Create users and related tables."""
     conn = _get_db()
@@ -159,6 +233,7 @@ def init_user_db():
         "ALTER TABLE users ADD COLUMN verification_attempts INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN avatar_url TEXT",
         "ALTER TABLE users ADD COLUMN last_known_ip TEXT",
+        "ALTER TABLE users ADD COLUMN locked_until TEXT",
     ]:
         try:
             conn.execute(col_sql)
@@ -668,6 +743,17 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
     """Login an existing user."""
     email = email.lower().strip()
 
+    # Check if account is locked
+    lock_status = check_account_locked(email)
+    if lock_status["locked"]:
+        return {
+            "success": False,
+            "error": "Account is temporarily locked due to too many failed attempts.",
+            "account_locked": True,
+            "locked_until": lock_status["locked_until"],
+            "remaining_seconds": lock_status["remaining_seconds"],
+        }
+
     # Check if CAPTCHA is required for this login
     if client_ip:
         captcha_needed = check_captcha_required(email, client_ip)
@@ -696,7 +782,26 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
         conn.close()
         if client_ip:
             record_login_attempt(client_ip, email, False)
-        return {"success": False, "error": "Invalid email or password"}
+
+        # Check how many failed attempts and lock if needed
+        failed_count = get_failed_attempt_count(email)
+        remaining = MAX_LOGIN_ATTEMPTS - failed_count
+        if remaining <= 0:
+            lock_account(email)
+            lock_info = check_account_locked(email)
+            return {
+                "success": False,
+                "error": "Too many failed attempts. Account locked for 24 hours.",
+                "account_locked": True,
+                "locked_until": lock_info.get("locked_until", ""),
+                "remaining_seconds": lock_info.get("remaining_seconds", 86400),
+                "attempts_remaining": 0,
+            }
+        return {
+            "success": False,
+            "error": "Invalid email or password",
+            "attempts_remaining": remaining,
+        }
 
     # Check email verification
     if not user["email_verified"]:

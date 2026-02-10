@@ -28,6 +28,10 @@ export default function AccessGate() {
   const captchaRef = useRef(null)
   const [googlePendingToken, setGooglePendingToken] = useState(null)
 
+  // Lockout state
+  const [lockoutSeconds, setLockoutSeconds] = useState(0)
+  const [attemptsRemaining, setAttemptsRemaining] = useState(null)
+
   // Verification state
   const [verificationCode, setVerificationCode] = useState('')
   const [resendCooldown, setResendCooldown] = useState(0)
@@ -55,6 +59,23 @@ export default function AccessGate() {
       return () => clearTimeout(timer)
     }
   }, [resendCooldown])
+
+  // Lockout countdown timer
+  useEffect(() => {
+    if (lockoutSeconds > 0) {
+      const timer = setTimeout(() => setLockoutSeconds(lockoutSeconds - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [lockoutSeconds])
+
+  const formatLockoutTime = (seconds) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = seconds % 60
+    if (h > 0) return `${h}h ${m}m ${s}s`
+    if (m > 0) return `${m}m ${s}s`
+    return `${s}s`
+  }
 
   const handleGoogleResponse = useCallback(async (response) => {
     if (!response.credential) return
@@ -163,10 +184,19 @@ export default function AccessGate() {
       if (mode === 'login') {
         result = await login(email, password, captchaToken)
 
+        // Account locked
+        if (result.account_locked) {
+          setLockoutSeconds(result.remaining_seconds || 86400)
+          setAttemptsRemaining(0)
+          setError('')
+          setLoading(false)
+          return
+        }
+
         // Server says CAPTCHA is required
         if (result.captcha_required) {
           setShowCaptcha(true)
-          setError('Your IP address has changed or too many failed attempts. Please complete the CAPTCHA.')
+          setError('Please prove that you are a human')
           setLoading(false)
           return
         }
@@ -175,6 +205,11 @@ export default function AccessGate() {
           setResendCooldown(60)
           setLoading(false)
           return
+        }
+
+        // Show remaining attempts on wrong password
+        if (!result.success && result.attempts_remaining !== undefined) {
+          setAttemptsRemaining(result.attempts_remaining)
         }
       } else {
         result = await register(email, password, '', referralCode, captchaToken)
@@ -190,6 +225,10 @@ export default function AccessGate() {
         // Reset captcha on failure
         setCaptchaToken('')
         if (captchaRef.current) captchaRef.current.resetCaptcha()
+      } else {
+        // Clear lockout state on success
+        setAttemptsRemaining(null)
+        setLockoutSeconds(0)
       }
     } catch (err) {
       setError(err.message || 'Connection error. Please try again.')
@@ -369,7 +408,7 @@ export default function AccessGate() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               autoFocus
-              disabled={loading}
+              disabled={loading || lockoutSeconds > 0}
               onBlur={handleEmailBlur}
             />
           </div>
@@ -383,7 +422,7 @@ export default function AccessGate() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={mode === 'signup' ? 'Create a strong password' : 'Enter your password'}
-                disabled={loading}
+                disabled={loading || lockoutSeconds > 0}
               />
               <button
                 type="button"
@@ -481,8 +520,33 @@ export default function AccessGate() {
 
           {error && <div className="gate-error">{error}</div>}
 
-          <button type="submit" className="gate-submit-btn" disabled={loading || ((showCaptcha || mode === 'signup') && !captchaToken)}>
+          {/* Remaining attempts warning */}
+          {mode === 'login' && attemptsRemaining !== null && attemptsRemaining > 0 && lockoutSeconds === 0 && (
+            <div className="gate-warning">
+              {attemptsRemaining === 1
+                ? 'Warning: 1 attempt remaining before your account is locked for 24 hours.'
+                : `You have ${attemptsRemaining} attempts remaining.`}
+            </div>
+          )}
+
+          {/* Account lockout countdown */}
+          {lockoutSeconds > 0 && (
+            <div className="gate-lockout">
+              <div className="lockout-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+              <p className="lockout-title">Account Temporarily Locked</p>
+              <p className="lockout-message">Too many failed login attempts. Please try again in:</p>
+              <div className="lockout-timer">{formatLockoutTime(lockoutSeconds)}</div>
+            </div>
+          )}
+
+          <button type="submit" className="gate-submit-btn" disabled={loading || lockoutSeconds > 0 || ((showCaptcha || mode === 'signup') && !captchaToken)}>
             {loading ? (mode === 'login' ? 'Logging in...' : 'Creating account...') :
+              lockoutSeconds > 0 ? 'Account Locked' :
               (mode === 'login' ? 'Log In' : 'Create Account')}
           </button>
         </form>

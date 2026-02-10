@@ -67,6 +67,16 @@ export function AuthProvider({ children }) {
       }
       return { success: false, error: response.data.error }
     } catch (err) {
+      // Handle 423 = account locked
+      if (err.response?.status === 423 && err.response?.data?.account_locked) {
+        return {
+          success: false,
+          account_locked: true,
+          locked_until: err.response.data.locked_until,
+          remaining_seconds: err.response.data.remaining_seconds,
+          error: err.response.data.detail,
+        }
+      }
       // Handle 428 = captcha required
       if (err.response?.status === 428 && err.response?.data?.captcha_required) {
         return { success: false, captcha_required: true, error: err.response.data.detail }
@@ -75,6 +85,14 @@ export function AuthProvider({ children }) {
       if (err.response?.status === 403 && err.response?.data?.requires_verification) {
         setPendingVerification({ email: err.response.data.email })
         return { success: false, requires_verification: true, error: err.response.data.detail }
+      }
+      // Handle 401 with attempts_remaining
+      if (err.response?.status === 401 && err.response?.data?.attempts_remaining !== undefined) {
+        return {
+          success: false,
+          error: err.response.data.detail,
+          attempts_remaining: err.response.data.attempts_remaining,
+        }
       }
       const msg = err.response?.data?.detail || 'Login failed. Please try again.'
       return { success: false, error: msg }

@@ -740,6 +740,17 @@ async def login(body: LoginRequest, request: Request):
         client_ip=client_ip,
     )
     if not result["success"]:
+        if result.get("account_locked"):
+            return JSONResponse(
+                status_code=423,
+                content={
+                    "success": False,
+                    "account_locked": True,
+                    "locked_until": result.get("locked_until", ""),
+                    "remaining_seconds": result.get("remaining_seconds", 0),
+                    "detail": result["error"],
+                }
+            )
         if result.get("captcha_required"):
             return JSONResponse(
                 status_code=428,
@@ -759,7 +770,18 @@ async def login(body: LoginRequest, request: Request):
                     "detail": result["error"],
                 }
             )
-        raise HTTPException(status_code=401, detail=result["error"])
+        # Include attempts_remaining if present
+        detail = result["error"]
+        if "attempts_remaining" in result:
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "success": False,
+                    "detail": detail,
+                    "attempts_remaining": result["attempts_remaining"],
+                }
+            )
+        raise HTTPException(status_code=401, detail=detail)
     return result
 
 
