@@ -167,10 +167,11 @@ export default function LandingPage() {
   const openSignIn = () => setAuthModal({ open: true, mode: 'login' })
   const openSignUp = () => setAuthModal({ open: true, mode: 'signup' })
   const closeModal = () => setAuthModal({ open: false, mode: 'login' })
+  const scrollToPricing = () => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })
 
   return (
     <div className="landing-page">
-      <LandingNav onSignIn={openSignIn} onSignUp={openSignUp} />
+      <LandingNav onSignIn={openSignIn} onGetStarted={scrollToPricing} />
 
       {/* Hero Section */}
       <HeroCarousel images={heroImages} interval={3000}>
@@ -179,7 +180,7 @@ export default function LandingPage() {
           Make smarter decisions with data-driven insights across 50+ football leagues worldwide
         </p>
         <div className="hero-actions">
-          <button className="hero-cta-btn" onClick={openSignUp}>
+          <button className="hero-cta-btn" onClick={scrollToPricing}>
             Get Started Free
           </button>
           <button className="hero-secondary-btn" onClick={() => {
