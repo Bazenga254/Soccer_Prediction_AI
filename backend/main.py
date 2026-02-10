@@ -722,6 +722,33 @@ def _get_current_user(authorization: str = Header(None)) -> Optional[dict]:
     return user_auth.verify_token(token)
 
 
+def _require_sensitive_action(user_id: int):
+    """Check if the user can perform sensitive actions. Raises 403 if restricted."""
+    check = user_auth.check_sensitive_action_allowed(user_id)
+    if not check["allowed"]:
+        raise HTTPException(status_code=403, detail=check["message"])
+
+
+@app.get("/api/user/security-status")
+async def get_security_status(authorization: str = Header(None)):
+    """Get user's security status (password cooldown, sensitive action restrictions)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    pwd_cooldown = user_auth.check_password_change_cooldown(payload["user_id"])
+    sensitive = user_auth.check_sensitive_action_allowed(payload["user_id"])
+
+    return {
+        "password_change_allowed": pwd_cooldown["allowed"],
+        "password_change_message": pwd_cooldown.get("message", ""),
+        "password_change_remaining_seconds": pwd_cooldown.get("remaining_seconds", 0),
+        "sensitive_actions_allowed": sensitive["allowed"],
+        "sensitive_actions_message": sensitive.get("message", ""),
+        "sensitive_actions_remaining_seconds": sensitive.get("remaining_seconds", 0),
+    }
+
+
 @app.post("/api/user/register")
 async def register(body: RegisterRequest, request: Request):
     """Register a new user account. Returns requires_verification if email needs to be verified."""
@@ -1041,6 +1068,8 @@ async def subscribe(request: SubscribeRequest, authorization: str = Header(None)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
+    _require_sensitive_action(payload["user_id"])
+
     result = subscriptions.create_subscription(
         user_id=payload["user_id"],
         plan_id=request.plan_id,
@@ -1058,6 +1087,8 @@ async def cancel_subscription(authorization: str = Header(None)):
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+    _require_sensitive_action(payload["user_id"])
 
     result = subscriptions.cancel_subscription(payload["user_id"])
     if not result["success"]:
@@ -1373,6 +1404,8 @@ async def purchase_prediction(prediction_id: int, request: PurchasePredictionReq
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+    _require_sensitive_action(payload["user_id"])
 
     result = community.purchase_prediction(
         prediction_id=prediction_id,

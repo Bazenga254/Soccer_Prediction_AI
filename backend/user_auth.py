@@ -186,6 +186,67 @@ def lock_account(email: str):
     conn.close()
 
 
+PASSWORD_CHANGE_COOLDOWN_HOURS = 24
+SENSITIVE_ACTION_LOCKOUT_HOURS = 24
+
+
+def check_password_change_cooldown(user_id: int) -> Dict:
+    """Check if user can change their password (24h cooldown after last change)."""
+    conn = _get_db()
+    user = conn.execute(
+        "SELECT password_changed_at FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+
+    if not user or not user["password_changed_at"]:
+        return {"allowed": True}
+
+    changed_at = datetime.fromisoformat(user["password_changed_at"])
+    cooldown_end = changed_at + timedelta(hours=PASSWORD_CHANGE_COOLDOWN_HOURS)
+    now = datetime.now()
+
+    if now >= cooldown_end:
+        return {"allowed": True}
+
+    remaining_seconds = int((cooldown_end - now).total_seconds())
+    remaining_hours = remaining_seconds // 3600
+    remaining_mins = (remaining_seconds % 3600) // 60
+    return {
+        "allowed": False,
+        "remaining_seconds": remaining_seconds,
+        "message": f"You can only change your password once every 24 hours. Please try again in {remaining_hours}h {remaining_mins}m.",
+    }
+
+
+def check_sensitive_action_allowed(user_id: int) -> Dict:
+    """Check if user can perform sensitive actions (blocked for 24h after password change)."""
+    conn = _get_db()
+    user = conn.execute(
+        "SELECT password_changed_at FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+
+    if not user or not user["password_changed_at"]:
+        return {"allowed": True}
+
+    changed_at = datetime.fromisoformat(user["password_changed_at"])
+    lockout_end = changed_at + timedelta(hours=SENSITIVE_ACTION_LOCKOUT_HOURS)
+    now = datetime.now()
+
+    if now >= lockout_end:
+        return {"allowed": True}
+
+    remaining_seconds = int((lockout_end - now).total_seconds())
+    remaining_hours = remaining_seconds // 3600
+    remaining_mins = (remaining_seconds % 3600) // 60
+    return {
+        "allowed": False,
+        "remaining_seconds": remaining_seconds,
+        "lockout_until": lockout_end.isoformat(),
+        "message": f"For your security, sensitive actions are temporarily restricted for 24 hours after a password change. Please try again in {remaining_hours}h {remaining_mins}m.",
+    }
+
+
 def init_user_db():
     """Create users and related tables."""
     conn = _get_db()
@@ -243,6 +304,7 @@ def init_user_db():
         "ALTER TABLE users ADD COLUMN avatar_url TEXT",
         "ALTER TABLE users ADD COLUMN last_known_ip TEXT",
         "ALTER TABLE users ADD COLUMN locked_until TEXT",
+        "ALTER TABLE users ADD COLUMN password_changed_at TEXT",
     ]:
         try:
             conn.execute(col_sql)
@@ -631,6 +693,12 @@ def reset_password(email: str, token: str, new_password: str) -> Dict:
         conn.close()
         return {"success": False, "error": "Invalid or expired reset link."}
 
+    # Check 24-hour password change cooldown
+    cooldown = check_password_change_cooldown(user["id"])
+    if not cooldown["allowed"]:
+        conn.close()
+        return {"success": False, "error": cooldown["message"]}
+
     # Verify token
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     now = datetime.now().isoformat()
@@ -643,9 +711,13 @@ def reset_password(email: str, token: str, new_password: str) -> Dict:
         conn.close()
         return {"success": False, "error": "Invalid or expired reset link. Please request a new one."}
 
-    # Update password
+    # Update password and set password_changed_at timestamp
     new_hash = _hash_password(new_password)
-    conn.execute("UPDATE users SET password_hash = ?, locked_until = NULL WHERE id = ?", (new_hash, user["id"]))
+    now_ts = datetime.now().isoformat()
+    conn.execute(
+        "UPDATE users SET password_hash = ?, locked_until = NULL, password_changed_at = ? WHERE id = ?",
+        (new_hash, now_ts, user["id"]),
+    )
 
     # Mark token as used
     conn.execute("UPDATE password_reset_tokens SET used = 1 WHERE id = ?", (reset_row["id"],))
@@ -1184,6 +1256,9 @@ def get_user_profile(user_id: int) -> Optional[Dict]:
     conn.close()
     if not user:
         return None
+    # Check if sensitive actions are restricted
+    sensitive_check = check_sensitive_action_allowed(user_id)
+
     return {
         "id": user["id"],
         "email": user["email"],
@@ -1195,6 +1270,10 @@ def get_user_profile(user_id: int) -> Optional[Dict]:
         "referral_code": user["referral_code"],
         "is_admin": bool(user["is_admin"]),
         "created_at": user["created_at"],
+        "password_changed_at": user["password_changed_at"],
+        "sensitive_actions_restricted": not sensitive_check["allowed"],
+        "sensitive_actions_message": sensitive_check.get("message", ""),
+        "sensitive_actions_remaining_seconds": sensitive_check.get("remaining_seconds", 0),
     }
 
 
