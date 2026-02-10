@@ -5259,10 +5259,10 @@
   border-radius: 12px;
   padding: 14px 16px;
   color: #f1f5f9;
-  font-size: 18px;
-  font-family: 'Courier New', monospace;
-  letter-spacing: 4px;
-  text-align: center;
+  font-size: 15px;
+  font-family: inherit;
+  letter-spacing: 0.3px;
+  text-align: left;
   transition: all 0.2s;
 }
 

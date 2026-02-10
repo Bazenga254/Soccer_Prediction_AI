@@ -10,7 +10,7 @@ export default function AccessGate() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [referralCode, setReferralCode] = useState(() => {
+  const [referralCode] = useState(() => {
     const match = document.cookie.match(/spark_ref=([^;]+)/)
     return match ? match[1] : ''
   })
@@ -381,18 +381,6 @@ export default function AccessGate() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label htmlFor="referral">Referral Code (optional)</label>
-                <input
-                  id="referral"
-                  type="text"
-                  value={referralCode}
-                  onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. SPARK7X2KP"
-                  maxLength={10}
-                  disabled={loading}
-                />
-              </div>
             </>
           )}
 
