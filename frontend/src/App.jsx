@@ -10,6 +10,7 @@ import Profile from './pages/Profile'
 import Community from './pages/Community'
 import Upgrade from './pages/Upgrade'
 import CreatorDashboard from './pages/CreatorDashboard'
+import ReferralLanding from './pages/ReferralLanding'
 import BetSlip from './components/BetSlip'
 import { BetSlipProvider } from './context/BetSlipContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -62,6 +63,7 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/admin" element={<Admin />} />
+          <Route path="/ref/:username" element={<ReferralLanding />} />
           <Route path="*" element={<ProtectedApp />} />
         </Routes>
       </AuthProvider>

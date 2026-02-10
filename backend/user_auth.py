@@ -66,12 +66,13 @@ def init_user_db():
         );
     """)
 
-    # Add email verification columns (migration for existing installs)
+    # Add columns via migration (for existing installs)
     for col_sql in [
         "ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN verification_code TEXT",
         "ALTER TABLE users ADD COLUMN verification_code_expires TEXT",
         "ALTER TABLE users ADD COLUMN verification_attempts INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN avatar_url TEXT",
     ]:
         try:
             conn.execute(col_sql)
@@ -423,6 +424,7 @@ def google_login(google_token: str, referral_code: str = "") -> Dict:
                 "display_name": existing["display_name"],
                 "username": existing["username"],
                 "avatar_color": existing["avatar_color"],
+                "avatar_url": existing["avatar_url"],
                 "tier": existing["tier"],
                 "referral_code": existing["referral_code"],
                 "is_admin": bool(existing["is_admin"]),
@@ -470,6 +472,7 @@ def google_login(google_token: str, referral_code: str = "") -> Dict:
                 "display_name": user["display_name"],
                 "username": user["username"],
                 "avatar_color": user["avatar_color"],
+                "avatar_url": user["avatar_url"],
                 "tier": user["tier"],
                 "referral_code": user["referral_code"],
                 "is_admin": bool(user["is_admin"]),
@@ -616,6 +619,7 @@ def login_user(email: str, password: str) -> Dict:
             "display_name": user["display_name"],
             "username": user["username"],
             "avatar_color": user["avatar_color"],
+            "avatar_url": user["avatar_url"],
             "tier": user["tier"],
             "referral_code": user["referral_code"],
             "is_admin": bool(user["is_admin"]),
@@ -685,6 +689,7 @@ def verify_email(email: str, code: str) -> Dict:
             "display_name": user["display_name"],
             "username": user["username"],
             "avatar_color": user["avatar_color"],
+            "avatar_url": user["avatar_url"],
             "tier": user["tier"],
             "referral_code": user["referral_code"],
             "is_admin": bool(user["is_admin"]),
@@ -745,11 +750,40 @@ def get_user_profile(user_id: int) -> Optional[Dict]:
         "display_name": user["display_name"],
         "username": user["username"],
         "avatar_color": user["avatar_color"],
+        "avatar_url": user["avatar_url"],
         "tier": user["tier"],
         "referral_code": user["referral_code"],
         "is_admin": bool(user["is_admin"]),
         "created_at": user["created_at"],
     }
+
+
+def get_public_profile(username: str) -> Optional[Dict]:
+    """Get public user profile by username (for referral links)."""
+    conn = _get_db()
+    user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    if not user:
+        return None
+    return {
+        "id": user["id"],
+        "display_name": user["display_name"],
+        "username": user["username"],
+        "avatar_color": user["avatar_color"],
+        "avatar_url": user["avatar_url"],
+        "tier": user["tier"],
+        "referral_code": user["referral_code"],
+        "created_at": user["created_at"],
+    }
+
+
+def update_avatar_url(user_id: int, avatar_url: str) -> Dict:
+    """Update a user's avatar URL after file upload."""
+    conn = _get_db()
+    conn.execute("UPDATE users SET avatar_url = ? WHERE id = ?", (avatar_url, user_id))
+    conn.commit()
+    conn.close()
+    return {"success": True, "avatar_url": avatar_url}
 
 
 def update_username(user_id: int, new_username: str) -> Dict:

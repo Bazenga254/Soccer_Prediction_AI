@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import axios from 'axios'
 
 export default function Profile() {
-  const { user, updateUser } = useAuth()
+  const { user, updateUser, refreshProfile } = useAuth()
   const [editingUsername, setEditingUsername] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [newUsername, setNewUsername] = useState(user?.username || '')
@@ -12,6 +12,8 @@ export default function Profile() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [referralStats, setReferralStats] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     const fetchReferralStats = async () => {
@@ -70,9 +72,48 @@ export default function Profile() {
     }
   }
 
-  const copyReferral = () => {
-    navigator.clipboard.writeText(user.referral_code)
-    setSuccess('Referral code copied!')
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Image must be smaller than 2MB')
+      setTimeout(() => setError(''), 3000)
+      return
+    }
+
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+      setError('Only JPEG, PNG, GIF, and WebP images are allowed')
+      setTimeout(() => setError(''), 3000)
+      return
+    }
+
+    setUploading(true)
+    setError('')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await axios.post('/api/user/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      if (res.data.success) {
+        updateUser({ avatar_url: res.data.avatar_url })
+        setSuccess('Avatar updated!')
+        setTimeout(() => setSuccess(''), 3000)
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to upload avatar')
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const referralLink = `${window.location.origin}/ref/${user.username}`
+
+  const copyReferralLink = () => {
+    navigator.clipboard.writeText(referralLink)
+    setSuccess('Referral link copied!')
     setTimeout(() => setSuccess(''), 2000)
   }
 
@@ -86,8 +127,36 @@ export default function Profile() {
 
         {/* Avatar & Name */}
         <div className="profile-header-section">
-          <div className="profile-avatar-large" style={{ background: user.avatar_color }}>
-            {(user.display_name || user.username || '?')[0].toUpperCase()}
+          <div className="profile-avatar-wrapper">
+            {user.avatar_url ? (
+              <img src={user.avatar_url} alt="Avatar" className="profile-avatar-large profile-avatar-img" />
+            ) : (
+              <div className="profile-avatar-large" style={{ background: user.avatar_color }}>
+                {(user.display_name || user.username || '?')[0].toUpperCase()}
+              </div>
+            )}
+            <button
+              className="avatar-upload-btn"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              title="Change photo"
+            >
+              {uploading ? (
+                <span className="avatar-upload-spinner" />
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              onChange={handleAvatarUpload}
+              style={{ display: 'none' }}
+            />
           </div>
           <div className="profile-header-info">
             <div className="profile-display-name">{user.display_name}</div>
@@ -166,10 +235,10 @@ export default function Profile() {
           <label>Referral Program</label>
           <div className="referral-card">
             <div className="referral-code-section">
-              <span className="referral-label">Your Code</span>
+              <span className="referral-label">Your Referral Link</span>
               <div className="referral-code-row">
-                <span className="referral-code-display">{user.referral_code}</span>
-                <button className="copy-referral-btn" onClick={copyReferral}>Copy</button>
+                <span className="referral-link-display">{referralLink}</span>
+                <button className="copy-referral-btn" onClick={copyReferralLink}>Copy</button>
               </div>
             </div>
 
@@ -202,7 +271,7 @@ export default function Profile() {
             )}
 
             <p className="referral-hint">
-              Share your code with friends. Earn 30% lifetime commission on every Pro subscription from your referrals. Commission paid weekly on Fridays.
+              Share your unique link with friends. Earn 30% lifetime commission on every Pro subscription from your referrals. Commission paid weekly on Fridays.
             </p>
           </div>
         </div>

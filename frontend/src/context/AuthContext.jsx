@@ -166,6 +166,15 @@ export function AuthProvider({ children }) {
     setUser(prev => prev ? { ...prev, ...updates } : null)
   }, [])
 
+  const refreshProfile = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/user/me')
+      if (response.data.user) {
+        setUser(response.data.user)
+      }
+    } catch { /* ignore */ }
+  }, [])
+
   const value = {
     isAuthenticated,
     user,
@@ -176,6 +185,7 @@ export function AuthProvider({ children }) {
     googleLogin,
     logout,
     updateUser,
+    refreshProfile,
     verifyEmail,
     resendCode,
     cancelVerification,

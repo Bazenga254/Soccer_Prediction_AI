@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
+import uuid
+import shutil
 
 # Load .env file if present
 try:
@@ -80,6 +82,11 @@ async def startup():
     # Initialize user auth database
     user_auth.init_user_db()
     print("[OK] User authentication system initialized")
+
+    # Create uploads directory for avatars
+    uploads_dir = Path(__file__).parent / "uploads" / "avatars"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    print("[OK] Uploads directory initialized")
 
     # Initialize community predictions database
     community.init_community_db()
@@ -808,6 +815,67 @@ async def get_referral_stats(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Not authenticated")
     stats = user_auth.get_referral_stats(payload["user_id"])
     return stats
+
+
+@app.get("/api/user/profile/{username}")
+async def get_public_profile(username: str):
+    """Get a user's public profile by username (for referral links)."""
+    profile = user_auth.get_public_profile(username)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"user": profile}
+
+
+UPLOADS_DIR = Path(__file__).parent / "uploads"
+AVATARS_DIR = UPLOADS_DIR / "avatars"
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+MAX_AVATAR_SIZE = 2 * 1024 * 1024  # 2MB
+
+
+@app.post("/api/user/avatar")
+async def upload_avatar(file: UploadFile = File(...), authorization: str = Header(None)):
+    """Upload a profile avatar image (max 2MB, jpeg/png/gif/webp)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, GIF, and WebP images are allowed")
+
+    contents = await file.read()
+    if len(contents) > MAX_AVATAR_SIZE:
+        raise HTTPException(status_code=400, detail="Image must be smaller than 2MB")
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
+        ext = "jpg"
+
+    filename = f"{payload['user_id']}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = AVATARS_DIR / filename
+    AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Delete old avatar file if exists
+    profile = user_auth.get_user_profile(payload["user_id"])
+    if profile and profile.get("avatar_url"):
+        old_file = AVATARS_DIR / profile["avatar_url"].split("/")[-1]
+        if old_file.exists():
+            old_file.unlink()
+
+    with open(filepath, "wb") as f:
+        f.write(contents)
+
+    avatar_url = f"/api/uploads/avatars/{filename}"
+    result = user_auth.update_avatar_url(payload["user_id"], avatar_url)
+    return result
+
+
+@app.get("/api/uploads/avatars/{filename}")
+async def serve_avatar(filename: str):
+    """Serve an uploaded avatar image."""
+    filepath = AVATARS_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    return FileResponse(str(filepath))
 
 
 # ==================== END USER AUTH ENDPOINTS ====================

@@ -9,7 +9,10 @@ export default function AccessGate() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
-  const [referralCode, setReferralCode] = useState('')
+  const [referralCode, setReferralCode] = useState(() => {
+    const match = document.cookie.match(/spark_ref=([^;]+)/)
+    return match ? match[1] : ''
+  })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login, register, googleLogin, pendingVerification, verifyEmail, resendCode, cancelVerification } = useAuth()

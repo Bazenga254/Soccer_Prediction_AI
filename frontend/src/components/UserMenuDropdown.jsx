@@ -18,17 +18,25 @@ export default function UserMenuDropdown({ user, logout }) {
   return (
     <div className="user-menu-wrapper" ref={dropdownRef}>
       <button className="user-avatar-btn" onClick={() => setIsOpen(!isOpen)}>
-        <span className="user-avatar-circle" style={{ background: user.avatar_color }}>
-          {(user.display_name || user.username || '?')[0].toUpperCase()}
-        </span>
+        {user.avatar_url ? (
+          <img src={user.avatar_url} alt="" className="user-avatar-circle user-avatar-img" />
+        ) : (
+          <span className="user-avatar-circle" style={{ background: user.avatar_color }}>
+            {(user.display_name || user.username || '?')[0].toUpperCase()}
+          </span>
+        )}
       </button>
 
       {isOpen && (
         <div className="user-menu-dropdown">
           <div className="user-menu-header">
-            <span className="user-menu-avatar" style={{ background: user.avatar_color }}>
-              {(user.display_name || user.username || '?')[0].toUpperCase()}
-            </span>
+            {user.avatar_url ? (
+              <img src={user.avatar_url} alt="" className="user-menu-avatar user-avatar-img" />
+            ) : (
+              <span className="user-menu-avatar" style={{ background: user.avatar_color }}>
+                {(user.display_name || user.username || '?')[0].toUpperCase()}
+              </span>
+            )}
             <div className="user-menu-info">
               <span className="user-menu-name">{user.display_name || user.username}</span>
               <span className="user-menu-username">@{user.username}</span>

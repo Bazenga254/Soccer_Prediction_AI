@@ -7550,6 +7550,110 @@
   font-size: 11px;
 }
 
+/* Avatar Upload */
+.profile-avatar-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.profile-avatar-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar-upload-btn {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #1e293b;
+  border: 2px solid #334155;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.avatar-upload-btn:hover {
+  background: #334155;
+  color: #f1f5f9;
+  border-color: #3b82f6;
+}
+
+.avatar-upload-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #475569;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* Avatar images in header */
+.user-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Referral link display */
+.referral-link-display {
+  font-size: 13px;
+  color: #3b82f6;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+/* Referral landing page */
+.referral-landing-card {
+  text-align: center;
+  padding: 24px 0;
+}
+
+.referral-landing-avatar {
+  margin-bottom: 16px;
+}
+
+.referral-avatar-img {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #3b82f6;
+}
+
+.referral-avatar-circle {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 32px;
+  font-weight: 700;
+  border: 3px solid #3b82f6;
+}
+
+.referral-landing-text {
+  font-size: 16px;
+  color: #e2e8f0;
+  margin: 0 0 8px;
+}
+
+.referral-landing-sub {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
 
 /* ===== SHARE PREDICTION ===== */
 .share-section {
