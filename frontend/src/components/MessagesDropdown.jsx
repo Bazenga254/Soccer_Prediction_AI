@@ -36,15 +36,10 @@ export default function MessagesDropdown() {
     }
   }, [messages])
 
-  const getToken = () => localStorage.getItem('spark_token')
-
+  // Use axios without manual headers - AuthContext sets Authorization globally
   const fetchUnreadCount = async () => {
     try {
-      const token = getToken()
-      if (!token) return
-      const res = await axios.get('/api/messages-unread-count', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const res = await axios.get('/api/messages-unread-count')
       setUnreadCount(res.data.unread_count || 0)
     } catch (err) { /* silent */ }
   }
@@ -52,9 +47,7 @@ export default function MessagesDropdown() {
   const fetchConversations = async () => {
     setLoading(true)
     try {
-      const res = await axios.get('/api/messages/conversations', {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      })
+      const res = await axios.get('/api/messages/conversations')
       setConversations(res.data.conversations || [])
     } catch (err) {
       console.error('Failed to fetch conversations:', err)
@@ -65,9 +58,7 @@ export default function MessagesDropdown() {
 
   const fetchMessages = async (otherId) => {
     try {
-      const res = await axios.get(`/api/messages/${otherId}`, {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      })
+      const res = await axios.get(`/api/messages/${otherId}`)
       setMessages(res.data.messages || [])
       fetchUnreadCount()
     } catch (err) {
@@ -96,8 +87,6 @@ export default function MessagesDropdown() {
       await axios.post('/api/messages/send', {
         receiver_id: activeChat.other_id,
         content: newMessage.trim()
-      }, {
-        headers: { Authorization: `Bearer ${getToken()}` }
       })
       setNewMessage('')
       fetchMessages(activeChat.other_id)

@@ -24,13 +24,11 @@ export default function EarningsDropdown() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Use axios without manual headers - AuthContext sets Authorization globally
   const fetchEarnings = async () => {
     setLoading(true)
     try {
-      const token = localStorage.getItem('spark_token')
-      const res = await axios.get('/api/user/earnings', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const res = await axios.get('/api/user/earnings')
       setEarnings(res.data)
     } catch (err) {
       // Silently fail - will show $0.00

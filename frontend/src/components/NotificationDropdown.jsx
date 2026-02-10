@@ -87,13 +87,10 @@ export default function NotificationDropdown() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Use axios without manual headers - AuthContext sets Authorization globally
   const fetchUnreadCount = async () => {
     try {
-      const token = localStorage.getItem('spark_token')
-      if (!token) return
-      const res = await axios.get('/api/user/unread-count', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const res = await axios.get('/api/user/unread-count')
       setUnreadCount(res.data.unread_count || 0)
     } catch (err) {
       // Silently fail
@@ -103,10 +100,7 @@ export default function NotificationDropdown() {
   const fetchNotifications = async () => {
     setLoading(true)
     try {
-      const token = localStorage.getItem('spark_token')
-      const res = await axios.get('/api/user/notifications', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const res = await axios.get('/api/user/notifications')
       setNotifications(res.data.notifications || [])
       setUnreadCount(res.data.unread_count || 0)
     } catch (err) {
@@ -125,10 +119,7 @@ export default function NotificationDropdown() {
 
   const handleMarkRead = async () => {
     try {
-      const token = localStorage.getItem('spark_token')
-      await axios.post('/api/user/notifications/read', {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      await axios.post('/api/user/notifications/read')
       setUnreadCount(0)
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
     } catch (err) {
