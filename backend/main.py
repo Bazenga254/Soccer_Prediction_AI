@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Header, HTTPException, UploadFile, File
+from fastapi import FastAPI, Header, HTTPException, UploadFile, File, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -669,14 +669,20 @@ class RegisterRequest(BaseModel):
     password: str
     display_name: str = ""
     referral_code: str = ""
+    captcha_token: str = ""
 
 class LoginRequest(BaseModel):
     email: str
     password: str
+    captcha_token: str = ""
 
 class GoogleLoginRequest(BaseModel):
     token: str
     referral_code: str = ""
+    captcha_token: str = ""
+
+class CaptchaCheckRequest(BaseModel):
+    email: str
 
 class VerifyEmailRequest(BaseModel):
     email: str
@@ -692,6 +698,14 @@ class UpdateDisplayNameRequest(BaseModel):
     display_name: str
 
 
+def _get_client_ip(request: Request) -> str:
+    """Extract client IP, checking X-Forwarded-For for proxied requests."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 def _get_current_user(authorization: str = Header(None)) -> Optional[dict]:
     """Extract user from Authorization header."""
     if not authorization or not authorization.startswith("Bearer "):
@@ -701,13 +715,14 @@ def _get_current_user(authorization: str = Header(None)) -> Optional[dict]:
 
 
 @app.post("/api/user/register")
-async def register(request: RegisterRequest):
+async def register(body: RegisterRequest, request: Request):
     """Register a new user account. Returns requires_verification if email needs to be verified."""
     result = user_auth.register_user(
-        email=request.email,
-        password=request.password,
-        display_name=request.display_name,
-        referral_code=request.referral_code,
+        email=body.email,
+        password=body.password,
+        display_name=body.display_name,
+        referral_code=body.referral_code,
+        captcha_token=body.captcha_token,
     )
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -715,10 +730,25 @@ async def register(request: RegisterRequest):
 
 
 @app.post("/api/user/login")
-async def login(request: LoginRequest):
+async def login(body: LoginRequest, request: Request):
     """Login with email and password."""
-    result = user_auth.login_user(email=request.email, password=request.password)
+    client_ip = _get_client_ip(request)
+    result = user_auth.login_user(
+        email=body.email,
+        password=body.password,
+        captcha_token=body.captcha_token,
+        client_ip=client_ip,
+    )
     if not result["success"]:
+        if result.get("captcha_required"):
+            return JSONResponse(
+                status_code=428,
+                content={
+                    "success": False,
+                    "captcha_required": True,
+                    "detail": result["error"],
+                }
+            )
         if result.get("requires_verification"):
             return JSONResponse(
                 status_code=403,
@@ -734,15 +764,26 @@ async def login(request: LoginRequest):
 
 
 @app.post("/api/user/google-login")
-async def google_login(request: GoogleLoginRequest):
+async def google_login(body: GoogleLoginRequest, request: Request):
     """Login or register via Google OAuth."""
+    client_ip = _get_client_ip(request)
     result = user_auth.google_login(
-        google_token=request.token,
-        referral_code=request.referral_code,
+        google_token=body.token,
+        referral_code=body.referral_code,
+        captcha_token=body.captcha_token,
+        client_ip=client_ip,
     )
     if not result["success"]:
         raise HTTPException(status_code=401, detail=result["error"])
     return result
+
+
+@app.post("/api/user/captcha-check")
+async def captcha_check(body: CaptchaCheckRequest, request: Request):
+    """Check if CAPTCHA is required for this login attempt."""
+    client_ip = _get_client_ip(request)
+    required = user_auth.check_captcha_required(body.email, client_ip)
+    return {"captcha_required": required}
 
 
 @app.post("/api/user/verify-email")

@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import HCaptcha from '@hcaptcha/react-hcaptcha'
 import { useAuth } from '../context/AuthContext'
 
 const GOOGLE_CLIENT_ID = '905871526482-4i8pfv8435p4eq10226j0agks7j007ag.apps.googleusercontent.com'
+const HCAPTCHA_SITE_KEY = '10000000-ffff-ffff-ffff-000000000001' // Test key - replace with production key
 
 export default function AccessGate() {
   const [mode, setMode] = useState('login') // 'login' or 'signup'
@@ -16,9 +18,15 @@ export default function AccessGate() {
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login, register, googleLogin, pendingVerification, verifyEmail, resendCode, cancelVerification } = useAuth()
+  const { login, register, googleLogin, checkCaptchaRequired, pendingVerification, verifyEmail, resendCode, cancelVerification } = useAuth()
   const googleBtnRef = useRef(null)
   const referralRef = useRef('')
+
+  // CAPTCHA state
+  const [captchaToken, setCaptchaToken] = useState('')
+  const [showCaptcha, setShowCaptcha] = useState(false)
+  const captchaRef = useRef(null)
+  const [googlePendingToken, setGooglePendingToken] = useState(null)
 
   // Verification state
   const [verificationCode, setVerificationCode] = useState('')
@@ -28,6 +36,17 @@ export default function AccessGate() {
   const [resendMessage, setResendMessage] = useState('')
 
   useEffect(() => { referralRef.current = referralCode }, [referralCode])
+
+  // Reset CAPTCHA when mode changes
+  useEffect(() => {
+    setShowCaptcha(mode === 'signup')
+    setCaptchaToken('')
+    if (captchaRef.current) captchaRef.current.resetCaptcha()
+  }, [mode])
+
+  const handleCaptchaVerify = (token) => setCaptchaToken(token)
+  const handleCaptchaExpire = () => setCaptchaToken('')
+  const handleCaptchaError = () => { setCaptchaToken(''); setError('CAPTCHA failed to load. Please try again.') }
 
   // Cooldown timer
   useEffect(() => {
@@ -39,14 +58,42 @@ export default function AccessGate() {
 
   const handleGoogleResponse = useCallback(async (response) => {
     if (!response.credential) return
-    setLoading(true)
-    setError('')
-    const result = await googleLogin(response.credential, referralRef.current)
-    if (!result.success) {
-      setError(result.error || 'Google login failed')
+    if (captchaToken) {
+      // CAPTCHA already solved - proceed
+      setLoading(true)
+      setError('')
+      const result = await googleLogin(response.credential, referralRef.current, captchaToken)
+      if (!result.success) {
+        setError(result.error || 'Google login failed')
+      }
+      setLoading(false)
+      setCaptchaToken('')
+      if (captchaRef.current) captchaRef.current.resetCaptcha()
+      return
     }
-    setLoading(false)
-  }, [googleLogin])
+    // Store Google token and show CAPTCHA
+    setGooglePendingToken(response.credential)
+    setShowCaptcha(true)
+    setError('Please complete the CAPTCHA to continue with Google sign-in.')
+  }, [googleLogin, captchaToken])
+
+  // Proceed with Google login once CAPTCHA is completed
+  useEffect(() => {
+    if (googlePendingToken && captchaToken) {
+      (async () => {
+        setLoading(true)
+        setError('')
+        const result = await googleLogin(googlePendingToken, referralRef.current, captchaToken)
+        if (!result.success) {
+          setError(result.error || 'Google login failed')
+        }
+        setLoading(false)
+        setGooglePendingToken(null)
+        setCaptchaToken('')
+        if (captchaRef.current) captchaRef.current.resetCaptcha()
+      })()
+    }
+  }, [googlePendingToken, captchaToken, googleLogin])
 
   useEffect(() => {
     const initGoogle = () => {
@@ -87,6 +134,16 @@ export default function AccessGate() {
       return
     }
 
+    // CAPTCHA validation
+    if (mode === 'signup' && !captchaToken) {
+      setError('Please complete the CAPTCHA verification')
+      return
+    }
+    if (mode === 'login' && showCaptcha && !captchaToken) {
+      setError('Please complete the CAPTCHA verification')
+      return
+    }
+
     if (mode === 'signup') {
       if (password !== confirmPassword) {
         setError('Passwords do not match')
@@ -104,14 +161,23 @@ export default function AccessGate() {
     try {
       let result
       if (mode === 'login') {
-        result = await login(email, password)
+        result = await login(email, password, captchaToken)
+
+        // Server says CAPTCHA is required
+        if (result.captcha_required) {
+          setShowCaptcha(true)
+          setError('Your IP address has changed or too many failed attempts. Please complete the CAPTCHA.')
+          setLoading(false)
+          return
+        }
+
         if (result.requires_verification) {
           setResendCooldown(60)
           setLoading(false)
           return
         }
       } else {
-        result = await register(email, password, '', referralCode)
+        result = await register(email, password, '', referralCode, captchaToken)
         if (result.requires_verification) {
           setResendCooldown(60)
           setLoading(false)
@@ -121,12 +187,25 @@ export default function AccessGate() {
 
       if (!result.success) {
         setError(result.error || 'Something went wrong')
+        // Reset captcha on failure
+        setCaptchaToken('')
+        if (captchaRef.current) captchaRef.current.resetCaptcha()
       }
     } catch (err) {
       setError(err.message || 'Connection error. Please try again.')
     }
 
     setLoading(false)
+  }
+
+  // Check if CAPTCHA is needed when user tabs out of email on login
+  const handleEmailBlur = async () => {
+    if (mode === 'login' && email.trim() && email.includes('@')) {
+      const needed = await checkCaptchaRequired(email)
+      if (needed) {
+        setShowCaptcha(true)
+      }
+    }
   }
 
   const handleVerifyCode = async (e) => {
@@ -291,6 +370,7 @@ export default function AccessGate() {
               placeholder="you@example.com"
               autoFocus
               disabled={loading}
+              onBlur={handleEmailBlur}
             />
           </div>
 
@@ -384,13 +464,46 @@ export default function AccessGate() {
             </>
           )}
 
+          {/* CAPTCHA Widget */}
+          {(showCaptcha || mode === 'signup') && (
+            <div className="captcha-container">
+              <HCaptcha
+                ref={captchaRef}
+                sitekey={HCAPTCHA_SITE_KEY}
+                onVerify={handleCaptchaVerify}
+                onExpire={handleCaptchaExpire}
+                onError={handleCaptchaError}
+                theme="dark"
+                size="normal"
+              />
+            </div>
+          )}
+
           {error && <div className="gate-error">{error}</div>}
 
-          <button type="submit" className="gate-submit-btn" disabled={loading}>
+          <button type="submit" className="gate-submit-btn" disabled={loading || ((showCaptcha || mode === 'signup') && !captchaToken)}>
             {loading ? (mode === 'login' ? 'Logging in...' : 'Creating account...') :
               (mode === 'login' ? 'Log In' : 'Create Account')}
           </button>
         </form>
+
+        {/* CAPTCHA for Google login pending */}
+        {googlePendingToken && !captchaToken && (
+          <div className="captcha-container" style={{ marginTop: '16px' }}>
+            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '12px', textAlign: 'center' }}>
+              Complete CAPTCHA to continue with Google
+            </p>
+            <HCaptcha
+              ref={captchaRef}
+              sitekey={HCAPTCHA_SITE_KEY}
+              onVerify={handleCaptchaVerify}
+              onExpire={handleCaptchaExpire}
+              onError={handleCaptchaError}
+              theme="dark"
+              size="normal"
+            />
+          </div>
+        )}
 
         <div className="gate-footer">
           {mode === 'login' ? (

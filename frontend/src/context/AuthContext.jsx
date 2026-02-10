@@ -54,9 +54,9 @@ export function AuthProvider({ children }) {
     delete axios.defaults.headers.common['Authorization']
   }
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, captchaToken = '') => {
     try {
-      const response = await axios.post('/api/user/login', { email, password })
+      const response = await axios.post('/api/user/login', { email, password, captcha_token: captchaToken })
       if (response.data.success) {
         const { token, user: userData } = response.data
         localStorage.setItem('spark_token', token)
@@ -67,6 +67,10 @@ export function AuthProvider({ children }) {
       }
       return { success: false, error: response.data.error }
     } catch (err) {
+      // Handle 428 = captcha required
+      if (err.response?.status === 428 && err.response?.data?.captcha_required) {
+        return { success: false, captcha_required: true, error: err.response.data.detail }
+      }
       // Handle 403 = needs verification
       if (err.response?.status === 403 && err.response?.data?.requires_verification) {
         setPendingVerification({ email: err.response.data.email })
@@ -77,13 +81,14 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const register = useCallback(async (email, password, displayName = '', referralCode = '') => {
+  const register = useCallback(async (email, password, displayName = '', referralCode = '', captchaToken = '') => {
     try {
       const response = await axios.post('/api/user/register', {
         email,
         password,
         display_name: displayName,
         referral_code: referralCode,
+        captcha_token: captchaToken,
       })
       if (response.data.success) {
         if (response.data.requires_verification) {
@@ -104,11 +109,12 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const googleLogin = useCallback(async (googleToken, referralCode = '') => {
+  const googleLogin = useCallback(async (googleToken, referralCode = '', captchaToken = '') => {
     try {
       const response = await axios.post('/api/user/google-login', {
         token: googleToken,
         referral_code: referralCode,
+        captcha_token: captchaToken,
       })
       if (response.data.success) {
         const { token, user: userData } = response.data
@@ -158,6 +164,15 @@ export function AuthProvider({ children }) {
     setPendingVerification(null)
   }, [])
 
+  const checkCaptchaRequired = useCallback(async (email) => {
+    try {
+      const response = await axios.post('/api/user/captcha-check', { email })
+      return response.data.captcha_required || false
+    } catch {
+      return false
+    }
+  }, [])
+
   const logout = useCallback(() => {
     clearAuth()
   }, [])
@@ -189,6 +204,7 @@ export function AuthProvider({ children }) {
     verifyEmail,
     resendCode,
     cancelVerification,
+    checkCaptchaRequired,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

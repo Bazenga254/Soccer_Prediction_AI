@@ -36,6 +36,82 @@ def _get_db():
     return conn
 
 
+HCAPTCHA_SECRET = None
+
+
+def _get_hcaptcha_secret():
+    global HCAPTCHA_SECRET
+    if HCAPTCHA_SECRET is None:
+        HCAPTCHA_SECRET = os.environ.get("HCAPTCHA_SECRET", "")
+    return HCAPTCHA_SECRET
+
+
+def verify_hcaptcha(token: str) -> bool:
+    """Verify an hCaptcha response token server-side."""
+    secret = _get_hcaptcha_secret()
+    if not secret:
+        return True  # Skip in dev if not configured
+
+    try:
+        data = urllib.parse.urlencode({
+            "secret": secret,
+            "response": token,
+        }).encode()
+        req = urllib.request.Request(
+            "https://api.hcaptcha.com/siteverify",
+            data=data,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = _json.loads(resp.read().decode())
+            return result.get("success", False)
+    except Exception as e:
+        print(f"[ERROR] hCaptcha verification failed: {e}")
+        return False
+
+
+def check_captcha_required(email: str, client_ip: str) -> bool:
+    """Check if CAPTCHA is required: IP changed or 3+ failed attempts in 30 min."""
+    conn = _get_db()
+
+    # Check 1: IP change detection
+    user = conn.execute(
+        "SELECT last_known_ip FROM users WHERE email = ?",
+        (email.lower().strip(),)
+    ).fetchone()
+
+    if user and user["last_known_ip"] and user["last_known_ip"] != client_ip:
+        conn.close()
+        return True
+
+    # Check 2: Failed attempts from this IP in last 30 minutes
+    cutoff = (datetime.now() - timedelta(minutes=30)).isoformat()
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM login_attempts WHERE ip_address = ? AND attempted_at > ? AND success = 0",
+        (client_ip, cutoff),
+    ).fetchone()
+    conn.close()
+
+    if row and row["cnt"] >= 3:
+        return True
+
+    return False
+
+
+def record_login_attempt(ip_address: str, email: str, success: bool):
+    """Record a login attempt for rate limiting."""
+    conn = _get_db()
+    conn.execute(
+        "INSERT INTO login_attempts (ip_address, email, attempted_at, success) VALUES (?, ?, ?, ?)",
+        (ip_address, email.lower().strip(), datetime.now().isoformat(), 1 if success else 0),
+    )
+    # Clean up old attempts (older than 24 hours)
+    cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+    conn.execute("DELETE FROM login_attempts WHERE attempted_at < ?", (cutoff,))
+    conn.commit()
+    conn.close()
+
+
 def init_user_db():
     """Create users and related tables."""
     conn = _get_db()
@@ -65,6 +141,14 @@ def init_user_db():
             expires_at TEXT NOT NULL,
             is_active INTEGER DEFAULT 1
         );
+
+        CREATE TABLE IF NOT EXISTS login_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip_address TEXT NOT NULL,
+            email TEXT,
+            attempted_at TEXT NOT NULL,
+            success INTEGER DEFAULT 0
+        );
     """)
 
     # Add columns via migration (for existing installs)
@@ -74,6 +158,7 @@ def init_user_db():
         "ALTER TABLE users ADD COLUMN verification_code_expires TEXT",
         "ALTER TABLE users ADD COLUMN verification_attempts INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN avatar_url TEXT",
+        "ALTER TABLE users ADD COLUMN last_known_ip TEXT",
     ]:
         try:
             conn.execute(col_sql)
@@ -374,7 +459,7 @@ AVATAR_COLORS = [
 ]
 
 
-def google_login(google_token: str, referral_code: str = "") -> Dict:
+def google_login(google_token: str, referral_code: str = "", captcha_token: str = "", client_ip: str = "") -> Dict:
     """Authenticate via Google OAuth. Creates account if new, logs in if existing."""
     # Verify the Google ID token
     try:
@@ -407,10 +492,10 @@ def google_login(google_token: str, referral_code: str = "") -> Dict:
             return {"success": False, "error": "Account has been suspended"}
 
         now = datetime.now().isoformat()
-        # Auto-verify if logging in with Google
+        # Auto-verify if logging in with Google, update IP
         conn.execute(
-            "UPDATE users SET last_login = ?, login_count = login_count + 1, email_verified = 1 WHERE id = ?",
-            (now, existing["id"]),
+            "UPDATE users SET last_login = ?, login_count = login_count + 1, email_verified = 1, last_known_ip = ? WHERE id = ?",
+            (now, client_ip or None, existing["id"]),
         )
         conn.commit()
         conn.close()
@@ -433,6 +518,11 @@ def google_login(google_token: str, referral_code: str = "") -> Dict:
             },
         }
     else:
+        # New user via Google - require CAPTCHA
+        if not verify_hcaptcha(captcha_token):
+            conn.close()
+            return {"success": False, "error": "CAPTCHA verification failed. Please try again."}
+
         # New user - create account
         username = _generate_unique_username(conn)
         password_hash = _hash_password(secrets.token_hex(32))
@@ -482,8 +572,12 @@ def google_login(google_token: str, referral_code: str = "") -> Dict:
         }
 
 
-def register_user(email: str, password: str, display_name: str = "", referral_code: str = "") -> Dict:
+def register_user(email: str, password: str, display_name: str = "", referral_code: str = "", captcha_token: str = "") -> Dict:
     """Register a new user. Sends verification code instead of granting immediate access."""
+    # Verify CAPTCHA (always required for registration)
+    if not verify_hcaptcha(captcha_token):
+        return {"success": False, "error": "CAPTCHA verification failed. Please try again."}
+
     email = email.lower().strip()
 
     if len(password) < 8:
@@ -570,14 +664,28 @@ def register_user(email: str, password: str, display_name: str = "", referral_co
     }
 
 
-def login_user(email: str, password: str) -> Dict:
+def login_user(email: str, password: str, captcha_token: str = "", client_ip: str = "") -> Dict:
     """Login an existing user."""
     email = email.lower().strip()
+
+    # Check if CAPTCHA is required for this login
+    if client_ip:
+        captcha_needed = check_captcha_required(email, client_ip)
+        if captcha_needed and not verify_hcaptcha(captcha_token):
+            record_login_attempt(client_ip, email, False)
+            return {
+                "success": False,
+                "error": "CAPTCHA verification required",
+                "captcha_required": True,
+            }
+
     conn = _get_db()
 
     user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
     if not user:
         conn.close()
+        if client_ip:
+            record_login_attempt(client_ip, email, False)
         return {"success": False, "error": "Invalid email or password"}
 
     if not user["is_active"]:
@@ -586,6 +694,8 @@ def login_user(email: str, password: str) -> Dict:
 
     if not _verify_password(password, user["password_hash"]):
         conn.close()
+        if client_ip:
+            record_login_attempt(client_ip, email, False)
         return {"success": False, "error": "Invalid email or password"}
 
     # Check email verification
@@ -607,14 +717,17 @@ def login_user(email: str, password: str) -> Dict:
             "email": email,
         }
 
-    # Update login stats
+    # Update login stats and IP
     now = datetime.now().isoformat()
     conn.execute(
-        "UPDATE users SET last_login = ?, login_count = login_count + 1 WHERE id = ?",
-        (now, user["id"]),
+        "UPDATE users SET last_login = ?, login_count = login_count + 1, last_known_ip = ? WHERE id = ?",
+        (now, client_ip or None, user["id"]),
     )
     conn.commit()
     conn.close()
+
+    if client_ip:
+        record_login_attempt(client_ip, email, True)
 
     token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]))
 
