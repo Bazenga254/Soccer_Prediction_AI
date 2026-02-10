@@ -691,6 +691,14 @@ class VerifyEmailRequest(BaseModel):
 class ResendCodeRequest(BaseModel):
     email: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    token: str
+    new_password: str
+
 class UpdateUsernameRequest(BaseModel):
     username: str
 
@@ -824,6 +832,34 @@ async def resend_code(request: ResendCodeRequest):
     result = user_auth.resend_verification_code(email=request.email)
     if not result["success"]:
         raise HTTPException(status_code=429, detail=result["error"])
+    return result
+
+
+@app.post("/api/user/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    """Request a password reset link."""
+    result = user_auth.request_password_reset(email=request.email)
+    if not result.get("success"):
+        if result.get("account_locked"):
+            return JSONResponse(status_code=423, content={
+                "success": False,
+                "account_locked": True,
+                "detail": result["error"],
+            })
+        raise HTTPException(status_code=400, detail=result.get("error", "Request failed"))
+    return {"success": True, "message": "If an account exists with that email, a reset link has been sent."}
+
+
+@app.post("/api/user/reset-password")
+async def do_reset_password(request: ResetPasswordRequest):
+    """Reset password using a valid token."""
+    result = user_auth.reset_password(
+        email=request.email,
+        token=request.token,
+        new_password=request.new_password,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
     return result
 
 

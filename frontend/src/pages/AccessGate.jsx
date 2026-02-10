@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import HCaptcha from '@hcaptcha/react-hcaptcha'
+import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 
 const GOOGLE_CLIENT_ID = '905871526482-4i8pfv8435p4eq10226j0agks7j007ag.apps.googleusercontent.com'
@@ -32,6 +33,13 @@ export default function AccessGate() {
   const [lockoutSeconds, setLockoutSeconds] = useState(0)
   const [attemptsRemaining, setAttemptsRemaining] = useState(null)
 
+  // Forgot password state
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotMessage, setForgotMessage] = useState('')
+  const [forgotError, setForgotError] = useState('')
+
   // Verification state
   const [verificationCode, setVerificationCode] = useState('')
   const [resendCooldown, setResendCooldown] = useState(0)
@@ -41,10 +49,13 @@ export default function AccessGate() {
 
   useEffect(() => { referralRef.current = referralCode }, [referralCode])
 
-  // Reset CAPTCHA when mode changes
+  // Reset CAPTCHA and forgot password when mode changes
   useEffect(() => {
     setShowCaptcha(mode === 'signup')
     setCaptchaToken('')
+    setShowForgotPassword(false)
+    setForgotMessage('')
+    setForgotError('')
     if (captchaRef.current) captchaRef.current.resetCaptcha()
   }, [mode])
 
@@ -250,6 +261,36 @@ export default function AccessGate() {
     }
   }
 
+  const handleForgotPassword = async () => {
+    setShowForgotPassword(true)
+    setForgotEmail(email || '')
+    setForgotMessage('')
+    setForgotError('')
+  }
+
+  const handleSendResetLink = async () => {
+    if (!forgotEmail.trim() || !forgotEmail.includes('@')) {
+      setForgotError('Please enter a valid email address')
+      return
+    }
+    setForgotLoading(true)
+    setForgotError('')
+    setForgotMessage('')
+    try {
+      const response = await axios.post('/api/user/forgot-password', { email: forgotEmail })
+      if (response.data.success) {
+        setForgotMessage('If an account exists with that email, a reset link has been sent. Check your inbox.')
+      }
+    } catch (err) {
+      if (err.response?.status === 423) {
+        setForgotError('Account is temporarily locked. Please try again after the lockout period.')
+      } else {
+        setForgotError(err.response?.data?.detail || 'Failed to send reset link. Please try again.')
+      }
+    }
+    setForgotLoading(false)
+  }
+
   const handleVerifyCode = async (e) => {
     e.preventDefault()
     if (!verificationCode.trim() || verificationCode.length !== 6) {
@@ -449,6 +490,44 @@ export default function AccessGate() {
             </div>
           </div>
 
+          {/* Forgot password link - login mode */}
+          {mode === 'login' && !showForgotPassword && lockoutSeconds === 0 && (
+            <div className="forgot-password-link">
+              <button type="button" className="link-btn" onClick={handleForgotPassword}>
+                Forgot your password?
+              </button>
+            </div>
+          )}
+
+          {/* Forgot password inline form */}
+          {showForgotPassword && lockoutSeconds === 0 && (
+            <div className="forgot-password-form">
+              <p className="forgot-password-label">Enter your email to receive a reset link:</p>
+              <div className="forgot-password-input-row">
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  disabled={forgotLoading}
+                />
+                <button
+                  type="button"
+                  className="forgot-send-btn"
+                  onClick={handleSendResetLink}
+                  disabled={forgotLoading}
+                >
+                  {forgotLoading ? 'Sending...' : 'Send'}
+                </button>
+              </div>
+              {forgotMessage && <div className="forgot-success">{forgotMessage}</div>}
+              {forgotError && <div className="gate-error" style={{ marginTop: '8px' }}>{forgotError}</div>}
+              <button type="button" className="link-btn" onClick={() => setShowForgotPassword(false)} style={{ marginTop: '8px', fontSize: '13px' }}>
+                Back to login
+              </button>
+            </div>
+          )}
+
           {mode === 'signup' && password.length > 0 && (
             <div className="password-requirements">
               <div className="password-strength-bar">
@@ -532,6 +611,16 @@ export default function AccessGate() {
             </div>
           )}
 
+          {/* Prominent forgot password prompt after 3 failed attempts */}
+          {mode === 'login' && attemptsRemaining !== null && attemptsRemaining <= 2 && attemptsRemaining > 0 && lockoutSeconds === 0 && (
+            <div className="forgot-password-prompt">
+              <span>Forgotten your password? </span>
+              <button type="button" className="link-btn forgot-prompt-link" onClick={handleForgotPassword}>
+                Click here to reset it
+              </button>
+            </div>
+          )}
+
           {/* Account lockout countdown */}
           {lockoutSeconds > 0 && (
             <div className="gate-lockout">
@@ -542,8 +631,9 @@ export default function AccessGate() {
                 </svg>
               </div>
               <p className="lockout-title">Account Temporarily Locked</p>
-              <p className="lockout-message">Too many failed login attempts. Please try again in:</p>
+              <p className="lockout-message">Too many failed login attempts. You can try again in:</p>
               <div className="lockout-timer">{formatLockoutTime(lockoutSeconds)}</div>
+              <p className="lockout-reset-hint">You can reset your password after the lockout period expires.</p>
             </div>
           )}
 

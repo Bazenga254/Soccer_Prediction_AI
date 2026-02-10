@@ -223,6 +223,15 @@ def init_user_db():
             attempted_at TEXT NOT NULL,
             success INTEGER DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            token_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used INTEGER DEFAULT 0
+        );
     """)
 
     # Add columns via migration (for existing installs)
@@ -475,6 +484,181 @@ def _send_welcome_email(to_email: str, display_name: str = "") -> bool:
     """
 
     return _send_zoho_email(to_email, "Welcome to Spark AI Prediction!", html_body)
+
+
+def _send_reset_email(to_email: str, reset_url: str, display_name: str = "") -> bool:
+    """Send a password reset link via Zoho Mail API."""
+    greeting = display_name or "there"
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
+                background: #0f172a; color: #f1f5f9; padding: 40px; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <span style="font-size: 48px;">&#128274;</span>
+            <h1 style="color: #f1f5f9; margin: 8px 0;">Reset Your Password</h1>
+        </div>
+        <p style="color: #94a3b8;">Hey {greeting},</p>
+        <p style="color: #94a3b8;">
+            We received a request to reset your password. Click the button below to create a new password:
+        </p>
+        <div style="text-align: center; margin: 28px 0;">
+            <a href="{reset_url}"
+               style="display: inline-block; background: #3b82f6; color: #ffffff;
+                      text-decoration: none; padding: 14px 32px; border-radius: 8px;
+                      font-weight: bold; font-size: 16px;">
+                Reset Password
+            </a>
+        </div>
+        <p style="color: #64748b; font-size: 13px;">
+            This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.
+        </p>
+        <p style="color: #475569; font-size: 12px; margin-top: 20px; word-break: break-all;">
+            If the button doesn't work, copy this link:<br/>
+            <span style="color: #3b82f6;">{reset_url}</span>
+        </p>
+    </div>
+    """
+
+    return _send_zoho_email(to_email, "Reset your password - Spark AI Prediction", html_body)
+
+
+def _send_password_changed_email(to_email: str, display_name: str = "") -> bool:
+    """Send a confirmation email after password change."""
+    greeting = display_name or "there"
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
+                background: #0f172a; color: #f1f5f9; padding: 40px; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <span style="font-size: 48px;">&#9989;</span>
+            <h1 style="color: #f1f5f9; margin: 8px 0;">Password Changed</h1>
+        </div>
+        <p style="color: #94a3b8;">Hey {greeting},</p>
+        <p style="color: #94a3b8;">
+            Your password was changed successfully.
+        </p>
+        <div style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+                    border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="color: #f87171; margin: 0; font-size: 14px;">
+                <strong>Didn't make this change?</strong><br/>
+                If you didn't change your password, please contact support immediately
+                to prevent unauthorized access to your account.
+            </p>
+        </div>
+        <p style="color: #64748b; font-size: 13px; text-align: center;">
+            Spark AI Prediction
+        </p>
+    </div>
+    """
+
+    return _send_zoho_email(to_email, "Your password was changed - Spark AI Prediction", html_body)
+
+
+def request_password_reset(email: str) -> Dict:
+    """Request a password reset. Sends reset link via email."""
+    email = email.lower().strip()
+
+    if not email or "@" not in email:
+        return {"success": True}  # Silent success to prevent enumeration
+
+    conn = _get_db()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+
+    if not user:
+        conn.close()
+        return {"success": True}  # Silent success to prevent enumeration
+
+    # Check if account is locked
+    if user["locked_until"]:
+        locked_until = datetime.fromisoformat(user["locked_until"])
+        if datetime.now() < locked_until:
+            conn.close()
+            return {
+                "success": False,
+                "error": "Account is temporarily locked. Please try again after the lockout period.",
+                "account_locked": True,
+            }
+
+    # Invalidate existing unused tokens for this user
+    conn.execute(
+        "UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0",
+        (user["id"],),
+    )
+
+    # Generate secure token
+    raw_token = secrets.token_urlsafe(48)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    now = datetime.now()
+    expires = (now + timedelta(hours=1)).isoformat()
+
+    conn.execute(
+        "INSERT INTO password_reset_tokens (user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        (user["id"], token_hash, now.isoformat(), expires),
+    )
+    conn.commit()
+    conn.close()
+
+    # Build reset URL
+    reset_url = f"https://www.spark-ai-prediction.com/reset-password?token={raw_token}&email={urllib.parse.quote(email)}"
+    _send_reset_email(email, reset_url, user["display_name"])
+
+    return {"success": True}
+
+
+def reset_password(email: str, token: str, new_password: str) -> Dict:
+    """Reset a user's password using a valid reset token."""
+    email = email.lower().strip()
+
+    if not email or not token or not new_password:
+        return {"success": False, "error": "Missing required fields."}
+
+    # Validate new password
+    if len(new_password) < 8:
+        return {"success": False, "error": "Password must be at least 8 characters"}
+    if len(re.findall(r'[A-Z]', new_password)) < 2:
+        return {"success": False, "error": "Password must contain at least 2 uppercase letters"}
+    if len(re.findall(r'[a-z]', new_password)) < 2:
+        return {"success": False, "error": "Password must contain at least 2 lowercase letters"}
+    if len(re.findall(r'[0-9]', new_password)) < 2:
+        return {"success": False, "error": "Password must contain at least 2 numbers"}
+    if len(re.findall(r'[^A-Za-z0-9]', new_password)) < 2:
+        return {"success": False, "error": "Password must contain at least 2 special characters"}
+
+    conn = _get_db()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "Invalid or expired reset link."}
+
+    # Verify token
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    now = datetime.now().isoformat()
+    reset_row = conn.execute(
+        "SELECT * FROM password_reset_tokens WHERE user_id = ? AND token_hash = ? AND used = 0 AND expires_at > ?",
+        (user["id"], token_hash, now),
+    ).fetchone()
+
+    if not reset_row:
+        conn.close()
+        return {"success": False, "error": "Invalid or expired reset link. Please request a new one."}
+
+    # Update password
+    new_hash = _hash_password(new_password)
+    conn.execute("UPDATE users SET password_hash = ?, locked_until = NULL WHERE id = ?", (new_hash, user["id"]))
+
+    # Mark token as used
+    conn.execute("UPDATE password_reset_tokens SET used = 1 WHERE id = ?", (reset_row["id"],))
+
+    # Clear failed login attempts for this email
+    conn.execute("DELETE FROM login_attempts WHERE email = ? AND success = 0", (email,))
+
+    conn.commit()
+    conn.close()
+
+    # Send confirmation email
+    _send_password_changed_email(email, user["display_name"])
+
+    return {"success": True, "message": "Password reset successfully. You can now log in with your new password."}
 
 
 def _is_disposable_email(email: str) -> bool:

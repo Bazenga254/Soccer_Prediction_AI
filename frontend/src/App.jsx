@@ -11,6 +11,7 @@ import Community from './pages/Community'
 import Upgrade from './pages/Upgrade'
 import CreatorDashboard from './pages/CreatorDashboard'
 import ReferralLanding from './pages/ReferralLanding'
+import ResetPassword from './pages/ResetPassword'
 import BetSlip from './components/BetSlip'
 import { BetSlipProvider } from './context/BetSlipContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -64,6 +65,7 @@ function App() {
         <Routes>
           <Route path="/admin" element={<Admin />} />
           <Route path="/ref/:username" element={<ReferralLanding />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="*" element={<ProtectedApp />} />
         </Routes>
       </AuthProvider>

@@ -5439,6 +5439,218 @@
   margin-top: 4px;
 }
 
+.lockout-reset-hint {
+  color: #64748b;
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.forgot-password-link {
+  text-align: right;
+  margin-top: -4px;
+  margin-bottom: 4px;
+}
+
+.forgot-password-link .link-btn {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.forgot-password-link .link-btn:hover {
+  color: #3b82f6;
+}
+
+.forgot-password-form {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 4px;
+}
+
+.forgot-password-label {
+  color: #94a3b8;
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+
+.forgot-password-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.forgot-password-input-row input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #f1f5f9;
+  padding: 10px 14px;
+  font-size: 14px;
+  outline: none;
+}
+
+.forgot-password-input-row input:focus {
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.forgot-send-btn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.forgot-send-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.forgot-send-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.forgot-success {
+  color: #22c55e;
+  font-size: 13px;
+  margin-top: 10px;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.forgot-password-prompt {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #fbbf24;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.forgot-prompt-link {
+  color: #60a5fa !important;
+  font-weight: 600 !important;
+  text-decoration: underline !important;
+}
+
+.forgot-prompt-link:hover {
+  color: #93bbfc !important;
+}
+
+/* Reset Password Page */
+.reset-password-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0a0e17 0%, #1a1f35 50%, #0d1520 100%);
+  padding: 20px;
+}
+
+.reset-password-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 48px 40px;
+  max-width: 440px;
+  width: 100%;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.reset-password-card .gate-brand {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.reset-password-card .gate-logo {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.reset-password-card .gate-title {
+  font-size: 24px;
+  color: #f1f5f9;
+  margin: 0;
+  font-weight: 700;
+}
+
+.reset-heading {
+  color: #f1f5f9;
+  font-size: 20px;
+  margin: 0 0 8px;
+  text-align: center;
+}
+
+.reset-subtitle {
+  color: #94a3b8;
+  font-size: 14px;
+  margin: 0 0 24px;
+  text-align: center;
+}
+
+.reset-subtitle strong {
+  color: #cbd5e1;
+}
+
+.reset-success {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.reset-success-icon {
+  margin-bottom: 4px;
+}
+
+.reset-success-title {
+  color: #22c55e;
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.reset-success-message {
+  color: #94a3b8;
+  font-size: 14px;
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.reset-password-card .form-group {
+  margin-bottom: 16px;
+}
+
+.reset-password-card label {
+  display: block;
+  color: #94a3b8;
+  font-size: 13px;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.reset-password-card .gate-footer {
+  text-align: center;
+  margin-top: 24px;
+}
+
+.reset-password-card .gate-footer p {
+  color: #64748b;
+  font-size: 14px;
+}
+
 .gate-submit-btn {
   background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
