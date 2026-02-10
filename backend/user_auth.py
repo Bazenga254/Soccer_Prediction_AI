@@ -438,7 +438,7 @@ def google_login(google_token: str, referral_code: str = "") -> Dict:
         ref_code = _generate_referral_code()
         avatar_color = random.choice(AVATAR_COLORS)
         now = datetime.now().isoformat()
-        display_name = google_name or username
+        display_name = username
 
         referred_by = None
         if referral_code:
@@ -526,8 +526,7 @@ def register_user(email: str, password: str, display_name: str = "", referral_co
     avatar_color = random.choice(AVATAR_COLORS)
     now = datetime.now().isoformat()
 
-    if not display_name:
-        display_name = username
+    display_name = username
 
     # Check referral
     referred_by = None
@@ -804,10 +803,10 @@ def update_username(user_id: int, new_username: str) -> Dict:
         conn.close()
         return {"success": False, "error": "Username already taken"}
 
-    conn.execute("UPDATE users SET username = ? WHERE id = ?", (new_username, user_id))
+    conn.execute("UPDATE users SET username = ?, display_name = ? WHERE id = ?", (new_username, new_username, user_id))
     conn.commit()
     conn.close()
-    return {"success": True, "username": new_username}
+    return {"success": True, "username": new_username, "display_name": new_username}
 
 
 def update_display_name(user_id: int, new_name: str) -> Dict:

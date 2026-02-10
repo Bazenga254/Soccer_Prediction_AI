@@ -5,9 +5,7 @@ import axios from 'axios'
 export default function Profile() {
   const { user, updateUser, refreshProfile } = useAuth()
   const [editingUsername, setEditingUsername] = useState(false)
-  const [editingName, setEditingName] = useState(false)
   const [newUsername, setNewUsername] = useState(user?.username || '')
-  const [newDisplayName, setNewDisplayName] = useState(user?.display_name || '')
   const [usernameAvailable, setUsernameAvailable] = useState(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -46,29 +44,13 @@ export default function Profile() {
     try {
       const res = await axios.put('/api/user/username', { username: newUsername })
       if (res.data.success) {
-        updateUser({ username: res.data.username })
+        updateUser({ username: res.data.username, display_name: res.data.display_name })
         setEditingUsername(false)
         setSuccess('Username updated!')
         setTimeout(() => setSuccess(''), 3000)
       }
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update username')
-    }
-  }
-
-  const saveDisplayName = async () => {
-    setError('')
-    setSuccess('')
-    try {
-      const res = await axios.put('/api/user/display-name', { display_name: newDisplayName })
-      if (res.data.success) {
-        updateUser({ display_name: res.data.display_name })
-        setEditingName(false)
-        setSuccess('Display name updated!')
-        setTimeout(() => setSuccess(''), 3000)
-      }
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to update display name')
     }
   }
 
@@ -189,29 +171,6 @@ export default function Profile() {
             <div className="profile-username">@{user.username}</div>
             <span className={`tier-badge ${user.tier}`}>{user.tier === 'pro' ? 'PRO' : 'FREE'}</span>
           </div>
-        </div>
-
-        {/* Edit Display Name */}
-        <div className="profile-field">
-          <label>Display Name</label>
-          {editingName ? (
-            <div className="profile-edit-row">
-              <input
-                type="text"
-                value={newDisplayName}
-                onChange={(e) => setNewDisplayName(e.target.value)}
-                maxLength={30}
-                autoFocus
-              />
-              <button className="save-btn" onClick={saveDisplayName}>Save</button>
-              <button className="cancel-btn" onClick={() => setEditingName(false)}>Cancel</button>
-            </div>
-          ) : (
-            <div className="profile-value-row">
-              <span>{user.display_name}</span>
-              <button className="edit-btn" onClick={() => { setEditingName(true); setNewDisplayName(user.display_name) }}>Edit</button>
-            </div>
-          )}
         </div>
 
         {/* Edit Username */}

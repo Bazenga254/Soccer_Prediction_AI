@@ -8,7 +8,6 @@ export default function AccessGate() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [displayName, setDisplayName] = useState('')
   const [referralCode, setReferralCode] = useState(() => {
     const match = document.cookie.match(/spark_ref=([^;]+)/)
     return match ? match[1] : ''
@@ -109,7 +108,7 @@ export default function AccessGate() {
           return
         }
       } else {
-        result = await register(email, password, displayName, referralCode)
+        result = await register(email, password, '', referralCode)
         if (result.requires_verification) {
           setResendCooldown(60)
           setLoading(false)
@@ -266,21 +265,6 @@ export default function AccessGate() {
         </div>
 
         <form className="access-form" onSubmit={handleSubmit}>
-          {mode === 'signup' && (
-            <div className="form-group">
-              <label htmlFor="display-name">Display Name (optional)</label>
-              <input
-                id="display-name"
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="How should we call you?"
-                maxLength={30}
-                disabled={loading}
-              />
-            </div>
-          )}
-
           <div className="form-group">
             <label htmlFor="email">Email Address</label>
             <input
