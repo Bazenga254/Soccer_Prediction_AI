@@ -262,24 +262,31 @@ export default function AccessGate() {
   }
 
   const handleForgotPassword = async () => {
-    setShowForgotPassword(true)
-    setForgotEmail(email || '')
-    setForgotMessage('')
-    setForgotError('')
+    // If email is already filled in the login field, send reset directly
+    if (email.trim() && email.includes('@')) {
+      setShowForgotPassword(true)
+      setForgotEmail(email)
+      setForgotMessage('')
+      setForgotError('')
+      // Auto-send
+      await sendResetLink(email)
+    } else {
+      // No email entered yet - show input form
+      setShowForgotPassword(true)
+      setForgotEmail('')
+      setForgotMessage('')
+      setForgotError('')
+    }
   }
 
-  const handleSendResetLink = async () => {
-    if (!forgotEmail.trim() || !forgotEmail.includes('@')) {
-      setForgotError('Please enter a valid email address')
-      return
-    }
+  const sendResetLink = async (targetEmail) => {
     setForgotLoading(true)
     setForgotError('')
     setForgotMessage('')
     try {
-      const response = await axios.post('/api/user/forgot-password', { email: forgotEmail })
+      const response = await axios.post('/api/user/forgot-password', { email: targetEmail })
       if (response.data.success) {
-        setForgotMessage('If an account exists with that email, a reset link has been sent. Check your inbox.')
+        setForgotMessage(`If an account exists with ${targetEmail}, a reset link has been sent. Check your inbox.`)
       }
     } catch (err) {
       if (err.response?.status === 423) {
@@ -289,6 +296,14 @@ export default function AccessGate() {
       }
     }
     setForgotLoading(false)
+  }
+
+  const handleSendResetLink = async () => {
+    if (!forgotEmail.trim() || !forgotEmail.includes('@')) {
+      setForgotError('Please enter a valid email address')
+      return
+    }
+    await sendResetLink(forgotEmail)
   }
 
   const handleVerifyCode = async (e) => {
@@ -502,24 +517,34 @@ export default function AccessGate() {
           {/* Forgot password inline form */}
           {showForgotPassword && lockoutSeconds === 0 && (
             <div className="forgot-password-form">
-              <p className="forgot-password-label">Enter your email to receive a reset link:</p>
-              <div className="forgot-password-input-row">
-                <input
-                  type="email"
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  disabled={forgotLoading}
-                />
-                <button
-                  type="button"
-                  className="forgot-send-btn"
-                  onClick={handleSendResetLink}
-                  disabled={forgotLoading}
-                >
-                  {forgotLoading ? 'Sending...' : 'Send'}
-                </button>
-              </div>
+              {forgotEmail ? (
+                <>
+                  <p className="forgot-password-label">
+                    {forgotLoading ? 'Sending reset link...' : `A reset link will be sent to the email address associated with your account.`}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="forgot-password-label">Enter the email address associated with your account:</p>
+                  <div className="forgot-password-input-row">
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      disabled={forgotLoading}
+                    />
+                    <button
+                      type="button"
+                      className="forgot-send-btn"
+                      onClick={handleSendResetLink}
+                      disabled={forgotLoading}
+                    >
+                      {forgotLoading ? 'Sending...' : 'Send'}
+                    </button>
+                  </div>
+                </>
+              )}
               {forgotMessage && <div className="forgot-success">{forgotMessage}</div>}
               {forgotError && <div className="gate-error" style={{ marginTop: '8px' }}>{forgotError}</div>}
               <button type="button" className="link-btn" onClick={() => setShowForgotPassword(false)} style={{ marginTop: '8px', fontSize: '13px' }}>
