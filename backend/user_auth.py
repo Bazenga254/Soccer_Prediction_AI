@@ -617,6 +617,47 @@ def _send_password_changed_email(to_email: str, display_name: str = "") -> bool:
     return _send_zoho_email(to_email, "Your password was changed - Spark AI Prediction", html_body)
 
 
+def send_first_prediction_email(to_email: str, display_name: str = "") -> bool:
+    """Send a congratulatory email for the user's first prediction of the day."""
+    greeting = display_name or "there"
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
+                background: #0f172a; color: #f1f5f9; padding: 40px; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <span style="font-size: 48px;">&#127942;</span>
+            <h1 style="color: #f1f5f9; margin: 8px 0;">Nice One!</h1>
+        </div>
+        <p style="color: #94a3b8;">Hey {greeting},</p>
+        <p style="color: #94a3b8;">
+            Congratulations on posting your first prediction of the day!
+            Every prediction you share helps build your reputation and grow your following.
+        </p>
+        <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3);
+                    border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="color: #22c55e; margin: 0; font-size: 14px;">
+                <strong>Keep the momentum going!</strong><br/>
+                Consistent predictions build trust with the community.
+                The more you share, the more followers and engagement you'll earn.
+            </p>
+        </div>
+        <div style="text-align: center; margin: 28px 0;">
+            <a href="https://www.spark-ai-prediction.com"
+               style="display: inline-block; background: #22c55e; color: #ffffff;
+                      text-decoration: none; padding: 14px 32px; border-radius: 8px;
+                      font-weight: bold; font-size: 16px;">
+                Keep Predicting
+            </a>
+        </div>
+        <p style="color: #64748b; font-size: 13px; text-align: center;">
+            Spark AI Prediction
+        </p>
+    </div>
+    """
+
+    return _send_zoho_email(to_email, "Your first prediction of the day! - Spark AI", html_body)
+
+
 def request_password_reset(email: str) -> Dict:
     """Request a password reset. Sends reset link via email."""
     email = email.lower().strip()

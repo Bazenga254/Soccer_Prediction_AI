@@ -1312,6 +1312,14 @@ async def share_prediction(request: SharePredictionRequest, authorization: str =
     )
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
+
+    # Send first-prediction-of-day email
+    if result.get("is_first_today"):
+        try:
+            user_auth.send_first_prediction_email(profile["email"], profile["display_name"])
+        except Exception as e:
+            print(f"[WARN] Failed to send first prediction email: {e}")
+
     return result
 
 
@@ -1337,7 +1345,11 @@ async def rate_prediction(prediction_id: int, request: RatingRequest, authorizat
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    result = community.rate_prediction(prediction_id, payload["user_id"], request.rating)
+    # Get rater profile for notification
+    rater_profile = user_auth.get_user_profile(payload["user_id"])
+    rater_name = rater_profile["display_name"] if rater_profile else ""
+
+    result = community.rate_prediction(prediction_id, payload["user_id"], request.rating, rater_display_name=rater_name)
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
     return result

@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 
+const NOTIF_CONFIG = {
+  first_prediction: { icon: '\uD83C\uDFC6', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
+  referral_subscription: { icon: '\uD83E\uDD1D', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
+  withdrawal: { icon: '\uD83D\uDCB0', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+  comment: { icon: '\uD83D\uDCAC', color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
+  rating: { icon: '\u2B50', color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
+}
+
 export default function NotificationDropdown() {
   const [isOpen, setIsOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
@@ -87,6 +95,45 @@ export default function NotificationDropdown() {
     return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
   }
 
+  const renderNotification = (n) => {
+    const config = NOTIF_CONFIG[n.type] || NOTIF_CONFIG.comment
+    const meta = n.metadata || {}
+
+    // Comment type shows commenter avatar
+    if (n.type === 'comment' && meta.commenter_avatar) {
+      return (
+        <div key={n.id} className={`notification-item ${n.is_read ? '' : 'unread'}`}>
+          <div className="notification-avatar" style={{ background: meta.commenter_avatar }}>
+            {(meta.commenter_name || '?')[0].toUpperCase()}
+          </div>
+          <div className="notification-content">
+            <p className="notification-text">{n.title}</p>
+            <p className="notification-message">{n.message}</p>
+            {meta.match && <p className="notification-match">{meta.match}</p>}
+            <span className="notification-time">{timeAgo(n.created_at)}</span>
+          </div>
+          {!n.is_read && <span className="unread-dot" />}
+        </div>
+      )
+    }
+
+    // All other types use icon
+    return (
+      <div key={n.id} className={`notification-item ${n.is_read ? '' : 'unread'}`}>
+        <div className="notification-type-icon" style={{ background: config.bg, color: config.color }}>
+          <span>{config.icon}</span>
+        </div>
+        <div className="notification-content">
+          <p className="notification-text">{n.title}</p>
+          <p className="notification-message">{n.message}</p>
+          {meta.match && <p className="notification-match">{meta.match}</p>}
+          <span className="notification-time">{timeAgo(n.created_at)}</span>
+        </div>
+        {!n.is_read && <span className="unread-dot" />}
+      </div>
+    )
+  }
+
   return (
     <div className="notification-dropdown-wrapper" ref={dropdownRef}>
       <button className="notification-bell-btn" onClick={handleOpen} title="Notifications">
@@ -114,25 +161,9 @@ export default function NotificationDropdown() {
             ) : notifications.length === 0 ? (
               <div className="notification-empty">
                 <p>No notifications yet</p>
-                <p className="notification-empty-sub">Comments on your predictions will appear here</p>
               </div>
             ) : (
-              notifications.map(n => (
-                <div key={n.id} className={`notification-item ${n.is_read ? '' : 'unread'}`}>
-                  <div className="notification-avatar" style={{ background: n.commenter_avatar || '#6c5ce7' }}>
-                    {(n.commenter_name || '?')[0].toUpperCase()}
-                  </div>
-                  <div className="notification-content">
-                    <p className="notification-text">
-                      <strong>{n.commenter_name}</strong> commented on your prediction
-                    </p>
-                    <p className="notification-match">{n.match}</p>
-                    <p className="notification-comment">"{n.content.length > 80 ? n.content.slice(0, 80) + '...' : n.content}"</p>
-                    <span className="notification-time">{timeAgo(n.created_at)}</span>
-                  </div>
-                  {!n.is_read && <span className="unread-dot" />}
-                </div>
-              ))
+              notifications.map(n => renderNotification(n))
             )}
           </div>
         </div>

@@ -107,6 +107,20 @@ def init_community_db():
             last_read_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            metadata TEXT DEFAULT '{}',
+            is_read INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_notif_unread ON notifications(user_id, is_read);
+
         CREATE TABLE IF NOT EXISTS direct_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sender_id INTEGER NOT NULL,
@@ -125,6 +139,45 @@ def init_community_db():
     """)
     conn.commit()
     conn.close()
+
+
+# ==================== NOTIFICATIONS ====================
+
+def create_notification(user_id: int, notif_type: str, title: str, message: str, metadata: Dict = None) -> int:
+    """Create a notification for a user. Returns notification id."""
+    conn = _get_db()
+    now = datetime.now().isoformat()
+    meta_json = json.dumps(metadata or {})
+    conn.execute("""
+        INSERT INTO notifications (user_id, type, title, message, metadata, is_read, created_at)
+        VALUES (?, ?, ?, ?, ?, 0, ?)
+    """, (user_id, notif_type, title, message, meta_json, now))
+    conn.commit()
+    notif_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return notif_id
+
+
+def create_referral_notification(referrer_user_id: int, subscriber_name: str, plan: str) -> int:
+    """Notify a user when their referral subscribes to a paid plan."""
+    return create_notification(
+        user_id=referrer_user_id,
+        notif_type="referral_subscription",
+        title="New Referral Subscriber!",
+        message=f"{subscriber_name} just upgraded to {plan.replace('_', ' ').title()} using your referral link. Great work building your network!",
+        metadata={"subscriber_name": subscriber_name, "plan": plan},
+    )
+
+
+def create_withdrawal_notification(user_id: int, amount: float, currency: str = "USD") -> int:
+    """Notify a user when their withdrawal is processed."""
+    return create_notification(
+        user_id=user_id,
+        notif_type="withdrawal",
+        title="Withdrawal Processed",
+        message=f"Your withdrawal of ${amount:.2f} {currency} has been processed successfully.",
+        metadata={"amount": amount, "currency": currency},
+    )
 
 
 def share_prediction(
@@ -173,9 +226,27 @@ def share_prediction(
     ))
     conn.commit()
     pred_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    # Check if this is the user's first prediction today
+    today = datetime.now().strftime("%Y-%m-%d")
+    today_count = conn.execute(
+        "SELECT COUNT(*) as c FROM community_predictions WHERE user_id = ? AND created_at LIKE ?",
+        (user_id, f"{today}%"),
+    ).fetchone()["c"]
     conn.close()
 
-    return {"success": True, "prediction_id": pred_id}
+    is_first_today = today_count == 1
+    if is_first_today:
+        match_name = f"{team_a_name} vs {team_b_name}"
+        create_notification(
+            user_id=user_id,
+            notif_type="first_prediction",
+            title="First Prediction of the Day!",
+            message="Congratulations on posting your first prediction today! Keep sharing your insights to build trust and grow your following.",
+            metadata={"prediction_id": pred_id, "match": match_name},
+        )
+
+    return {"success": True, "prediction_id": pred_id, "is_first_today": is_first_today}
 
 
 def get_public_predictions(page: int = 1, per_page: int = 20) -> Dict:
@@ -283,7 +354,7 @@ def get_user_predictions(user_id: int) -> List[Dict]:
     } for r in rows]
 
 
-def rate_prediction(prediction_id: int, user_id: int, rating: int) -> Dict:
+def rate_prediction(prediction_id: int, user_id: int, rating: int, rater_display_name: str = "") -> Dict:
     """Rate a community prediction (1-5 stars)."""
     if rating < 1 or rating > 5:
         return {"success": False, "error": "Rating must be 1-5"}
@@ -292,7 +363,8 @@ def rate_prediction(prediction_id: int, user_id: int, rating: int) -> Dict:
 
     # Check prediction exists and is public
     pred = conn.execute(
-        "SELECT user_id, visibility FROM community_predictions WHERE id = ?", (prediction_id,)
+        "SELECT user_id, visibility, team_a_name, team_b_name FROM community_predictions WHERE id = ?",
+        (prediction_id,)
     ).fetchone()
     if not pred:
         conn.close()
@@ -317,6 +389,18 @@ def rate_prediction(prediction_id: int, user_id: int, rating: int) -> Dict:
     ).fetchone()
     conn.close()
 
+    # Notify prediction owner about the rating
+    stars = "\u2605" * rating + "\u2606" * (5 - rating)
+    match_name = f"{pred['team_a_name']} vs {pred['team_b_name']}"
+    rater = rater_display_name or "Someone"
+    create_notification(
+        user_id=pred["user_id"],
+        notif_type="rating",
+        title="New Rating on Your Prediction",
+        message=f"{rater} rated your prediction {stars} ({rating}/5)",
+        metadata={"prediction_id": prediction_id, "rater_name": rater, "rating": rating, "match": match_name},
+    )
+
     return {
         "success": True,
         "avg_rating": round(avg["avg"], 1),
@@ -339,9 +423,10 @@ def add_comment(
 
     conn = _get_db()
 
-    # Check prediction exists
+    # Check prediction exists and get owner info
     pred = conn.execute(
-        "SELECT id FROM community_predictions WHERE id = ?", (prediction_id,)
+        "SELECT id, user_id, team_a_name, team_b_name FROM community_predictions WHERE id = ?",
+        (prediction_id,)
     ).fetchone()
     if not pred:
         conn.close()
@@ -355,6 +440,24 @@ def add_comment(
     conn.commit()
     comment_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
+
+    # Notify prediction owner (if commenter is not the owner)
+    if pred["user_id"] != user_id:
+        match_name = f"{pred['team_a_name']} vs {pred['team_b_name']}"
+        preview = content[:80] + "..." if len(content) > 80 else content
+        create_notification(
+            user_id=pred["user_id"],
+            notif_type="comment",
+            title="New Comment on Your Prediction",
+            message=f'{display_name} commented: "{preview}"',
+            metadata={
+                "prediction_id": prediction_id,
+                "commenter_name": display_name,
+                "commenter_avatar": avatar_color,
+                "match": match_name,
+                "content": content,
+            },
+        )
 
     return {
         "success": True,
@@ -751,51 +854,40 @@ def get_paid_predictions_feed(page: int = 1, per_page: int = 20, viewer_id: int 
 # ==================== NOTIFICATIONS & EARNINGS ====================
 
 def get_user_notifications(user_id: int, limit: int = 30) -> Dict:
-    """Get notifications for a user (comments on their predictions by others)."""
+    """Get all notifications for a user from the notifications table."""
     conn = _get_db()
 
-    # Get last read timestamp
-    read_row = conn.execute(
-        "SELECT last_read_at FROM notification_reads WHERE user_id = ?", (user_id,)
-    ).fetchone()
-    last_read_at = read_row["last_read_at"] if read_row else "2000-01-01T00:00:00"
-
-    # Get comments on user's predictions (by other users)
     rows = conn.execute("""
-        SELECT pc.id, pc.prediction_id, pc.user_id as commenter_id,
-               pc.username as commenter_username, pc.display_name as commenter_name,
-               pc.avatar_color as commenter_avatar, pc.content, pc.created_at,
-               cp.team_a_name, cp.team_b_name, cp.predicted_result
-        FROM prediction_comments pc
-        JOIN community_predictions cp ON cp.id = pc.prediction_id
-        WHERE cp.user_id = ? AND pc.user_id != ?
-        ORDER BY pc.created_at DESC
+        SELECT id, type, title, message, metadata, is_read, created_at
+        FROM notifications
+        WHERE user_id = ?
+        ORDER BY created_at DESC
         LIMIT ?
-    """, (user_id, user_id, limit)).fetchall()
+    """, (user_id, limit)).fetchall()
 
-    # Count unread
-    unread_count = conn.execute("""
-        SELECT COUNT(*) as c
-        FROM prediction_comments pc
-        JOIN community_predictions cp ON cp.id = pc.prediction_id
-        WHERE cp.user_id = ? AND pc.user_id != ? AND pc.created_at > ?
-    """, (user_id, user_id, last_read_at)).fetchone()["c"]
+    unread_count = conn.execute(
+        "SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND is_read = 0",
+        (user_id,)
+    ).fetchone()["c"]
 
     conn.close()
 
-    notifications = [{
-        "id": r["id"],
-        "type": "comment",
-        "prediction_id": r["prediction_id"],
-        "commenter_name": r["commenter_name"],
-        "commenter_username": r["commenter_username"],
-        "commenter_avatar": r["commenter_avatar"],
-        "content": r["content"],
-        "match": f"{r['team_a_name']} vs {r['team_b_name']}",
-        "predicted_result": r["predicted_result"],
-        "created_at": r["created_at"],
-        "is_read": r["created_at"] <= last_read_at,
-    } for r in rows]
+    notifications = []
+    for r in rows:
+        meta = {}
+        try:
+            meta = json.loads(r["metadata"]) if r["metadata"] else {}
+        except (json.JSONDecodeError, TypeError):
+            pass
+        notifications.append({
+            "id": r["id"],
+            "type": r["type"],
+            "title": r["title"],
+            "message": r["message"],
+            "metadata": meta,
+            "is_read": bool(r["is_read"]),
+            "created_at": r["created_at"],
+        })
 
     return {
         "notifications": notifications,
@@ -807,6 +899,11 @@ def mark_notifications_read(user_id: int) -> Dict:
     """Mark all notifications as read for a user."""
     conn = _get_db()
     now = datetime.now().isoformat()
+    conn.execute(
+        "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
+        (user_id,)
+    )
+    # Keep notification_reads updated for backwards compatibility
     conn.execute("""
         INSERT INTO notification_reads (user_id, last_read_at)
         VALUES (?, ?)
@@ -865,17 +962,10 @@ def get_earnings_summary(user_id: int) -> Dict:
 def get_unread_count(user_id: int) -> int:
     """Quick count of unread notifications."""
     conn = _get_db()
-    read_row = conn.execute(
-        "SELECT last_read_at FROM notification_reads WHERE user_id = ?", (user_id,)
-    ).fetchone()
-    last_read_at = read_row["last_read_at"] if read_row else "2000-01-01T00:00:00"
-
-    count = conn.execute("""
-        SELECT COUNT(*) as c
-        FROM prediction_comments pc
-        JOIN community_predictions cp ON cp.id = pc.prediction_id
-        WHERE cp.user_id = ? AND pc.user_id != ? AND pc.created_at > ?
-    """, (user_id, user_id, last_read_at)).fetchone()["c"]
+    count = conn.execute(
+        "SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND is_read = 0",
+        (user_id,)
+    ).fetchone()["c"]
     conn.close()
     return count
 

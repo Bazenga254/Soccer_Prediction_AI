@@ -200,7 +200,23 @@ def create_subscription(
         VALUES (?, 'subscribe', ?, ?)
     """, (user_id, f"Plan: {plan_id}, Payment: {payment_method}", now.isoformat()))
     conn.commit()
+
+    # Check if this user was referred by someone - notify the referrer
+    user_row = conn.execute(
+        "SELECT referred_by, display_name FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
     conn.close()
+
+    if user_row and user_row["referred_by"]:
+        try:
+            import community
+            community.create_referral_notification(
+                referrer_user_id=user_row["referred_by"],
+                subscriber_name=user_row["display_name"],
+                plan=plan_id,
+            )
+        except Exception as e:
+            print(f"[WARN] Failed to create referral notification: {e}")
 
     return {
         "success": True,
