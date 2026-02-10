@@ -759,10 +759,25 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
         captcha_needed = check_captcha_required(email, client_ip)
         if captcha_needed and not verify_hcaptcha(captcha_token):
             record_login_attempt(client_ip, email, False)
+            # Check if this triggers a lockout
+            failed_count = get_failed_attempt_count(email)
+            if failed_count >= MAX_LOGIN_ATTEMPTS:
+                lock_account(email)
+                lock_info = check_account_locked(email)
+                return {
+                    "success": False,
+                    "error": "Too many failed attempts. Account locked for 24 hours.",
+                    "account_locked": True,
+                    "locked_until": lock_info.get("locked_until", ""),
+                    "remaining_seconds": lock_info.get("remaining_seconds", 86400),
+                    "attempts_remaining": 0,
+                }
+            remaining = MAX_LOGIN_ATTEMPTS - failed_count
             return {
                 "success": False,
                 "error": "CAPTCHA verification required",
                 "captcha_required": True,
+                "attempts_remaining": remaining,
             }
 
     conn = _get_db()
