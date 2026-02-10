@@ -27,7 +27,7 @@ export default function EarningsDropdown() {
   const fetchEarnings = async () => {
     setLoading(true)
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('spark_token')
       const res = await axios.get('/api/user/earnings', {
         headers: { Authorization: `Bearer ${token}` }
       })

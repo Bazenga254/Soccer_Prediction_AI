@@ -36,7 +36,7 @@ export default function MessagesDropdown() {
     }
   }, [messages])
 
-  const getToken = () => localStorage.getItem('auth_token')
+  const getToken = () => localStorage.getItem('spark_token')
 
   const fetchUnreadCount = async () => {
     try {

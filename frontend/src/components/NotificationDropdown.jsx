@@ -21,7 +21,7 @@ export default function NotificationDropdown() {
 
   // Connect to SSE for real-time notifications
   const connectSSE = useCallback(() => {
-    const token = localStorage.getItem('auth_token')
+    const token = localStorage.getItem('spark_token')
     if (!token) return
 
     // Close existing connection
@@ -89,7 +89,7 @@ export default function NotificationDropdown() {
 
   const fetchUnreadCount = async () => {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('spark_token')
       if (!token) return
       const res = await axios.get('/api/user/unread-count', {
         headers: { Authorization: `Bearer ${token}` }
@@ -103,7 +103,7 @@ export default function NotificationDropdown() {
   const fetchNotifications = async () => {
     setLoading(true)
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('spark_token')
       const res = await axios.get('/api/user/notifications', {
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -125,7 +125,7 @@ export default function NotificationDropdown() {
 
   const handleMarkRead = async () => {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('spark_token')
       await axios.post('/api/user/notifications/read', {}, {
         headers: { Authorization: `Bearer ${token}` }
       })
