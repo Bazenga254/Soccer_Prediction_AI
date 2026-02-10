@@ -5,6 +5,7 @@ import MatchAnalysis from './pages/MatchAnalysis'
 import LiveScores from './pages/LiveScores'
 import TrackRecord from './pages/TrackRecord'
 import AccessGate from './pages/AccessGate'
+import LandingPage from './pages/LandingPage'
 import Admin from './pages/Admin'
 import Profile from './pages/Profile'
 import Community from './pages/Community'
@@ -32,7 +33,7 @@ function ProtectedApp() {
   }
 
   if (!isAuthenticated) {
-    return <AccessGate />
+    return <LandingPage />
   }
 
   return (
@@ -66,6 +67,7 @@ function App() {
           <Route path="/admin" element={<Admin />} />
           <Route path="/ref/:username" element={<ReferralLanding />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/login" element={<AccessGate />} />
           <Route path="*" element={<ProtectedApp />} />
         </Routes>
       </AuthProvider>
