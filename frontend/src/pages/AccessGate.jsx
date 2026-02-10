@@ -261,22 +261,11 @@ export default function AccessGate() {
     }
   }
 
-  const handleForgotPassword = async () => {
-    // If email is already filled in the login field, send reset directly
-    if (email.trim() && email.includes('@')) {
-      setShowForgotPassword(true)
-      setForgotEmail(email)
-      setForgotMessage('')
-      setForgotError('')
-      // Auto-send
-      await sendResetLink(email)
-    } else {
-      // No email entered yet - show input form
-      setShowForgotPassword(true)
-      setForgotEmail('')
-      setForgotMessage('')
-      setForgotError('')
-    }
+  const handleForgotPassword = () => {
+    setShowForgotPassword(true)
+    setForgotEmail(email || '')
+    setForgotMessage('')
+    setForgotError('')
   }
 
   const sendResetLink = async (targetEmail) => {
@@ -432,6 +421,49 @@ export default function AccessGate() {
           <p className="gate-subtitle">Smart Match Analysis & Predictions</p>
         </div>
 
+        {/* Forgot Password Screen */}
+        {showForgotPassword ? (
+          <>
+            <div className="forgot-password-screen">
+              <div className="forgot-password-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+              <h2 className="forgot-password-title">Reset Your Password</h2>
+              <p className="forgot-password-label">Enter the email address associated with your account:</p>
+              <div className="forgot-password-input-row">
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  disabled={forgotLoading}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="forgot-send-btn"
+                  onClick={handleSendResetLink}
+                  disabled={forgotLoading || !forgotEmail.trim()}
+                >
+                  {forgotLoading ? 'Sending...' : 'Send'}
+                </button>
+              </div>
+              {forgotMessage && <div className="forgot-success">{forgotMessage}</div>}
+              {forgotError && <div className="gate-error" style={{ marginTop: '10px' }}>{forgotError}</div>}
+            </div>
+            <div className="gate-footer">
+              <p>
+                <button className="link-btn" onClick={() => setShowForgotPassword(false)}>
+                  I remember my password, log in
+                </button>
+              </p>
+            </div>
+          </>
+        ) : (
+        <>
         {/* Mode Toggle */}
         <div className="auth-mode-toggle">
           <button
@@ -506,49 +538,10 @@ export default function AccessGate() {
           </div>
 
           {/* Forgot password link - login mode */}
-          {mode === 'login' && !showForgotPassword && lockoutSeconds === 0 && (
+          {mode === 'login' && lockoutSeconds === 0 && (
             <div className="forgot-password-link">
               <button type="button" className="link-btn" onClick={handleForgotPassword}>
                 Forgot your password?
-              </button>
-            </div>
-          )}
-
-          {/* Forgot password inline form */}
-          {showForgotPassword && lockoutSeconds === 0 && (
-            <div className="forgot-password-form">
-              {forgotEmail ? (
-                <>
-                  <p className="forgot-password-label">
-                    {forgotLoading ? 'Sending reset link...' : `A reset link will be sent to the email address associated with your account.`}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="forgot-password-label">Enter the email address associated with your account:</p>
-                  <div className="forgot-password-input-row">
-                    <input
-                      type="email"
-                      value={forgotEmail}
-                      onChange={(e) => setForgotEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      disabled={forgotLoading}
-                    />
-                    <button
-                      type="button"
-                      className="forgot-send-btn"
-                      onClick={handleSendResetLink}
-                      disabled={forgotLoading}
-                    >
-                      {forgotLoading ? 'Sending...' : 'Send'}
-                    </button>
-                  </div>
-                </>
-              )}
-              {forgotMessage && <div className="forgot-success">{forgotMessage}</div>}
-              {forgotError && <div className="gate-error" style={{ marginTop: '8px' }}>{forgotError}</div>}
-              <button type="button" className="link-btn" onClick={() => setShowForgotPassword(false)} style={{ marginTop: '8px', fontSize: '13px' }}>
-                Back to login
               </button>
             </div>
           )}
@@ -694,6 +687,7 @@ export default function AccessGate() {
             <p>Already have an account? <button className="link-btn" onClick={() => setMode('login')}>Log in</button></p>
           )}
         </div>
+        </>)}
       </div>
     </div>
   )
