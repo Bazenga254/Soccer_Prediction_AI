@@ -36,7 +36,6 @@ export default function Header({ user, logout }) {
 
   const currentCompetition = getCurrentCompetition()
   const isLivePage = location.pathname === '/live'
-  const isMyPredictions = location.pathname === '/my-predictions'
   const isCommunity = location.pathname === '/community'
 
   return (
@@ -67,13 +66,6 @@ export default function Header({ user, logout }) {
         >
           <span className="live-indicator"></span>
           <span className="comp-name">Live Scores</span>
-        </Link>
-        <Link
-          to="/my-predictions"
-          className={`competition-tab ${isMyPredictions ? 'active' : ''}`}
-        >
-          <span className="comp-flag">📊</span>
-          <span className="comp-name">My Predictions</span>
         </Link>
         <Link
           to="/community"
