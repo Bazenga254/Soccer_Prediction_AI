@@ -1068,8 +1068,6 @@ async def subscribe(request: SubscribeRequest, authorization: str = Header(None)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    _require_sensitive_action(payload["user_id"])
-
     result = subscriptions.create_subscription(
         user_id=payload["user_id"],
         plan_id=request.plan_id,
@@ -1087,8 +1085,6 @@ async def cancel_subscription(authorization: str = Header(None)):
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-
-    _require_sensitive_action(payload["user_id"])
 
     result = subscriptions.cancel_subscription(payload["user_id"])
     if not result["success"]:
@@ -1404,8 +1400,6 @@ async def purchase_prediction(prediction_id: int, request: PurchasePredictionReq
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-
-    _require_sensitive_action(payload["user_id"])
 
     result = community.purchase_prediction(
         prediction_id=prediction_id,

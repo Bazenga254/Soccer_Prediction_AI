@@ -243,7 +243,7 @@ def check_sensitive_action_allowed(user_id: int) -> Dict:
         "allowed": False,
         "remaining_seconds": remaining_seconds,
         "lockout_until": lockout_end.isoformat(),
-        "message": f"For your security, sensitive actions are temporarily restricted for 24 hours after a password change. Please try again in {remaining_hours}h {remaining_mins}m.",
+        "message": f"For your security, withdrawals and payment method changes are restricted for 24 hours after a password change. Please try again in {remaining_hours}h {remaining_mins}m.",
     }
 
 
