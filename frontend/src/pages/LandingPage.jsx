@@ -175,7 +175,7 @@ export default function LandingPage() {
       <LandingNav onSignIn={openSignIn} onGetStarted={scrollToPricing} />
 
       {/* Hero Section */}
-      <HeroCarousel images={heroImages} interval={3000}>
+      <HeroCarousel images={heroImages} interval={5000}>
         <h1 className="hero-title">AI-Powered Match Predictions</h1>
         <p className="hero-subtitle">
           Make smarter decisions with data-driven insights across 50+ football leagues worldwide
