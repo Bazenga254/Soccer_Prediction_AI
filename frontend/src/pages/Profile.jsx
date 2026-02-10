@@ -11,6 +11,7 @@ export default function Profile() {
   const [success, setSuccess] = useState('')
   const [referralStats, setReferralStats] = useState(null)
   const [uploading, setUploading] = useState(false)
+  const [copied, setCopied] = useState(false)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -109,8 +110,8 @@ export default function Profile() {
 
   const copyReferralLink = () => {
     navigator.clipboard.writeText(referralLink)
-    setSuccess('Referral link copied!')
-    setTimeout(() => setSuccess(''), 2000)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -223,7 +224,9 @@ export default function Profile() {
               <span className="referral-label">Your Referral Link</span>
               <div className="referral-code-row">
                 <span className="referral-link-display">{referralLink}</span>
-                <button className="copy-referral-btn" onClick={copyReferralLink}>Copy</button>
+                <button className={`copy-referral-btn${copied ? ' copied' : ''}`} onClick={copyReferralLink}>
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
               </div>
             </div>
 
