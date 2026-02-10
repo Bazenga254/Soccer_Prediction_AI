@@ -8,6 +8,8 @@ export default function AccessGate() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [referralCode, setReferralCode] = useState(() => {
     const match = document.cookie.match(/spark_ref=([^;]+)/)
     return match ? match[1] : ''
@@ -90,8 +92,9 @@ export default function AccessGate() {
         setError('Passwords do not match')
         return
       }
-      if (password.length < 6) {
-        setError('Password must be at least 6 characters')
+      const reqs = getPasswordRequirements(password)
+      if (!reqs.every(r => r.met)) {
+        setError('Please meet all password requirements')
         return
       }
     }
@@ -162,6 +165,19 @@ export default function AccessGate() {
     setResendMessage('')
     setMode('login')
   }
+
+  const getPasswordRequirements = (pwd) => [
+    { label: 'At least 8 characters', met: pwd.length >= 8 },
+    { label: 'At least 2 uppercase letters', met: (pwd.match(/[A-Z]/g) || []).length >= 2 },
+    { label: 'At least 2 lowercase letters', met: (pwd.match(/[a-z]/g) || []).length >= 2 },
+    { label: 'At least 2 numbers', met: (pwd.match(/[0-9]/g) || []).length >= 2 },
+    { label: 'At least 2 special characters', met: (pwd.match(/[^A-Za-z0-9]/g) || []).length >= 2 },
+  ]
+
+  const passwordReqs = getPasswordRequirements(password)
+  const passwordStrength = passwordReqs.filter(r => r.met).length
+  const strengthPercent = (passwordStrength / passwordReqs.length) * 100
+  const strengthColor = strengthPercent <= 20 ? '#ef4444' : strengthPercent <= 40 ? '#f97316' : strengthPercent <= 60 ? '#eab308' : strengthPercent <= 80 ? '#22c55e' : '#10b981'
 
   // Verification screen
   if (pendingVerification) {
@@ -280,28 +296,89 @@ export default function AccessGate() {
 
           <div className="form-group">
             <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === 'signup' ? 'Min 6 characters' : 'Enter your password'}
-              disabled={loading}
-            />
+            <div className="password-input-wrapper">
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={mode === 'signup' ? 'Create a strong password' : 'Enter your password'}
+                disabled={loading}
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+              >
+                {showPassword ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
+
+          {mode === 'signup' && password.length > 0 && (
+            <div className="password-requirements">
+              <div className="password-strength-bar">
+                <div
+                  className="password-strength-fill"
+                  style={{ width: `${strengthPercent}%`, background: strengthColor }}
+                />
+              </div>
+              <ul className="password-req-list">
+                {passwordReqs.map((req, i) => (
+                  <li key={i} className={req.met ? 'req-met' : 'req-unmet'}>
+                    <span className="req-icon">{req.met ? '✓' : '✗'}</span>
+                    {req.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {mode === 'signup' && (
             <>
               <div className="form-group">
                 <label htmlFor="confirm-password">Confirm Password</label>
-                <input
-                  id="confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repeat your password"
-                  disabled={loading}
-                />
+                <div className="password-input-wrapper">
+                  <input
+                    id="confirm-password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repeat your password"
+                    disabled={loading}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div className="form-group">

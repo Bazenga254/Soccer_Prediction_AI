@@ -8,6 +8,7 @@ import hashlib
 import secrets
 import random
 import string
+import re
 import os
 import json as _json
 import urllib.request
@@ -485,8 +486,16 @@ def register_user(email: str, password: str, display_name: str = "", referral_co
     """Register a new user. Sends verification code instead of granting immediate access."""
     email = email.lower().strip()
 
-    if len(password) < 6:
-        return {"success": False, "error": "Password must be at least 6 characters"}
+    if len(password) < 8:
+        return {"success": False, "error": "Password must be at least 8 characters"}
+    if len(re.findall(r'[A-Z]', password)) < 2:
+        return {"success": False, "error": "Password must contain at least 2 uppercase letters"}
+    if len(re.findall(r'[a-z]', password)) < 2:
+        return {"success": False, "error": "Password must contain at least 2 lowercase letters"}
+    if len(re.findall(r'[0-9]', password)) < 2:
+        return {"success": False, "error": "Password must contain at least 2 numbers"}
+    if len(re.findall(r'[^A-Za-z0-9]', password)) < 2:
+        return {"success": False, "error": "Password must contain at least 2 special characters"}
 
     if not email or "@" not in email:
         return {"success": False, "error": "Valid email is required"}
