@@ -3,7 +3,7 @@ import HCaptcha from '@hcaptcha/react-hcaptcha'
 import { useAuth } from '../context/AuthContext'
 
 const GOOGLE_CLIENT_ID = '905871526482-4i8pfv8435p4eq10226j0agks7j007ag.apps.googleusercontent.com'
-const HCAPTCHA_SITE_KEY = '10000000-ffff-ffff-ffff-000000000001' // Test key - replace with production key
+const HCAPTCHA_SITE_KEY = '6414a5cc-4234-443c-83a2-86ec12b85600'
 
 export default function AccessGate() {
   const [mode, setMode] = useState('login') // 'login' or 'signup'
