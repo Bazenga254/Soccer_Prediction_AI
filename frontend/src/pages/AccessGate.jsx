@@ -197,6 +197,9 @@ export default function AccessGate() {
         if (result.captcha_required) {
           setShowCaptcha(true)
           setError('Please prove that you are a human')
+          if (result.attempts_remaining !== undefined) {
+            setAttemptsRemaining(result.attempts_remaining)
+          }
           setLoading(false)
           return
         }

@@ -752,14 +752,14 @@ async def login(body: LoginRequest, request: Request):
                 }
             )
         if result.get("captcha_required"):
-            return JSONResponse(
-                status_code=428,
-                content={
-                    "success": False,
-                    "captcha_required": True,
-                    "detail": result["error"],
-                }
-            )
+            content = {
+                "success": False,
+                "captcha_required": True,
+                "detail": result["error"],
+            }
+            if "attempts_remaining" in result:
+                content["attempts_remaining"] = result["attempts_remaining"]
+            return JSONResponse(status_code=428, content=content)
         if result.get("requires_verification"):
             return JSONResponse(
                 status_code=403,

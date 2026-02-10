@@ -79,7 +79,11 @@ export function AuthProvider({ children }) {
       }
       // Handle 428 = captcha required
       if (err.response?.status === 428 && err.response?.data?.captcha_required) {
-        return { success: false, captcha_required: true, error: err.response.data.detail }
+        const res = { success: false, captcha_required: true, error: err.response.data.detail }
+        if (err.response.data.attempts_remaining !== undefined) {
+          res.attempts_remaining = err.response.data.attempts_remaining
+        }
+        return res
       }
       // Handle 403 = needs verification
       if (err.response?.status === 403 && err.response?.data?.requires_verification) {
