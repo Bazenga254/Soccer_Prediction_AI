@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import axios from 'axios'
 
 const NOTIF_CONFIG = {
@@ -14,14 +14,67 @@ export default function NotificationDropdown() {
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [bellShake, setBellShake] = useState(false)
   const dropdownRef = useRef(null)
+  const eventSourceRef = useRef(null)
+  const reconnectTimeoutRef = useRef(null)
 
-  // Poll for unread count every 30 seconds
-  useEffect(() => {
-    fetchUnreadCount()
-    const interval = setInterval(fetchUnreadCount, 30000)
-    return () => clearInterval(interval)
+  // Connect to SSE for real-time notifications
+  const connectSSE = useCallback(() => {
+    const token = localStorage.getItem('auth_token')
+    if (!token) return
+
+    // Close existing connection
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+    }
+
+    const es = new EventSource(`/api/user/notifications/stream?token=${token}`)
+    eventSourceRef.current = es
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+
+        if (data.type === 'init') {
+          setUnreadCount(data.unread_count || 0)
+        } else if (data.type === 'new') {
+          setUnreadCount(data.unread_count || 0)
+          // Prepend the new notification if dropdown has been loaded
+          if (data.notification) {
+            setNotifications(prev => {
+              // Avoid duplicates
+              if (prev.some(n => n.id === data.notification.id)) return prev
+              return [data.notification, ...prev]
+            })
+          }
+          // Shake the bell to draw attention
+          setBellShake(true)
+          setTimeout(() => setBellShake(false), 1000)
+        }
+      } catch (err) {
+        // Ignore parse errors from heartbeats
+      }
+    }
+
+    es.onerror = () => {
+      es.close()
+      eventSourceRef.current = null
+      // Reconnect after 5 seconds
+      reconnectTimeoutRef.current = setTimeout(connectSSE, 5000)
+    }
   }, [])
+
+  useEffect(() => {
+    connectSSE()
+    // Also do an initial fetch for unread count (immediate)
+    fetchUnreadCount()
+
+    return () => {
+      if (eventSourceRef.current) eventSourceRef.current.close()
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
+    }
+  }, [connectSSE])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -136,7 +189,7 @@ export default function NotificationDropdown() {
 
   return (
     <div className="notification-dropdown-wrapper" ref={dropdownRef}>
-      <button className="notification-bell-btn" onClick={handleOpen} title="Notifications">
+      <button className={`notification-bell-btn ${bellShake ? 'bell-shake' : ''}`} onClick={handleOpen} title="Notifications">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />

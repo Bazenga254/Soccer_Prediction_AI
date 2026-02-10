@@ -1,11 +1,13 @@
-from fastapi import FastAPI, Header, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, Header, HTTPException, UploadFile, File, Request, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
+import asyncio
+import json
 import uuid
 import shutil
 
@@ -1478,6 +1480,54 @@ async def get_unread_count(authorization: str = Header(None)):
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return {"unread_count": community.get_unread_count(payload["user_id"])}
+
+
+@app.get("/api/user/notifications/stream")
+async def notification_stream(token: str = Query(None)):
+    """SSE endpoint for real-time notification delivery."""
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = user_auth.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user_id = payload["user_id"]
+
+    async def event_generator():
+        event = community.subscribe_notifications(user_id)
+        last_seen = community.get_notification_signal(user_id)
+        try:
+            # Send initial unread count
+            count = community.get_unread_count(user_id)
+            yield f"data: {json.dumps({'type': 'init', 'unread_count': count})}\n\n"
+
+            while True:
+                # Wait for a signal or timeout after 15s (heartbeat)
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=15)
+                    event.clear()
+                except asyncio.TimeoutError:
+                    pass
+
+                current = community.get_notification_signal(user_id)
+                if current > last_seen:
+                    last_seen = current
+                    data = community.get_user_notifications(user_id, limit=1)
+                    notif = data["notifications"][0] if data["notifications"] else None
+                    yield f"data: {json.dumps({'type': 'new', 'unread_count': data['unread_count'], 'notification': notif})}\n\n"
+                else:
+                    # Heartbeat to keep connection alive
+                    yield f": heartbeat\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            community.unsubscribe_notifications(user_id, event)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ==================== DIRECT MESSAGES ====================

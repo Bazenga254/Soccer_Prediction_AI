@@ -5,10 +5,49 @@ Handles public/private prediction sharing, ratings, and comments.
 
 import sqlite3
 import json
+import asyncio
 from datetime import datetime
 from typing import Optional, Dict, List
 
 DB_PATH = "community.db"
+
+# Real-time notification signals: {user_id: latest_notification_id}
+_notification_signals: Dict[int, int] = {}
+# Asyncio events to wake up SSE listeners immediately
+_notification_events: Dict[int, list] = {}
+
+
+def get_notification_signal(user_id: int) -> int:
+    """Get the latest notification id for a user."""
+    return _notification_signals.get(user_id, 0)
+
+
+def subscribe_notifications(user_id: int) -> asyncio.Event:
+    """Subscribe to notification events for a user. Returns an asyncio.Event."""
+    event = asyncio.Event()
+    if user_id not in _notification_events:
+        _notification_events[user_id] = []
+    _notification_events[user_id].append(event)
+    return event
+
+
+def unsubscribe_notifications(user_id: int, event: asyncio.Event):
+    """Unsubscribe from notification events."""
+    if user_id in _notification_events:
+        try:
+            _notification_events[user_id].remove(event)
+        except ValueError:
+            pass
+        if not _notification_events[user_id]:
+            del _notification_events[user_id]
+
+
+def _signal_notification(user_id: int, notif_id: int):
+    """Signal that a new notification was created for a user."""
+    _notification_signals[user_id] = notif_id
+    # Wake up any SSE listeners for this user
+    for event in _notification_events.get(user_id, []):
+        event.set()
 
 
 def _get_db():
@@ -155,6 +194,7 @@ def create_notification(user_id: int, notif_type: str, title: str, message: str,
     conn.commit()
     notif_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
+    _signal_notification(user_id, notif_id)
     return notif_id
 
 
