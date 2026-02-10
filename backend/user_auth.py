@@ -787,6 +787,20 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
         conn.close()
         if client_ip:
             record_login_attempt(client_ip, email, False)
+            failed_count = get_failed_attempt_count(email)
+            remaining = MAX_LOGIN_ATTEMPTS - failed_count
+            if remaining <= 0:
+                # For existing users, lock the account. For non-existent, just report locked.
+                lock_account(email)
+                return {
+                    "success": False,
+                    "error": "Too many failed attempts. Please try again later.",
+                    "account_locked": True,
+                    "locked_until": (datetime.now() + timedelta(hours=24)).isoformat(),
+                    "remaining_seconds": 86400,
+                    "attempts_remaining": 0,
+                }
+            return {"success": False, "error": "Invalid email or password", "attempts_remaining": remaining}
         return {"success": False, "error": "Invalid email or password"}
 
     if not user["is_active"]:
