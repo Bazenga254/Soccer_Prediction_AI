@@ -869,6 +869,23 @@ async def upload_avatar(file: UploadFile = File(...), authorization: str = Heade
     return result
 
 
+@app.delete("/api/user/avatar")
+async def delete_avatar(authorization: str = Header(None)):
+    """Remove the user's profile avatar."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    profile = user_auth.get_user_profile(payload["user_id"])
+    if profile and profile.get("avatar_url"):
+        old_file = AVATARS_DIR / profile["avatar_url"].split("/")[-1]
+        if old_file.exists():
+            old_file.unlink()
+
+    result = user_auth.update_avatar_url(payload["user_id"], None)
+    return result
+
+
 @app.get("/api/uploads/avatars/{filename}")
 async def serve_avatar(filename: str):
     """Serve an uploaded avatar image."""

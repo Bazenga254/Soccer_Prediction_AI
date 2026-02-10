@@ -109,6 +109,20 @@ export default function Profile() {
     }
   }
 
+  const handleRemoveAvatar = async () => {
+    setError('')
+    try {
+      const res = await axios.delete('/api/user/avatar')
+      if (res.data.success) {
+        updateUser({ avatar_url: null })
+        setSuccess('Avatar removed!')
+        setTimeout(() => setSuccess(''), 3000)
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to remove avatar')
+    }
+  }
+
   const referralLink = `${window.location.origin}/ref/${user.username}`
 
   const copyReferralLink = () => {
@@ -150,6 +164,18 @@ export default function Profile() {
                 </svg>
               )}
             </button>
+            {user.avatar_url && (
+              <button
+                className="avatar-remove-btn"
+                onClick={handleRemoveAvatar}
+                title="Remove photo"
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )}
             <input
               ref={fileInputRef}
               type="file"
