@@ -541,8 +541,9 @@ def _send_password_changed_email(to_email: str, display_name: str = "") -> bool:
                     border-radius: 8px; padding: 16px; margin: 20px 0;">
             <p style="color: #f87171; margin: 0; font-size: 14px;">
                 <strong>Didn't make this change?</strong><br/>
-                If you didn't change your password, please contact support immediately
-                to prevent unauthorized access to your account.
+                If you didn't change your password, please
+                <a href="https://www.spark-ai-prediction.com/support" style="color: #3b82f6; text-decoration: underline;">contact support</a>
+                immediately to prevent unauthorized access to your account.
             </p>
         </div>
         <p style="color: #64748b; font-size: 13px; text-align: center;">
