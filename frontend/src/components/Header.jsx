@@ -3,6 +3,7 @@ import NotificationDropdown from './NotificationDropdown'
 import MessagesDropdown from './MessagesDropdown'
 import EarningsDropdown from './EarningsDropdown'
 import UserMenuDropdown from './UserMenuDropdown'
+import sparkLogo from '../assets/spark-ai-logo.png'
 
 const COMPETITIONS = [
   // Top 5 Leagues
@@ -42,7 +43,7 @@ export default function Header({ user, logout }) {
     <header className="header">
       <div className="header-content">
         <Link to="/" className="header-logo" style={{ textDecoration: 'none' }}>
-          <span className="logo-icon">⚽</span>
+          <img src={sparkLogo} alt="Spark AI" className="logo-icon-img" />
           <div className="logo-text">
             <h1>Spark AI Prediction</h1>
             <span className="logo-subtitle">Smart Match Analysis & Predictions</span>

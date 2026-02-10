@@ -2,6 +2,7 @@ import { useState } from 'react'
 import LandingNav from '../components/LandingNav'
 import HeroCarousel from '../components/HeroCarousel'
 import AuthModal from '../components/AuthModal'
+import sparkLogo from '../assets/spark-ai-logo.png'
 
 // Placeholder gradient images until user uploads real ones
 const PLACEHOLDER_IMAGES = [
@@ -352,7 +353,7 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <div className="landing-footer-inner">
           <div className="landing-footer-brand">
-            <span className="landing-nav-icon">&#9917;</span>
+            <img src={sparkLogo} alt="Spark AI" className="landing-nav-logo-img" />
             <span className="landing-nav-brand">Spark AI Prediction</span>
           </div>
           <div className="landing-footer-links">

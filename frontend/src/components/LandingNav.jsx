@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import sparkLogo from '../assets/spark-ai-logo.png'
 
 export default function LandingNav({ onSignIn, onGetStarted }) {
   const [scrolled, setScrolled] = useState(false)
@@ -22,7 +23,7 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
     <nav className={`landing-nav ${scrolled ? 'scrolled' : ''}`}>
       <div className="landing-nav-content">
         <div className="landing-nav-logo">
-          <span className="landing-nav-icon">&#9917;</span>
+          <img src={sparkLogo} alt="Spark AI" className="landing-nav-logo-img" />
           <span className="landing-nav-brand">Spark AI</span>
         </div>
 

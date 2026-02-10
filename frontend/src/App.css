@@ -40,6 +40,13 @@
 
 .logo-icon { font-size: 32px; }
 
+.logo-icon-img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
 .logo-text h1 {
   font-size: 21px;
   font-weight: 700;
@@ -9518,6 +9525,13 @@
 
 .landing-nav-icon {
   font-size: 24px;
+}
+
+.landing-nav-logo-img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
 .landing-nav-brand {
