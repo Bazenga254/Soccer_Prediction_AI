@@ -519,7 +519,7 @@ def _send_reset_email(to_email: str, reset_url: str, display_name: str = "") -> 
     </div>
     """
 
-    return _send_zoho_email(to_email, "Reset your password - Spark AI Prediction", html_body, from_email="passwordreset@spark-ai-prediction.com")
+    return _send_zoho_email(to_email, "Reset your password - Spark AI Prediction")
 
 
 def _send_password_changed_email(to_email: str, display_name: str = "") -> bool:
@@ -551,7 +551,7 @@ def _send_password_changed_email(to_email: str, display_name: str = "") -> bool:
     </div>
     """
 
-    return _send_zoho_email(to_email, "Your password was changed - Spark AI Prediction", html_body, from_email="passwordreset@spark-ai-prediction.com")
+    return _send_zoho_email(to_email, "Your password was changed - Spark AI Prediction")
 
 
 def request_password_reset(email: str) -> Dict:
