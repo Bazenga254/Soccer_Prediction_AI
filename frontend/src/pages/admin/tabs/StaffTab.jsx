@@ -12,6 +12,8 @@ const ROLE_COLORS = {
   sales_agent: '#27ae60',
   customer_support_agent: '#2980b9',
   prediction_analyst: '#16a085',
+  technical_hod: '#e84393',
+  technical_support_agent: '#d63031',
   super_admin: '#e74c3c',
   customer_care: '#3498db',
   technical_support: '#9b59b6',
@@ -200,11 +202,13 @@ export default function StaffTab() {
                     <option value="customer_care_hod">Customer Care HOD</option>
                     <option value="marketing_hod">Marketing HOD</option>
                     <option value="predictions_hod">Predictions HOD</option>
+                    <option value="technical_hod">Technical HOD</option>
                   </optgroup>
                   <optgroup label="Agents">
                     <option value="customer_support_agent">Customer Support Agent</option>
                     <option value="sales_agent">Sales Agent</option>
                     <option value="prediction_analyst">Prediction Analyst</option>
+                    <option value="technical_support_agent">Technical Support Agent</option>
                   </optgroup>
                 </select>
               </div>
@@ -308,11 +312,13 @@ export default function StaffTab() {
                 <option value="customer_care_hod">Customer Care HOD</option>
                 <option value="marketing_hod">Marketing HOD</option>
                 <option value="predictions_hod">Predictions HOD</option>
+                <option value="technical_hod">Technical HOD</option>
               </optgroup>
               <optgroup label="Agents">
                 <option value="customer_support_agent">Customer Support Agent</option>
                 <option value="sales_agent">Sales Agent</option>
                 <option value="prediction_analyst">Prediction Analyst</option>
+                <option value="technical_support_agent">Technical Support Agent</option>
               </optgroup>
             </select>
             <div className="admin-modal-actions">

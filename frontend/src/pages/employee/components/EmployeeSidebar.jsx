@@ -10,6 +10,8 @@ const ROLE_COLORS = {
   sales_agent: '#27ae60',
   customer_support_agent: '#f39c12',
   prediction_analyst: '#16a085',
+  technical_hod: '#e84393',
+  technical_support_agent: '#d63031',
 }
 
 const EMPLOYEE_PAGES = [

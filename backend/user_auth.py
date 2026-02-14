@@ -1921,8 +1921,8 @@ VALID_STAFF_ROLES = {'super_admin', 'customer_care', 'accounting', 'technical_su
 # RBAC role names (new system) - these map to roles table
 RBAC_ROLE_NAMES = {
     'owner', 'general_manager', 'sales_hod', 'customer_care_hod',
-    'marketing_hod', 'predictions_hod', 'sales_agent',
-    'customer_support_agent', 'prediction_analyst',
+    'marketing_hod', 'predictions_hod', 'technical_hod', 'sales_agent',
+    'customer_support_agent', 'prediction_analyst', 'technical_support_agent',
 }
 
 # All valid roles (legacy + RBAC)

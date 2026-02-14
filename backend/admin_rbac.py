@@ -26,9 +26,11 @@ ROLE_HIERARCHY = [
     {"name": "customer_care_hod", "display_name": "Customer Care HOD", "level": 2, "department": "customer_care", "description": "Head of Customer Care department"},
     {"name": "marketing_hod", "display_name": "Marketing HOD", "level": 2, "department": "marketing", "description": "Head of Marketing department"},
     {"name": "predictions_hod", "display_name": "Predictions Analyst HOD", "level": 2, "department": "predictions", "description": "Head of Predictions department"},
+    {"name": "technical_hod", "display_name": "Technical HOD", "level": 2, "department": "technical", "description": "Head of Technical department"},
     {"name": "sales_agent", "display_name": "Sales Agent", "level": 3, "department": "sales", "description": "Sales team member"},
     {"name": "customer_support_agent", "display_name": "Customer Support Agent", "level": 3, "department": "customer_care", "description": "Customer support team member"},
     {"name": "prediction_analyst", "display_name": "Prediction Analyst", "level": 3, "department": "predictions", "description": "Predictions team member"},
+    {"name": "technical_support_agent", "display_name": "Technical Support Agent", "level": 3, "department": "technical", "description": "Technical support team member"},
 ]
 
 # Modules that can have permissions
@@ -135,6 +137,23 @@ DEFAULT_PERMISSIONS = {
         "community":     {"read": 1, "write": 1, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
         "activity_logs": {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
     },
+    "technical_hod": {
+        "dashboard":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 1, "approve": 0, "scope": "department"},
+        "users":         {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
+        "employees":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "department"},
+        "technical":     {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 1, "approve": 1, "scope": "department"},
+        "support":       {"read": 1, "write": 1, "edit": 1, "delete": 0, "export": 0, "approve": 0, "scope": "department"},
+        "activity_logs": {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "department"},
+        "community":     {"read": 1, "write": 0, "edit": 1, "delete": 1, "export": 0, "approve": 1, "scope": "company"},
+        "online_users":  {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
+    },
+    "technical_support_agent": {
+        "dashboard":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
+        "technical":     {"read": 1, "write": 1, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
+        "support":       {"read": 1, "write": 1, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
+        "community":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
+        "activity_logs": {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
+    },
 }
 
 
@@ -184,7 +203,7 @@ def migrate_legacy_roles():
     MIGRATION_MAP = {
         "super_admin": "owner",
         "customer_care": "customer_support_agent",
-        "technical_support": "customer_care_hod",
+        "technical_support": "technical_hod",
         "accounting": "general_manager",
     }
     conn = _get_db()
