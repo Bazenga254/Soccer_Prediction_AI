@@ -29,11 +29,23 @@ import prediction_tracker
 import user_auth
 import community
 import subscriptions
+import ai_support
+import swypt_payment
+import jackpot_analyzer
+import admin_rbac
+import activity_logger
+from admin_routes import admin_router
+from employee_routes import employee_router
+import employee_portal
 
 # Admin password for managing access codes
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "SoccerAI2026Admin")
 
 app = FastAPI(title="Spark AI Prediction")
+
+# Include admin routes
+app.include_router(admin_router)
+app.include_router(employee_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,6 +62,61 @@ class PredictRequest(BaseModel):
     competition: str = "PL"
     team_a_name: Optional[str] = None
     team_b_name: Optional[str] = None
+
+
+async def _inactivity_checker():
+    """Background task: 30-min keep-alive prompt for agents, 3-min auto-close if no response."""
+    while True:
+        try:
+            await asyncio.sleep(30)  # Check every 30 seconds
+
+            # 1. Send keep-alive prompts for conversations idle 30+ minutes
+            idle_convs = community.get_conversations_needing_keepalive(idle_minutes=30)
+            for conv in idle_convs:
+                agent_id = conv.get("assigned_agent_id")
+                if not agent_id:
+                    continue
+                community.create_keepalive_prompt(conv["conversation_id"], agent_id)
+                community.create_notification(
+                    user_id=agent_id,
+                    notif_type="keepalive_prompt",
+                    title="Chat Keep-Alive",
+                    message=f"Your support chat has been idle for 30 minutes. Do you want to keep it open?",
+                    metadata={"conversation_id": conv["conversation_id"], "user_id": conv["user_id"]},
+                )
+                print(f"[Support] Keep-alive prompt sent to agent {agent_id} for conversation {conv['conversation_id']}")
+
+            # 2. Auto-close conversations where keep-alive prompt expired (3 min no response)
+            expired = community.get_expired_keepalive_prompts(expire_minutes=3)
+            for prompt in expired:
+                user_id = prompt["user_id"]
+                community.send_support_message(
+                    user_id, "system",
+                    "This conversation has been closed due to inactivity. You can start a new conversation anytime."
+                )
+                community.close_conversation(user_id, "inactivity_timeout")
+                # Mark the prompt as responded so it's not re-processed
+                conn = community._get_db()
+                conn.execute(
+                    "UPDATE chat_keepalive_prompts SET responded = 1, response = 'expired', responded_at = ? WHERE id = ?",
+                    (community.datetime.now().isoformat(), prompt["id"]),
+                )
+                conn.commit()
+                conn.close()
+                print(f"[Support] Auto-closed conversation for user {user_id} (keep-alive expired)")
+
+        except Exception as e:
+            print(f"[Support] Inactivity checker error: {e}")
+
+
+async def _active_users_cleanup():
+    """Background task: periodically clean up stale active user entries."""
+    while True:
+        try:
+            await asyncio.sleep(120)  # Every 2 minutes
+            community.cleanup_inactive_users()
+        except Exception:
+            pass
 
 
 @app.on_event("startup")
@@ -85,10 +152,10 @@ async def startup():
     user_auth.init_user_db()
     print("[OK] User authentication system initialized")
 
-    # Create uploads directory for avatars
-    uploads_dir = Path(__file__).parent / "uploads" / "avatars"
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-    print("[OK] Uploads directory initialized")
+    # Create uploads directories
+    (Path(__file__).parent / "uploads" / "avatars").mkdir(parents=True, exist_ok=True)
+    (Path(__file__).parent / "uploads" / "support").mkdir(parents=True, exist_ok=True)
+    print("[OK] Uploads directories initialized")
 
     # Initialize community predictions database
     community.init_community_db()
@@ -100,6 +167,31 @@ async def startup():
     if expired:
         print(f"[OK] Expired {expired} subscription(s)")
     print("[OK] Subscription system initialized")
+
+    # Initialize payment system
+    swypt_payment.init_payment_db()
+    print("[OK] Swypt payment system initialized")
+
+    # Initialize jackpot analyzer
+    jackpot_analyzer.init_db()
+
+    # Initialize RBAC system
+    admin_rbac.seed_default_roles()
+    admin_rbac.seed_default_permissions()
+    admin_rbac.migrate_legacy_roles()
+    print("[OK] Admin RBAC system initialized")
+
+    # Initialize employee portal tables
+    user_auth.init_employee_tables()
+    print("[OK] Employee portal tables initialized")
+
+    # Start background inactivity checker for support conversations
+    asyncio.create_task(_inactivity_checker())
+    asyncio.create_task(_payment_expiry_checker())
+    asyncio.create_task(_active_users_cleanup())
+    print("[OK] Support keep-alive checker started (30-min idle, 3-min response)")
+    print("[OK] Payment expiry checker started (15-min timeout)")
+    print("[OK] Active user tracking started")
     print("=" * 50)
 
 
@@ -213,6 +305,21 @@ async def get_live_match_data(fixture_id: int):
 
     if match:
         analysis = _compute_live_analysis(match)
+
+        # Also fetch detailed fixture statistics (possession, shots, corners, etc.)
+        raw_stats = await football_api.fetch_fixture_statistics(fixture_id)
+        stats_parsed = None
+        if raw_stats and isinstance(raw_stats, dict):
+            home_id = match.get("home_team", {}).get("id")
+            away_id = match.get("away_team", {}).get("id")
+            stats_parsed = {"home": {}, "away": {}}
+            for team_id_str, team_data in raw_stats.items():
+                tid = int(team_id_str) if str(team_id_str).isdigit() else None
+                if tid == home_id:
+                    stats_parsed["home"] = team_data.get("stats", {}) if isinstance(team_data, dict) else {}
+                elif tid == away_id:
+                    stats_parsed["away"] = team_data.get("stats", {}) if isinstance(team_data, dict) else {}
+
         return {
             "fixture_id": fixture_id,
             "status": match.get("status"),
@@ -220,6 +327,7 @@ async def get_live_match_data(fixture_id: int):
             "goals": match.get("goals"),
             "events": match.get("events", []),
             "live_analysis": analysis,
+            "statistics": stats_parsed,
         }
 
     return {"fixture_id": fixture_id, "status": None, "message": "Match not found"}
@@ -348,6 +456,81 @@ def _make_fallback_team(team_id: int, name: str) -> dict:
         "away_goals_for": 5,
         "away_goals_against": 7,
     }
+
+
+# --- Analysis View Limits (Free tier: 3 unique matches per 24h) ---
+
+@app.get("/api/analysis-views/status")
+async def analysis_views_status(authorization: str = Header(None)):
+    """Check how many free analysis views the user has left."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        return {"views_used": 0, "max_views": 3, "allowed": True, "reset_at": None, "balance_usd": 0}
+    tier = payload.get("tier", "free")
+    if tier == "pro":
+        return {"views_used": 0, "max_views": -1, "allowed": True, "reset_at": None, "balance_usd": 0}
+    result = user_auth.get_analysis_views_status(payload["user_id"])
+    bal = community.get_user_balance(payload["user_id"])
+    result["balance_usd"] = bal.get("balance_usd", 0)
+    return result
+
+
+@app.post("/api/analysis-views/record")
+async def record_analysis_view(request: dict, authorization: str = Header(None)):
+    """Record a match analysis view for the current user."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    tier = payload.get("tier", "free")
+    if tier == "pro":
+        return {"views_used": 0, "max_views": -1, "allowed": True, "reset_at": None}
+    match_key = request.get("match_key", "")
+    if not match_key:
+        raise HTTPException(status_code=400, detail="match_key is required")
+    balance_paid = request.get("balance_paid", False)
+    return user_auth.record_analysis_view(payload["user_id"], match_key, balance_paid=balance_paid)
+
+
+# --- Pay on the Go: Balance Deduction Endpoints ---
+
+@app.post("/api/balance/use-for-analysis")
+async def use_balance_for_analysis(authorization: str = Header(None)):
+    """Deduct $0.50 from user balance for a match analysis view."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    tier = payload.get("tier", "free")
+    if tier == "pro":
+        raise HTTPException(status_code=400, detail="Pro users have unlimited access")
+    user_id = payload["user_id"]
+    bal = community.get_user_balance(user_id)
+    if bal.get("balance_usd", 0) < 0.50:
+        raise HTTPException(status_code=403, detail="Insufficient balance. Deposit at least $0.50 to continue.")
+    updated = community.adjust_user_balance(
+        user_id=user_id, amount_usd=-0.50, amount_kes=0,
+        reason="Match analysis view", adjustment_type="analysis_deduction"
+    )
+    return {"success": True, "balance": updated}
+
+
+@app.post("/api/balance/use-for-jackpot")
+async def use_balance_for_jackpot(authorization: str = Header(None)):
+    """Deduct $1.00 from user balance for a jackpot analysis."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    tier = payload.get("tier", "free")
+    if tier == "pro":
+        raise HTTPException(status_code=400, detail="Pro users have unlimited access")
+    user_id = payload["user_id"]
+    bal = community.get_user_balance(user_id)
+    if bal.get("balance_usd", 0) < 1.00:
+        raise HTTPException(status_code=403, detail="Insufficient balance. Deposit at least $1.00 to continue.")
+    updated = community.adjust_user_balance(
+        user_id=user_id, amount_usd=-1.00, amount_kes=0,
+        reason="Jackpot analysis", adjustment_type="jackpot_deduction"
+    )
+    return {"success": True, "balance": updated}
 
 
 @app.post("/api/predict")
@@ -520,13 +703,6 @@ def _build_risks(team_a, team_b, h2h, players_a, players_b, outcome, odds=None):
 class VerifyCodeRequest(BaseModel):
     code: str
 
-class CreateCodeRequest(BaseModel):
-    days_valid: int = 30
-    label: str = ""
-
-class AdminLoginRequest(BaseModel):
-    password: str
-
 
 @app.post("/api/auth/verify")
 async def verify_access_code(request: VerifyCodeRequest):
@@ -535,130 +711,18 @@ async def verify_access_code(request: VerifyCodeRequest):
     return result
 
 
-@app.post("/api/admin/login")
-async def admin_login(request: AdminLoginRequest):
-    """Admin login to manage access codes."""
-    if request.password == ADMIN_PASSWORD:
-        return {"success": True, "message": "Admin authenticated"}
-    raise HTTPException(status_code=401, detail="Invalid admin password")
+# Admin endpoints moved to admin_routes.py (included via admin_router)
 
 
-@app.post("/api/admin/codes/create")
-async def create_code(request: CreateCodeRequest, x_admin_password: str = Header(None)):
-    """Create a new access code (admin only)."""
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    result = access_codes.create_access_code(
-        days_valid=request.days_valid,
-        label=request.label,
-    )
-    return result
-
-
-@app.get("/api/admin/codes")
-async def list_codes(x_admin_password: str = Header(None)):
-    """List all access codes (admin only)."""
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return {"codes": access_codes.list_all_codes()}
-
-
-@app.delete("/api/admin/codes/{code}")
-async def revoke_code(code: str, x_admin_password: str = Header(None)):
-    """Revoke an access code (admin only)."""
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    success = access_codes.revoke_code(code)
-    if success:
-        return {"message": f"Code {code} revoked"}
-    raise HTTPException(status_code=404, detail="Code not found")
-
-
-# ==================== ADMIN DASHBOARD ENDPOINTS ====================
-
-@app.get("/api/admin/dashboard-stats")
-async def admin_dashboard_stats(x_admin_password: str = Header(None)):
-    """Get full dashboard statistics for admin panel."""
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    user_stats = user_auth.get_user_stats()
-    community_stats = community.get_community_stats()
-    prediction_stats = prediction_tracker.get_accuracy_stats()
-    sub_stats = subscriptions.get_subscription_stats()
-
-    return {
-        "users": user_stats,
-        "community": community_stats,
-        "predictions": prediction_stats,
-        "subscriptions": sub_stats,
-    }
-
-
-@app.get("/api/admin/users")
-async def admin_list_users(x_admin_password: str = Header(None)):
-    """List all users for admin management."""
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    users = user_auth.list_all_users()
-    return {"users": users}
-
-
-class SetTierRequest(BaseModel):
-    tier: str
-
-class SetActiveRequest(BaseModel):
-    is_active: bool
-
-
-@app.post("/api/admin/users/{user_id}/set-tier")
-async def admin_set_tier(user_id: int, request: SetTierRequest, x_admin_password: str = Header(None)):
-    """Change a user's tier (free/pro)."""
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    if request.tier not in ("free", "pro"):
-        raise HTTPException(status_code=400, detail="Tier must be 'free' or 'pro'")
-    result = user_auth.set_user_tier(user_id, request.tier)
-    return result
-
-
-@app.post("/api/admin/users/{user_id}/toggle-active")
-async def admin_toggle_active(user_id: int, request: SetActiveRequest, x_admin_password: str = Header(None)):
-    """Suspend or unsuspend a user."""
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    result = user_auth.toggle_user_active(user_id, 1 if request.is_active else 0)
-    return result
-
-
-@app.delete("/api/admin/community/{prediction_id}")
-async def admin_delete_prediction(prediction_id: int, x_admin_password: str = Header(None)):
-    """Admin: delete a community prediction."""
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    result = community.delete_prediction(prediction_id)
-    if not result["success"]:
-        raise HTTPException(status_code=404, detail=result["error"])
-    return result
-
-
-@app.delete("/api/admin/comment/{comment_id}")
-async def admin_delete_comment(comment_id: int, x_admin_password: str = Header(None)):
-    """Admin: delete a specific comment."""
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    result = community.delete_comment(comment_id)
-    if not result["success"]:
-        raise HTTPException(status_code=404, detail=result["error"])
-    return result
-
-
-@app.get("/api/admin/referral-stats")
-async def admin_referral_stats(x_admin_password: str = Header(None)):
-    """Get referral leaderboard for admin."""
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return {"referrals": user_auth.get_all_referral_stats()}
+@app.get("/api/user/staff-role")
+async def get_own_staff_role(authorization: str = Header(None)):
+    """Check own staff role and RBAC info (for frontend to know if user is staff)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    role = user_auth.get_staff_role(payload["user_id"])
+    role_info = admin_rbac.get_user_role(payload["user_id"])
+    return {"staff_role": role, "role_info": role_info}
 
 
 # ==================== END ACCESS CODE / ADMIN ENDPOINTS ====================
@@ -672,6 +736,10 @@ class RegisterRequest(BaseModel):
     display_name: str = ""
     referral_code: str = ""
     captcha_token: str = ""
+    full_name: str = ""
+    date_of_birth: str = ""
+    security_question: str = ""
+    security_answer: str = ""
 
 class LoginRequest(BaseModel):
     email: str
@@ -707,6 +775,15 @@ class UpdateUsernameRequest(BaseModel):
 class UpdateDisplayNameRequest(BaseModel):
     display_name: str
 
+class PersonalInfoRequest(BaseModel):
+    full_name: str = None
+    date_of_birth: str = None
+    security_question: str = None
+    security_answer: str = None
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+
 
 def _get_client_ip(request: Request) -> str:
     """Extract client IP, checking X-Forwarded-For for proxied requests."""
@@ -717,11 +794,19 @@ def _get_client_ip(request: Request) -> str:
 
 
 def _get_current_user(authorization: str = Header(None)) -> Optional[dict]:
-    """Extract user from Authorization header."""
+    """Extract user from Authorization header. Always refreshes tier and checks active status from DB."""
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization.replace("Bearer ", "")
-    return user_auth.verify_token(token)
+    payload = user_auth.verify_token(token)
+    if payload and payload.get("user_id"):
+        status = user_auth.get_user_tier_and_status(payload["user_id"])
+        if status is None:
+            return None
+        if not status["is_active"]:
+            raise HTTPException(status_code=403, detail="Account suspended")
+        payload["tier"] = status["tier"]
+    return payload
 
 
 def _require_sensitive_action(user_id: int):
@@ -751,6 +836,95 @@ async def get_security_status(authorization: str = Header(None)):
     }
 
 
+# ─── Invite System (Public Endpoints) ───
+
+class InviteRegisterRequest(BaseModel):
+    token: str
+    email: str
+    password: str
+    display_name: str
+
+
+@app.get("/api/invite/validate/{token}")
+async def validate_invite_token(token: str):
+    """Public endpoint to check if an invite token is valid."""
+    info = employee_portal.validate_invite(token)
+    if not info:
+        raise HTTPException(status_code=404, detail="Invalid or expired invite link")
+    return {"valid": True, **info}
+
+
+@app.post("/api/invite/register")
+async def register_via_invite(body: InviteRegisterRequest):
+    """Register a new account via employee invite link. Bypasses access code and captcha."""
+    # Validate the invite
+    info = employee_portal.validate_invite(body.token)
+    if not info:
+        raise HTTPException(status_code=400, detail="Invalid or expired invite link")
+
+    email = body.email.lower().strip()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email is required")
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if not body.display_name.strip():
+        raise HTTPException(status_code=400, detail="Display name is required")
+
+    # Check email not taken
+    conn = user_auth._get_db()
+    existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # Create account (bypass captcha + verification)
+    username = user_auth._generate_unique_username(user_auth._get_db())
+    password_hash = user_auth._hash_password(body.password)
+    import random
+    ref_code = user_auth._generate_referral_code()
+    avatar_color = random.choice(user_auth.AVATAR_COLORS)
+    now = datetime.now().isoformat()
+
+    conn = user_auth._get_db()
+    conn.execute(
+        """INSERT INTO users (email, password_hash, display_name, username, avatar_color,
+           referral_code, created_at, email_verified, staff_role, full_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+        (email, password_hash, body.display_name.strip(), username, avatar_color,
+         ref_code, now, info["role_name"], body.display_name.strip()),
+    )
+    conn.commit()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+
+    # Assign RBAC role
+    role_conn = user_auth._get_db()
+    role = role_conn.execute("SELECT id, department FROM roles WHERE name = ?", (info["role_name"],)).fetchone()
+    role_conn.close()
+    if role:
+        admin_rbac.assign_role(user["id"], role["id"])
+
+    # Mark invite as used
+    employee_portal.use_invite(body.token, user["id"])
+
+    # Create JWT token
+    token = user_auth._create_token(user["id"], username, "free", False, info["role_name"])
+
+    return {
+        "success": True,
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "email": email,
+            "display_name": body.display_name.strip(),
+            "username": username,
+            "staff_role": info["role_name"],
+            "role_id": role["id"] if role else None,
+            "department": info.get("department"),
+        },
+    }
+
+
 @app.post("/api/user/register")
 async def register(body: RegisterRequest, request: Request):
     """Register a new user account. Returns requires_verification if email needs to be verified."""
@@ -763,6 +937,23 @@ async def register(body: RegisterRequest, request: Request):
     )
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
+
+    # Save personal info if provided during registration
+    has_personal = any([body.full_name, body.date_of_birth, body.security_question, body.security_answer])
+    if has_personal:
+        # Look up the user by email to get their ID
+        conn = user_auth._get_db()
+        user = conn.execute("SELECT id FROM users WHERE email = ?", (body.email.lower().strip(),)).fetchone()
+        conn.close()
+        if user:
+            user_auth.update_personal_info(
+                user_id=user["id"],
+                full_name=body.full_name or None,
+                date_of_birth=body.date_of_birth or None,
+                security_question=body.security_question or None,
+                security_answer=body.security_answer or None,
+            )
+
     return result
 
 
@@ -901,7 +1092,41 @@ async def get_me(authorization: str = Header(None)):
     profile = user_auth.get_user_profile(payload["user_id"])
     if not profile:
         raise HTTPException(status_code=404, detail="User not found")
+    # Record heartbeat on profile fetch (happens on page load and refresh)
+    community.record_heartbeat(
+        payload["user_id"],
+        display_name=profile.get("display_name", ""),
+        username=profile.get("username", ""),
+        avatar_color=profile.get("avatar_color", "#6c5ce7"),
+    )
     return {"user": profile}
+
+
+@app.post("/api/heartbeat")
+async def heartbeat(authorization: str = Header(None)):
+    """Record user activity heartbeat for online tracking."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    profile = user_auth.get_user_profile(payload["user_id"])
+    if profile:
+        community.record_heartbeat(
+            payload["user_id"],
+            display_name=profile.get("display_name", ""),
+            username=profile.get("username", ""),
+            avatar_color=profile.get("avatar_color", "#6c5ce7"),
+        )
+    return {"ok": True}
+
+
+@app.get("/api/active-users-count")
+async def active_users_count():
+    """Get count of currently active users (public)."""
+    count = community.get_active_user_count()
+    return {"active_users": count}
+
+
+# Active users admin endpoint moved to admin_routes.py
 
 
 @app.put("/api/user/username")
@@ -1023,6 +1248,48 @@ async def serve_avatar(filename: str):
     return FileResponse(str(filepath))
 
 
+@app.put("/api/user/personal-info")
+async def update_personal_info(req: PersonalInfoRequest, authorization: str = Header(None)):
+    """Update user's personal information (full name, DOB, security question/answer)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    result = user_auth.update_personal_info(
+        user_id=payload["user_id"],
+        full_name=req.full_name,
+        date_of_birth=req.date_of_birth,
+        security_question=req.security_question,
+        security_answer=req.security_answer,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return {"success": True}
+
+
+@app.delete("/api/user/account")
+async def delete_account(req: DeleteAccountRequest, authorization: str = Header(None)):
+    """Delete the current user's account after password verification."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Verify password
+    conn = user_auth._get_db()
+    user = conn.execute("SELECT password_hash FROM users WHERE id = ?", (payload["user_id"],)).fetchone()
+    conn.close()
+    if not user or not user_auth._verify_password(req.password, user["password_hash"]):
+        raise HTTPException(status_code=403, detail="Incorrect password")
+
+    # Delete community data first, then user account
+    community.delete_user_data(payload["user_id"])
+    result = user_auth.delete_user(payload["user_id"])
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    return {"success": True, "message": "Account deleted successfully"}
+
+
 # ==================== END USER AUTH ENDPOINTS ====================
 
 
@@ -1106,6 +1373,143 @@ async def get_subscription_history(authorization: str = Header(None)):
 # ==================== END SUBSCRIPTION ENDPOINTS ====================
 
 
+# ==================== PAYMENT ENDPOINTS (SWYPT / M-PESA) ====================
+
+async def _payment_expiry_checker():
+    """Background task: expire stale payment transactions every 2 minutes."""
+    while True:
+        try:
+            await asyncio.sleep(120)
+            expired = swypt_payment.expire_stale_transactions(minutes=15)
+            if expired:
+                print(f"[Payment] Expired {expired} stale transaction(s)")
+        except Exception as e:
+            print(f"[Payment] Expiry checker error: {e}")
+
+
+class MpesaQuoteRequest(BaseModel):
+    amount_kes: float = 0
+    amount_usd: float = 0
+
+
+class MpesaPaymentRequest(BaseModel):
+    phone: str
+    amount_kes: float
+    transaction_type: str
+    reference_id: str = ""
+
+
+class WithdrawalRequest(BaseModel):
+    amount_usd: float
+    phone: str
+
+
+@app.post("/api/payment/quote")
+async def get_payment_quote(request: MpesaQuoteRequest, authorization: str = Header(None)):
+    """Get KES to USD or USD to KES conversion quote from Swypt."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if request.amount_kes > 0:
+        result = await swypt_payment.get_kes_to_usd_quote(request.amount_kes)
+    elif request.amount_usd > 0:
+        result = await swypt_payment.get_usd_to_kes_quote(request.amount_usd)
+    else:
+        raise HTTPException(status_code=400, detail="Provide amount_kes or amount_usd")
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Quote failed"))
+    return result
+
+
+@app.post("/api/payment/mpesa/initiate")
+async def initiate_mpesa_payment(request: MpesaPaymentRequest, authorization: str = Header(None)):
+    """Initiate M-Pesa STK push via Swypt on-ramp."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = await swypt_payment.initiate_stk_push(
+        phone=request.phone,
+        amount_kes=request.amount_kes,
+        user_id=payload["user_id"],
+        transaction_type=request.transaction_type,
+        reference_id=request.reference_id,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Payment initiation failed"))
+    return result
+
+
+@app.get("/api/payment/status/{transaction_id}")
+async def get_payment_status(transaction_id: int, authorization: str = Header(None)):
+    """Check M-Pesa payment status. Frontend polls this."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = await swypt_payment.check_payment_status(transaction_id, payload["user_id"])
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Status check failed"))
+    return result
+
+
+@app.get("/api/payment/history")
+async def get_payment_history(authorization: str = Header(None)):
+    """Get user's payment transaction history."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"transactions": swypt_payment.get_user_transactions(payload["user_id"])}
+
+
+# ==================== WITHDRAWAL ENDPOINTS ====================
+
+@app.post("/api/withdrawal/request")
+async def request_withdrawal(body: WithdrawalRequest, authorization: str = Header(None)):
+    """Request a withdrawal to M-Pesa."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = swypt_payment.request_withdrawal(
+        user_id=payload["user_id"],
+        amount_usd=body.amount_usd,
+        phone=body.phone,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Withdrawal request failed"))
+    return result
+
+
+@app.get("/api/withdrawal/history")
+async def get_withdrawal_history(authorization: str = Header(None)):
+    """Get user's withdrawal history."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"withdrawals": swypt_payment.get_user_withdrawals(payload["user_id"])}
+
+
+# Withdrawal admin endpoints moved to admin_routes.py
+
+# ==================== END PAYMENT ENDPOINTS ====================
+
+
+# ==================== USER BALANCE ENDPOINTS ====================
+
+@app.get("/api/user/balance")
+async def get_user_balance(authorization: str = Header(None)):
+    """Get the authenticated user's account balance."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    balance = community.get_user_balance(payload["user_id"])
+    return {"balance": balance}
+
+
+# Balance admin endpoints moved to admin_routes.py
+
+
+# ==================== END USER BALANCE ENDPOINTS ====================
+
+
 # ==================== PREDICTION TRACK RECORD ENDPOINTS ====================
 
 class UpdateResultRequest(BaseModel):
@@ -1153,6 +1557,7 @@ class PredictionItem(BaseModel):
     category: str
     outcome: str
     probability: float
+    competitionId: str = ""
 
 class ConfirmPredictionsRequest(BaseModel):
     predictions: List[PredictionItem]
@@ -1160,6 +1565,7 @@ class ConfirmPredictionsRequest(BaseModel):
     is_paid: bool = False
     price_usd: float = 0
     analysis_notes: str = ""
+    is_live_bet: bool = False
 
 
 @app.post("/api/predictions/confirm")
@@ -1241,6 +1647,8 @@ async def confirm_predictions(request: ConfirmPredictionsRequest, authorization:
                     visibility="public",
                     is_paid=request.is_paid,
                     price_usd=request.price_usd if request.is_paid else 0,
+                    competition_code=pred.competitionId,
+                    is_live_bet=request.is_live_bet,
                 )
             except Exception as e:
                 print(f"Failed to share prediction for {pred.matchId}: {e}")
@@ -1325,10 +1733,20 @@ async def share_prediction(request: SharePredictionRequest, authorization: str =
     return result
 
 
+@app.get("/api/search")
+async def global_search(q: str = Query("", min_length=2)):
+    """Search for matches by team name and community users by username/display name."""
+    matches = football_api.search_cached_fixtures(q, limit=15)
+    users = community.search_users(q, limit=10)
+    return {"matches": matches, "users": users}
+
+
 @app.get("/api/community/predictions")
-async def get_community_predictions(page: int = 1, per_page: int = 20):
-    """Get public community predictions."""
-    return community.get_public_predictions(page=page, per_page=per_page)
+async def get_community_predictions(page: int = 1, per_page: int = 20, user_id: int = None, sort_by: str = "best"):
+    """Get public community predictions. sort_by: best|new|top_rated|hot"""
+    if sort_by not in ("best", "new", "top_rated", "hot"):
+        sort_by = "best"
+    return community.get_public_predictions(page=page, per_page=per_page, user_id=user_id, sort_by=sort_by)
 
 
 @app.get("/api/community/my-shared")
@@ -1393,6 +1811,93 @@ async def get_top_predictors():
     return {"predictors": community.get_top_predictors()}
 
 
+# --- Reactions (Like/Dislike) ---
+
+class ReactionRequest(BaseModel):
+    reaction: str  # 'like' or 'dislike'
+
+@app.post("/api/community/{prediction_id}/react")
+async def react_to_prediction(prediction_id: int, request: ReactionRequest, authorization: str = Header(None)):
+    """Like or dislike a prediction. Toggle off if same reaction."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = community.react_prediction(prediction_id, payload["user_id"], request.reaction)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.get("/api/community/{prediction_id}/reactions")
+async def get_reactions(prediction_id: int, authorization: str = Header(None)):
+    """Get reaction counts for a prediction."""
+    payload = _get_current_user(authorization)
+    user_id = payload["user_id"] if payload else None
+    return community.get_prediction_reactions(prediction_id, user_id)
+
+
+# --- Prediction Live Chat ---
+
+class ChatMessageRequest(BaseModel):
+    message: str
+
+@app.post("/api/community/{prediction_id}/chat")
+async def send_chat(prediction_id: int, request: ChatMessageRequest, authorization: str = Header(None)):
+    """Send a live chat message on a prediction."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    profile = user_auth.get_user_profile(payload["user_id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+    result = community.send_chat_message(
+        prediction_id=prediction_id,
+        user_id=profile["id"],
+        username=profile["username"],
+        display_name=profile["display_name"],
+        avatar_color=profile["avatar_color"],
+        message=request.message,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.get("/api/community/{prediction_id}/chat")
+async def get_chat(prediction_id: int, since_id: int = 0):
+    """Get chat messages for a prediction. Use since_id for polling."""
+    messages = community.get_chat_messages(prediction_id, since_id=since_id)
+    return {"messages": messages}
+
+
+# --- Live Match Chat Endpoints ---
+
+@app.post("/api/match/{match_key}/chat")
+async def send_match_chat(match_key: str, request: ChatMessageRequest, authorization: str = Header(None)):
+    """Send a live chat message on a match."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    profile = user_auth.get_user_profile(payload["user_id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+    result = community.send_match_chat_message(
+        match_key=match_key,
+        user_id=profile["id"],
+        username=profile["username"],
+        display_name=profile["display_name"],
+        avatar_color=profile["avatar_color"],
+        message=request.message,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.get("/api/match/{match_key}/chat")
+async def get_match_chat(match_key: str, since_id: int = 0):
+    """Get chat messages for a live match. Use since_id for polling."""
+    messages = community.get_match_chat_messages(match_key, since_id=since_id)
+    return {"messages": messages}
+
+
 # --- Paid Predictions Endpoints ---
 
 class PurchasePredictionRequest(BaseModel):
@@ -1401,11 +1906,13 @@ class PurchasePredictionRequest(BaseModel):
 
 
 @app.get("/api/community/paid")
-async def get_paid_predictions(page: int = 1, per_page: int = 20, authorization: str = Header(None)):
-    """Get paid predictions feed with purchase status."""
+async def get_paid_predictions(page: int = 1, per_page: int = 20, sort_by: str = "best", authorization: str = Header(None)):
+    """Get paid predictions feed. sort_by: best|new|top_rated|hot"""
+    if sort_by not in ("best", "new", "top_rated", "hot"):
+        sort_by = "best"
     payload = _get_current_user(authorization)
     viewer_id = payload["user_id"] if payload else None
-    return community.get_paid_predictions_feed(page=page, per_page=per_page, viewer_id=viewer_id)
+    return community.get_paid_predictions_feed(page=page, per_page=per_page, viewer_id=viewer_id, sort_by=sort_by)
 
 
 @app.post("/api/community/{prediction_id}/purchase")
@@ -1442,6 +1949,126 @@ async def get_creator_dashboard(authorization: str = Header(None)):
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return community.get_creator_dashboard(payload["user_id"])
+
+
+# ==================== FOLLOW SYSTEM ====================
+
+@app.post("/api/community/follow/{target_user_id}")
+async def follow_user_endpoint(target_user_id: int, authorization: str = Header(None)):
+    """Follow a user to get notified when they post predictions."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = community.follow_user(payload["user_id"], target_user_id)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.delete("/api/community/follow/{target_user_id}")
+async def unfollow_user_endpoint(target_user_id: int, authorization: str = Header(None)):
+    """Unfollow a user."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return community.unfollow_user(payload["user_id"], target_user_id)
+
+
+@app.get("/api/community/follow-status/{target_user_id}")
+async def get_follow_status(target_user_id: int, authorization: str = Header(None)):
+    """Check if current user follows target user, and get follow counts."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        return {"is_following": False, "followers_count": 0, "following_count": 0}
+    is_following = community.is_following(payload["user_id"], target_user_id)
+    stats = community.get_follow_stats(target_user_id)
+    return {
+        "is_following": is_following,
+        "followers_count": stats["followers_count"],
+        "following_count": stats["following_count"],
+    }
+
+
+# ==================== LIVE BET PREDICTIONS ====================
+
+class LiveBetPrediction(BaseModel):
+    fixture_id: int
+    match_name: str
+    prediction_type: str
+    prediction_value: str
+    confidence: float = 0
+    analysis_notes: str = ""
+
+class LiveBetRequest(BaseModel):
+    predictions: List[LiveBetPrediction]
+    visibility: str = "public"
+    is_paid: bool = False
+    price_usd: float = 0
+    analysis_notes: str = ""
+
+
+@app.post("/api/community/live-bet")
+async def submit_live_bet(request: LiveBetRequest, authorization: str = Header(None)):
+    """Submit a live bet prediction for an in-play match."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    profile = user_auth.get_user_profile(payload["user_id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Validate matches are actually live
+    live_matches = await football_api.fetch_live_matches() or []
+    live_ids = {m.get("id") for m in live_matches}
+
+    results = []
+    for pred in request.predictions:
+        if pred.fixture_id not in live_ids:
+            continue
+
+        match = next((m for m in live_matches if m.get("id") == pred.fixture_id), None)
+        if not match:
+            continue
+
+        team_a = match["home_team"]["name"]
+        team_b = match["away_team"]["name"]
+        comp_code = match.get("competition", {}).get("code", "")
+        fixture_key = f"{match['home_team']['id']}-{match['away_team']['id']}-{datetime.now().strftime('%Y%m%d')}"
+
+        result = community.share_prediction(
+            user_id=profile["id"],
+            username=profile["username"],
+            display_name=profile["display_name"],
+            avatar_color=profile["avatar_color"],
+            fixture_id=fixture_key,
+            team_a_name=team_a,
+            team_b_name=team_b,
+            competition=match.get("competition", {}).get("name", ""),
+            predicted_result=f"[LIVE] {pred.prediction_type}: {pred.prediction_value}",
+            predicted_result_prob=pred.confidence,
+            analysis_summary=pred.analysis_notes or request.analysis_notes,
+            visibility=request.visibility,
+            is_paid=request.is_paid,
+            price_usd=request.price_usd if request.is_paid else 0,
+            competition_code=comp_code,
+            is_live_bet=True,
+        )
+        results.append(result)
+
+    return {
+        "success": True,
+        "submitted_count": len(results),
+        "shared": request.visibility == "public",
+    }
+
+
+@app.get("/api/community/live-predictions")
+async def get_live_predictions(authorization: str = Header(None)):
+    """Get community predictions that are live bets."""
+    payload = _get_current_user(authorization)
+    viewer_id = payload["user_id"] if payload else None
+    return community.get_live_bet_predictions(viewer_id=viewer_id)
 
 
 # ==================== NOTIFICATIONS & EARNINGS ====================
@@ -1563,7 +2190,22 @@ async def get_conversations(authorization: str = Header(None)):
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {"conversations": community.get_conversations(payload["user_id"])}
+    convos = community.get_conversations(payload["user_id"])
+    # Add virtual "Support" conversation if user has support messages
+    support = community.get_support_latest_for_user(payload["user_id"])
+    if support:
+        convos.insert(0, {
+            "other_id": -1,
+            "other_name": "Support",
+            "other_username": "support",
+            "other_avatar": "#6c5ce7",
+            "last_message": support["last_message"],
+            "last_message_at": support["last_message_at"],
+            "is_mine": support["is_mine"],
+            "unread_count": support["unread_count"],
+            "is_support": True,
+        })
+    return {"conversations": convos}
 
 @app.get("/api/messages/{other_id}")
 async def get_messages(other_id: int, authorization: str = Header(None)):
@@ -1575,11 +2217,258 @@ async def get_messages(other_id: int, authorization: str = Header(None)):
 
 @app.get("/api/messages-unread-count")
 async def get_unread_messages_count(authorization: str = Header(None)):
-    """Get unread message count."""
+    """Get unread message count (includes support messages)."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {"unread_count": community.get_unread_messages_count(payload["user_id"])}
+    dm_unread = community.get_unread_messages_count(payload["user_id"])
+    support_unread = community.get_support_unread_count(payload["user_id"])
+    return {"unread_count": dm_unread + support_unread}
+
+
+SUPPORT_UPLOADS_DIR = Path(__file__).parent / "uploads" / "support"
+MAX_SUPPORT_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+ALLOWED_SUPPORT_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", ".doc", ".docx", ".txt", ".csv", ".xls", ".xlsx"}
+
+
+@app.post("/api/support/upload")
+async def support_upload_file(file: UploadFile = File(...), authorization: str = Header(None)):
+    """User uploads a file in support chat (max 10MB)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = payload["user_id"]
+    if not community.is_conversation_active(user_id):
+        raise HTTPException(status_code=400, detail="Conversation is closed.")
+
+    # Validate file size
+    contents = await file.read()
+    if len(contents) > MAX_SUPPORT_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
+
+    # Validate extension
+    ext = Path(file.filename).suffix.lower() if file.filename else ""
+    if ext not in ALLOWED_SUPPORT_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File type not allowed. Allowed: {', '.join(ALLOWED_SUPPORT_EXTENSIONS)}")
+
+    # Save file
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    filepath = SUPPORT_UPLOADS_DIR / unique_name
+    with open(filepath, "wb") as f:
+        f.write(contents)
+
+    file_url = f"/api/uploads/support/{unique_name}"
+    original_name = file.filename or unique_name
+
+    # Send as a message with file attachment
+    content = f"[FILE:{original_name}]({file_url})"
+    result = community.send_support_message(user_id, "user", content)
+    return {"success": True, "file_url": file_url, "file_name": original_name, "message_id": result.get("message_id")}
+
+
+# Admin support upload moved to admin_routes.py
+
+
+@app.get("/api/uploads/support/{filename}")
+async def serve_support_file(filename: str):
+    """Serve an uploaded support file."""
+    filepath = SUPPORT_UPLOADS_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(filepath))
+
+
+# ==================== SUPPORT CHAT (USER SIDE) ====================
+
+class SupportMessageRequest(BaseModel):
+    content: str
+    category: str = None
+
+
+@app.post("/api/support/send")
+async def support_send(request: SupportMessageRequest, authorization: str = Header(None)):
+    """User sends a support message."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = payload["user_id"]
+
+    # Check if conversation is active (reject if closed)
+    if not community.is_conversation_active(user_id):
+        raise HTTPException(status_code=400, detail="Conversation is closed. Please start a new conversation.")
+
+    result = community.send_support_message(user_id, "user", request.content, category=request.category)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    # AI auto-response (skip if conversation is already escalated to human)
+    if not community.is_support_escalated(user_id):
+        try:
+            history = community.get_support_messages(user_id, mark_read_for=None, limit=50, current_conv_only=True)
+            # Don't include the message we just sent in history passed to AI
+            history_for_ai = history[:-1] if history else []
+            ai_result = ai_support.get_ai_response(request.content, history_for_ai, category=request.category)
+
+            # Save AI response
+            community.send_support_message(user_id, "ai", ai_result["response"])
+
+            # Handle escalation
+            if ai_result["should_escalate"]:
+                community.escalate_support(user_id)
+                community.send_support_message(
+                    user_id, "ai",
+                    "I have forwarded your issue to an agent who will respond to you shortly. Please type your issue here in detail for the agent to respond."
+                )
+        except Exception as e:
+            print(f"[AI Support] Error in auto-response: {e}")
+
+    return result
+
+
+@app.post("/api/support/escalate")
+async def support_escalate(authorization: str = Header(None)):
+    """User manually requests escalation to human agent."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = payload["user_id"]
+
+    if not community.is_support_escalated(user_id):
+        community.escalate_support(user_id)
+        community.send_support_message(
+            user_id, "ai",
+            "I have forwarded your issue to an agent who will respond to you shortly. Please type your issue here in detail for the agent to respond."
+        )
+    return {"success": True}
+
+
+@app.get("/api/support/messages")
+async def support_messages(authorization: str = Header(None)):
+    """User gets their support chat history."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"messages": community.get_support_messages(payload["user_id"], mark_read_for="user", current_conv_only=True)}
+
+
+@app.get("/api/support/unread")
+async def support_unread(authorization: str = Header(None)):
+    """User gets unread count from admin."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"unread_count": community.get_support_unread_count(payload["user_id"])}
+
+
+@app.get("/api/support/conversation-status")
+async def support_conversation_status(authorization: str = Header(None)):
+    """Get current conversation state (active/closed, agent info)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    conv = community.get_conversation_by_user(payload["user_id"])
+    if not conv:
+        return {"has_conversation": False, "status": None}
+    return {
+        "has_conversation": True,
+        "status": conv["status"],
+        "closed_reason": conv.get("closed_reason"),
+        "assigned_agent_name": conv.get("assigned_agent_name"),
+        "assigned_agent_id": conv.get("assigned_agent_id"),
+        "conversation_id": conv["id"],
+    }
+
+
+@app.post("/api/support/new-conversation")
+async def support_new_conversation(authorization: str = Header(None)):
+    """Start a fresh conversation after a previous one was closed."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    # Create a new active conversation (the old one stays closed)
+    conv = community.get_or_create_active_conversation(payload["user_id"], force_new=True)
+    return {"success": True, "conversation_id": conv["id"]}
+
+
+class SupportRatingRequest(BaseModel):
+    rating: int
+    comment: str = ""
+
+
+@app.post("/api/support/rate")
+async def support_rate(request: SupportRatingRequest, authorization: str = Header(None)):
+    """User submits a rating for a closed conversation."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not 1 <= request.rating <= 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+    user_id = payload["user_id"]
+    conv = community.get_conversation_by_user(user_id)
+    if not conv:
+        raise HTTPException(status_code=400, detail="No conversation found")
+    if conv["status"] != "closed":
+        raise HTTPException(status_code=400, detail="Conversation must be closed to rate")
+    # Use assigned agent info, or fallback for password-based admin
+    agent_id = conv.get("assigned_agent_id") or 0
+    agent_name = conv.get("assigned_agent_name") or "Admin"
+    result = community.submit_support_rating(
+        conversation_id=conv["id"],
+        user_id=user_id,
+        agent_id=agent_id,
+        agent_name=agent_name,
+        rating=request.rating,
+        comment=request.comment,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.get("/api/support/stream")
+async def support_stream(token: str = Query(None)):
+    """SSE endpoint for real-time support messages."""
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = user_auth.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user_id = payload["user_id"]
+
+    async def event_generator():
+        event = community.subscribe_support(user_id)
+        last_seen = community.get_support_signal(user_id)
+        try:
+            count = community.get_support_unread_count(user_id)
+            yield f"data: {json.dumps({'type': 'init', 'unread_count': count})}\n\n"
+
+            while True:
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=15)
+                    event.clear()
+                except asyncio.TimeoutError:
+                    pass
+
+                current = community.get_support_signal(user_id)
+                if current > last_seen:
+                    last_seen = current
+                    # Use the signal's message_id to fetch the exact new message
+                    latest = community.get_support_message_by_id(current)
+                    count = community.get_support_unread_count(user_id)
+                    yield f"data: {json.dumps({'type': 'new', 'unread_count': count, 'message': latest})}\n\n"
+                else:
+                    yield f": heartbeat\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            community.unsubscribe_support(user_id, event)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ==================== END COMMUNITY ENDPOINTS ====================
@@ -2227,14 +3116,29 @@ async def get_match_stats(team_a_id: int, team_b_id: int, competition: str = "PL
     # Calculate card predictions
     card_analysis = _calculate_card_predictions(team_a_stats, team_b_stats, team_a, team_b)
 
-    # Fetch injuries and coaches (parallel)
-    import asyncio
-    injuries_a, injuries_b, coach_a, coach_b = await asyncio.gather(
-        football_api.fetch_injuries(team_a_id, league_id),
-        football_api.fetch_injuries(team_b_id, league_id),
-        football_api.fetch_coach(team_a_id),
-        football_api.fetch_coach(team_b_id),
+    # Fetch injuries, coaches, and formations via Gemini (with API-Football fallback)
+    import gemini_football_data
+    injuries_a, injuries_b, coach_a, coach_b, gemini_formation_a, gemini_formation_b = await gemini_football_data.get_enhanced_team_data(
+        team_a["name"], team_b["name"], competition, team_a_id, team_b_id, league_id
     )
+
+    # If API-Football returned no formation data, use Gemini's formation as fallback
+    if not team_a_stats.get("formations") and gemini_formation_a:
+        team_a_stats["formations"] = [{"formation": gemini_formation_a, "played": 0}]
+        team_a_stats["squad_stability"] = {
+            "primary_formation": gemini_formation_a,
+            "usage_percentage": 0,
+            "formations_used": 1,
+            "rating": "Unknown",
+        }
+    if not team_b_stats.get("formations") and gemini_formation_b:
+        team_b_stats["formations"] = [{"formation": gemini_formation_b, "played": 0}]
+        team_b_stats["squad_stability"] = {
+            "primary_formation": gemini_formation_b,
+            "usage_percentage": 0,
+            "formations_used": 1,
+            "rating": "Unknown",
+        }
 
     return {
         "team_a": team_a_stats,
@@ -2473,6 +3377,195 @@ async def test_api():
                 }
     except Exception as e:
         return {"error": str(e), "type": type(e).__name__}
+
+
+# ==================== JACKPOT ANALYZER ====================
+
+class JackpotAnalyzeRequest(BaseModel):
+    matches: List[dict]
+    balance_paid: bool = False
+
+
+@app.post("/api/jackpot/analyze")
+async def analyze_jackpot(request: JackpotAnalyzeRequest, authorization: str = Header(None)):
+    """Analyze multiple matches for jackpot prediction."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if len(request.matches) < 2:
+        raise HTTPException(status_code=400, detail="Select at least 2 matches")
+
+    # Tier-based match limit: free = 5, pro = 30
+    tier = payload.get("tier", "free")
+    max_matches = 30 if tier == "pro" else 5
+    if len(request.matches) > max_matches:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Free users can analyze up to {max_matches} matches. Upgrade to Pro for unlimited analysis."
+        )
+
+    user_id = payload["user_id"]
+
+    # Free users: check lock-based limit (unless paid via balance)
+    if tier != "pro" and not request.balance_paid:
+        lock_info = jackpot_analyzer.get_jackpot_lock_status(user_id)
+        if lock_info["locked"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You've used your free analyses. Deposit $2 to unlock or wait for the timer to reset."
+            )
+    session_id = jackpot_analyzer.create_session(user_id, request.matches)
+
+    try:
+        results = []
+        league_cache = {}
+
+        for match in request.matches:
+            try:
+                result = await jackpot_analyzer.analyze_match_for_jackpot(match, league_cache)
+                results.append(result)
+            except Exception as e:
+                print(f"[Jackpot] Analysis failed for match: {e}")
+                results.append({
+                    "fixture_id": match.get("fixture_id"),
+                    "home_team": {"id": match.get("home_team_id"), "name": match.get("home_team_name", "?")},
+                    "away_team": {"id": match.get("away_team_id"), "name": match.get("away_team_name", "?")},
+                    "competition": match.get("competition"),
+                    "status": "failed",
+                    "error": str(e)
+                })
+
+        combinations = jackpot_analyzer.generate_winning_combinations(results)
+        jackpot_analyzer.complete_session(session_id, results, combinations)
+
+        # Record lock for free users (sets 72h cooldown)
+        if tier != "pro" and not request.balance_paid:
+            jackpot_analyzer.record_jackpot_session_lock(user_id)
+
+        return {
+            "session_id": session_id,
+            "total_analyzed": len(results),
+            "results": results,
+            "combinations": combinations,
+        }
+    except Exception as e:
+        jackpot_analyzer.fail_session(session_id)
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+@app.get("/api/jackpot/session/{session_id}")
+async def get_jackpot_session(session_id: str, authorization: str = Header(None)):
+    """Get a completed jackpot session."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    session = jackpot_analyzer.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {
+        "session_id": session["id"],
+        "status": session["status"],
+        "total_matches": session["total_matches"],
+        "results": json.loads(session["results"]) if session.get("results") else [],
+        "best_combination": json.loads(session["best_combination"]) if session.get("best_combination") else None,
+        "created_at": session["created_at"],
+        "completed_at": session.get("completed_at"),
+    }
+
+
+@app.get("/api/jackpot/history")
+async def get_jackpot_history(authorization: str = Header(None)):
+    """Get user's past jackpot sessions."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    sessions = jackpot_analyzer.get_user_sessions(payload["user_id"])
+    return {"sessions": sessions}
+
+
+@app.get("/api/jackpot/limits")
+async def get_jackpot_limits(authorization: str = Header(None)):
+    """Get jackpot match limits for the current user's tier."""
+    payload = _get_current_user(authorization)
+    tier = payload.get("tier", "free") if payload else "free"
+    max_matches = 30 if tier == "pro" else 5
+    user_id = payload.get("user_id") if payload else None
+    ai_chats_used = jackpot_analyzer.get_ai_chat_count(user_id) if user_id else 0
+    max_ai_chats = -1 if tier == "pro" else 10
+    bal = community.get_user_balance(user_id) if user_id else {"balance_usd": 0}
+
+    # Lock-based session limits for free users
+    if tier == "pro":
+        sessions_used = 0
+        max_sessions = -1
+        locked = False
+        locked_until = None
+    elif user_id:
+        lock_info = jackpot_analyzer.get_jackpot_lock_status(user_id)
+        sessions_used = lock_info["sessions_used"]
+        max_sessions = lock_info["max_sessions"]
+        locked = lock_info["locked"]
+        locked_until = lock_info["locked_until"]
+    else:
+        sessions_used = 0
+        max_sessions = 2
+        locked = False
+        locked_until = None
+
+    return {
+        "tier": tier,
+        "max_matches": max_matches,
+        "sessions_used": sessions_used,
+        "max_sessions": max_sessions,
+        "locked": locked,
+        "locked_until": locked_until,
+        "ai_chats_used": ai_chats_used,
+        "max_ai_chats": max_ai_chats,
+        "balance_usd": bal.get("balance_usd", 0),
+    }
+
+
+class JackpotChatRequest(BaseModel):
+    message: str
+    match_context: dict  # The match analysis result
+    chat_history: List[dict] = []
+
+
+@app.post("/api/jackpot/chat")
+async def jackpot_match_chat(request: JackpotChatRequest, authorization: str = Header(None)):
+    """AI chat about a specific analyzed match, powered by Gemini."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_id = payload.get("user_id")
+    tier = payload.get("tier", "free")
+
+    # Enforce 10-prompt limit for free tier users
+    if tier != "pro" and user_id:
+        chat_count = jackpot_analyzer.get_ai_chat_count(user_id)
+        if chat_count >= 10:
+            raise HTTPException(
+                status_code=403,
+                detail="You've used your 10 free AI prompts. Upgrade to Pro for unlimited AI chat."
+            )
+
+    try:
+        result = await jackpot_analyzer.chat_about_match(
+            request.message, request.match_context, request.chat_history
+        )
+        # Increment chat count after successful response
+        if user_id:
+            jackpot_analyzer.increment_ai_chat_count(user_id)
+        # result is now a dict with "text" and "sources"
+        return {"response": result["text"], "sources": result.get("sources", [])}
+    except Exception as e:
+        print(f"[Jackpot Chat] Error: {e}")
+        return {"response": "Sorry, I couldn't process your question right now. Please try again.", "sources": []}
 
 
 # ==================== SERVE FRONTEND IN PRODUCTION ====================

@@ -54,6 +54,24 @@ export function AuthProvider({ children }) {
     delete axios.defaults.headers.common['Authorization']
   }
 
+  // Intercept 403 "Account suspended" on any API call → force logout
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      res => res,
+      err => {
+        if (
+          err.response?.status === 403 &&
+          err.response?.data?.detail === 'Account suspended'
+        ) {
+          clearAuth()
+          window.location.href = '/login?suspended=1'
+        }
+        return Promise.reject(err)
+      },
+    )
+    return () => axios.interceptors.response.eject(interceptor)
+  }, [])
+
   const login = useCallback(async (email, password, captchaToken = '') => {
     try {
       const response = await axios.post('/api/user/login', { email, password, captcha_token: captchaToken })
@@ -103,7 +121,7 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const register = useCallback(async (email, password, displayName = '', referralCode = '', captchaToken = '') => {
+  const register = useCallback(async (email, password, displayName = '', referralCode = '', captchaToken = '', personalInfo = {}) => {
     try {
       const response = await axios.post('/api/user/register', {
         email,
@@ -111,6 +129,10 @@ export function AuthProvider({ children }) {
         display_name: displayName,
         referral_code: referralCode,
         captcha_token: captchaToken,
+        full_name: personalInfo.full_name || '',
+        date_of_birth: personalInfo.date_of_birth || '',
+        security_question: personalInfo.security_question || '',
+        security_answer: personalInfo.security_answer || '',
       })
       if (response.data.success) {
         if (response.data.requires_verification) {
@@ -194,6 +216,17 @@ export function AuthProvider({ children }) {
       return false
     }
   }, [])
+
+  // Heartbeat: ping every 60s while authenticated
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const sendHeartbeat = () => {
+      axios.post('/api/heartbeat').catch(() => {})
+    }
+    sendHeartbeat()
+    const interval = setInterval(sendHeartbeat, 60000)
+    return () => clearInterval(interval)
+  }, [isAuthenticated])
 
   const logout = useCallback(() => {
     clearAuth()

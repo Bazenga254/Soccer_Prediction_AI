@@ -61,6 +61,11 @@ export default function UserMenuDropdown({ user, logout }) {
             <span>Creator Dashboard</span>
           </Link>
 
+          <button className="user-menu-item" onClick={() => { setIsOpen(false); window.dispatchEvent(new Event('open-support-chat')) }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+            <span>Support</span>
+          </button>
+
           {user.tier !== 'pro' && (
             <Link to="/upgrade" className="user-menu-item upgrade-item" onClick={() => setIsOpen(false)}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>

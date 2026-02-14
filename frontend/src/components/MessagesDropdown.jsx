@@ -75,6 +75,12 @@ export default function MessagesDropdown() {
   }
 
   const openChat = (conv) => {
+    // Guard: support conversations should open the support widget, not DMs
+    if (conv.is_support || conv.other_id === -1) {
+      window.dispatchEvent(new Event('open-support-chat'))
+      setIsOpen(false)
+      return
+    }
     setActiveChat(conv)
     fetchMessages(conv.other_id)
   }
@@ -137,13 +143,29 @@ export default function MessagesDropdown() {
                 ) : (
                   conversations.map(conv => (
                     <div
-                      key={conv.other_id}
-                      className={`messages-conv-item ${conv.unread_count > 0 ? 'unread' : ''}`}
-                      onClick={() => openChat(conv)}
+                      key={conv.is_support ? 'support' : conv.other_id}
+                      className={`messages-conv-item ${conv.unread_count > 0 ? 'unread' : ''} ${conv.is_support ? 'support-conv' : ''}`}
+                      onClick={() => {
+                        if (conv.is_support) {
+                          window.dispatchEvent(new Event('open-support-chat'))
+                          setIsOpen(false)
+                        } else {
+                          openChat(conv)
+                        }
+                      }}
                     >
+                      {conv.is_support ? (
+                        <div className="messages-conv-avatar messages-support-avatar" style={{ background: '#6c5ce7' }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+                            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+                          </svg>
+                        </div>
+                      ) : (
                       <div className="messages-conv-avatar" style={{ background: conv.other_avatar || '#6c5ce7' }}>
                         {(conv.other_name || '?')[0].toUpperCase()}
                       </div>
+                      )}
                       <div className="messages-conv-info">
                         <div className="messages-conv-top">
                           <span className="messages-conv-name">{conv.other_name}</span>

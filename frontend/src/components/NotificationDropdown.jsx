@@ -7,6 +7,13 @@ const NOTIF_CONFIG = {
   withdrawal: { icon: '\uD83D\uDCB0', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
   comment: { icon: '\uD83D\uDCAC', color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
   rating: { icon: '\u2B50', color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
+  new_prediction: { icon: '\uD83D\uDD14', color: '#6c5ce7', bg: 'rgba(108,92,231,0.15)' },
+  new_follower: { icon: '\uD83D\uDC65', color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
+  refund: { icon: '\uD83D\uDCB8', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+  suspension: { icon: '\u26A0\uFE0F', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+  broadcast: { icon: '\uD83D\uDCE2', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
+  broadcast_rejected: { icon: '\u274C', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+  keepalive_prompt: { icon: '\u23F0', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
 }
 
 export default function NotificationDropdown() {
@@ -149,6 +156,41 @@ export default function NotificationDropdown() {
         <div key={n.id} className={`notification-item ${n.is_read ? '' : 'unread'}`}>
           <div className="notification-avatar" style={{ background: meta.commenter_avatar }}>
             {(meta.commenter_name || '?')[0].toUpperCase()}
+          </div>
+          <div className="notification-content">
+            <p className="notification-text">{n.title}</p>
+            <p className="notification-message">{n.message}</p>
+            {meta.match && <p className="notification-match">{meta.match}</p>}
+            <span className="notification-time">{timeAgo(n.created_at)}</span>
+          </div>
+          {!n.is_read && <span className="unread-dot" />}
+        </div>
+      )
+    }
+
+    // New follower - show follower avatar
+    if (n.type === 'new_follower' && meta.follower_avatar) {
+      return (
+        <div key={n.id} className={`notification-item ${n.is_read ? '' : 'unread'}`}>
+          <div className="notification-avatar" style={{ background: meta.follower_avatar }}>
+            {(meta.follower_name || '?')[0].toUpperCase()}
+          </div>
+          <div className="notification-content">
+            <p className="notification-text">{n.title}</p>
+            <p className="notification-message">{n.message}</p>
+            <span className="notification-time">{timeAgo(n.created_at)}</span>
+          </div>
+          {!n.is_read && <span className="unread-dot" />}
+        </div>
+      )
+    }
+
+    // New prediction from followed user - show poster avatar
+    if (n.type === 'new_prediction' && meta.poster_avatar) {
+      return (
+        <div key={n.id} className={`notification-item ${n.is_read ? '' : 'unread'}`}>
+          <div className="notification-avatar" style={{ background: meta.poster_avatar }}>
+            {(meta.poster_name || '?')[0].toUpperCase()}
           </div>
           <div className="notification-content">
             <p className="notification-text">{n.title}</p>

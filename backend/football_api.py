@@ -177,15 +177,14 @@ async def _fetch_last_season_fixtures(league_id: int) -> Optional[List[Dict]]:
         async with aiohttp.ClientSession() as session:
             url = f"{BASE_URL}/fixtures"
 
-            # For 2024 season, fetch the last week of May 2025 (season end)
-            # This gives us the most recent completed matches
+            season = config.get_season_for_league(league_id)
             params = {
                 "league": league_id,
-                "season": config.CURRENT_SEASON,
+                "season": season,
                 "last": 20,  # Get last 20 completed fixtures
             }
 
-            print(f"Fetching last fixtures: league={league_id}, season={config.CURRENT_SEASON}")
+            print(f"Fetching last fixtures: league={league_id}, season={season}")
 
             async with session.get(url, headers=_get_headers(), params=params) as response:
                 if response.status == 200:
@@ -220,14 +219,22 @@ async def _fetch_season_end_fixtures(league_id: int) -> Optional[List[Dict]]:
         async with aiohttp.ClientSession() as session:
             url = f"{BASE_URL}/fixtures"
 
-            # For 2024 season, the season ends in May 2025
-            # Fetch fixtures from the last months of the season
-            season_end_year = config.CURRENT_SEASON + 1
+            season = config.get_season_for_league(league_id)
+            # For European leagues: season 2025 ends May 2026
+            # For calendar-year leagues: season 2026 ends Dec 2026
+            if league_id in config.CALENDAR_YEAR_LEAGUE_IDS:
+                season_end_year = season
+                from_date = f"{season_end_year}-09-01"
+                to_date = f"{season_end_year}-12-31"
+            else:
+                season_end_year = season + 1
+                from_date = f"{season_end_year}-03-01"
+                to_date = f"{season_end_year}-05-31"
             params = {
                 "league": league_id,
-                "season": config.CURRENT_SEASON,
-                "from": f"{season_end_year}-03-01",
-                "to": f"{season_end_year}-05-31",
+                "season": season,
+                "from": from_date,
+                "to": to_date,
             }
 
             print(f"Fetching season end fixtures: {params}")
@@ -275,7 +282,8 @@ async def fetch_standings(competition: str = "PL") -> Optional[List[Dict]]:
         return None
 
     league_id = _get_league_id(competition)
-    cache_key = f"standings_{league_id}"
+    season = config.get_season_for_league(league_id)
+    cache_key = f"standings_{league_id}_{season}"
 
     if _is_cache_valid(cache_key, config.CACHE_TTL_STANDINGS):
         print(f"Using cached standings for league {league_id}")
@@ -286,11 +294,11 @@ async def fetch_standings(competition: str = "PL") -> Optional[List[Dict]]:
             url = f"{BASE_URL}/standings"
             params = {
                 "league": league_id,
-                "season": config.CURRENT_SEASON
+                "season": season
             }
 
             print(f"API Request: GET {url}")
-            print(f"Params: league={league_id}, season={config.CURRENT_SEASON}")
+            print(f"Params: league={league_id}, season={season}")
 
             async with session.get(url, headers=_get_headers(), params=params) as response:
                 print(f"API Response Status: {response.status}")
@@ -380,7 +388,8 @@ async def fetch_upcoming_fixtures(competition: str = "PL", days: int = 14) -> Op
     If current date is beyond the season, we fetch the last matches of the season.
     """
     league_id = _get_league_id(competition)
-    cache_key = f"fixtures_{league_id}_{days}"
+    season = config.get_season_for_league(league_id)
+    cache_key = f"fixtures_{league_id}_{days}_{season}"
 
     if not config.API_FOOTBALL_KEY:
         print("No API key configured, returning sample fixtures")
@@ -390,13 +399,16 @@ async def fetch_upcoming_fixtures(competition: str = "PL", days: int = 14) -> Op
         print(f"Using cached fixtures for league {league_id}")
         return _get_cache(cache_key)
 
-    # Check if current date is beyond the season (season 2024 ends in May 2025)
-    season_end_date = datetime(config.CURRENT_SEASON + 1, 5, 31)
+    # Check if current date is beyond the season end
+    if league_id in config.CALENDAR_YEAR_LEAGUE_IDS:
+        season_end_date = datetime(season, 12, 31)
+    else:
+        season_end_date = datetime(season + 1, 5, 31)
     current_date = datetime.now()
 
     # If we're beyond the season end, go directly to historical fixtures
     if current_date > season_end_date:
-        print(f"Current date {current_date.date()} is beyond season {config.CURRENT_SEASON} end date. Fetching historical fixtures.")
+        print(f"Current date {current_date.date()} is beyond season {season} end date. Fetching historical fixtures.")
         historical = await _fetch_season_end_fixtures(league_id)
         if historical:
             _set_cache(cache_key, historical)
@@ -422,13 +434,13 @@ async def fetch_upcoming_fixtures(competition: str = "PL", days: int = 14) -> Op
 
             params = {
                 "league": league_id,
-                "season": config.CURRENT_SEASON,
+                "season": season,
                 "from": from_date,
                 "to": to_date,
             }
 
             print(f"API Request: GET {url}")
-            print(f"Params: league={league_id}, season={config.CURRENT_SEASON}, from={from_date}, to={to_date}")
+            print(f"Params: league={league_id}, season={season}, from={from_date}, to={to_date}")
 
             async with session.get(url, headers=_get_headers(), params=params) as response:
                 print(f"API Response Status: {response.status}")
@@ -565,7 +577,7 @@ def _parse_fixture(fixture: Dict) -> Dict:
                 "team_id": e.get("team", {}).get("id"),
                 "team": e.get("team", {}).get("name"),
             }
-            for e in events[-8:]
+            for e in events
         ] if events else [],
     }
 
@@ -853,11 +865,13 @@ async def fetch_team_statistics(team_id: int, league_id: int = 39) -> Optional[D
     """
     Fetch detailed team statistics for the current season.
     API Endpoint: GET /teams/statistics?league={id}&season={year}&team={id}
+    Uses per-league season calculation for correct data across all leagues.
     """
     if not config.API_FOOTBALL_KEY:
         return None
 
-    cache_key = f"team_stats_{team_id}_{league_id}"
+    season = config.get_season_for_league(league_id)
+    cache_key = f"team_stats_{team_id}_{league_id}_{season}"
 
     if _is_cache_valid(cache_key, config.CACHE_TTL_TEAM_STATS):
         return _get_cache(cache_key)
@@ -868,7 +882,7 @@ async def fetch_team_statistics(team_id: int, league_id: int = 39) -> Optional[D
             params = {
                 "team": team_id,
                 "league": league_id,
-                "season": config.CURRENT_SEASON
+                "season": season
             }
 
             async with session.get(url, headers=_get_headers(), params=params) as response:
@@ -896,8 +910,10 @@ async def fetch_players(team_id: int, league_id: int) -> Optional[List[Dict]]:
     Fetch player statistics for a team from API-Football.
     API Endpoint: GET /players?team={id}&league={id}&season={year}
     Returns top players with goals, assists, cards, shots, key passes, etc.
+    Uses per-league season calculation for correct data across all leagues.
     """
-    cache_key = f"players_{team_id}_{league_id}"
+    season = config.get_season_for_league(league_id)
+    cache_key = f"players_{team_id}_{league_id}_{season}"
     if _is_cache_valid(cache_key, 43200):  # 12-hour cache
         return _get_cache(cache_key)
 
@@ -910,7 +926,7 @@ async def fetch_players(team_id: int, league_id: int) -> Optional[List[Dict]]:
             params = {
                 "team": team_id,
                 "league": league_id,
-                "season": config.CURRENT_SEASON,
+                "season": season,
                 "page": 1,
             }
             print(f"API Request: GET {url} (players for team {team_id})")
@@ -996,8 +1012,10 @@ async def fetch_players(team_id: int, league_id: int) -> Optional[List[Dict]]:
 
 
 async def fetch_injuries(team_id: int, league_id: int) -> Optional[List[Dict]]:
-    """Fetch current injuries/suspensions for a team."""
-    cache_key = f"injuries_{team_id}_{league_id}"
+    """Fetch current injuries/suspensions for a team.
+    Uses per-league season calculation for correct data across all leagues."""
+    season = config.get_season_for_league(league_id)
+    cache_key = f"injuries_{team_id}_{league_id}_{season}"
     if _is_cache_valid(cache_key, 43200):  # 12-hour cache
         return _cache[cache_key]
 
@@ -1010,10 +1028,10 @@ async def fetch_injuries(team_id: int, league_id: int) -> Optional[List[Dict]]:
             params = {
                 "team": team_id,
                 "league": league_id,
-                "season": config.CURRENT_SEASON,
+                "season": season,
             }
             print(f"API Request: GET {url}")
-            print(f"Params: team={team_id}, league={league_id}, season={config.CURRENT_SEASON}")
+            print(f"Params: team={team_id}, league={league_id}, season={season}")
             async with session.get(url, headers=_get_headers(), params=params, timeout=aiohttp.ClientTimeout(total=15)) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -1040,8 +1058,58 @@ async def fetch_injuries(team_id: int, league_id: int) -> Optional[List[Dict]]:
     return cached if cached else []
 
 
+def search_cached_fixtures(query: str, limit: int = 15) -> List[Dict]:
+    """Search cached fixtures by team name. No extra API calls - only searches in-memory cache."""
+    query_lower = query.lower().strip()
+    if not query_lower:
+        return []
+
+    results = []
+    seen_ids = set()
+
+    for key, data in _cache.items():
+        # Only search fixture-type cache entries
+        if not (key.startswith("fixtures_") or key.startswith("todays_fixtures_")
+                or key.startswith("live_matches") or key.startswith("last_fixtures_")
+                or key.startswith("season_end_fixtures_")):
+            continue
+        if not isinstance(data, list):
+            continue
+
+        # Try to extract league_id from cache key for competition code
+        comp_code = None
+        if key.startswith("fixtures_"):
+            parts = key.split("_")
+            if len(parts) >= 2:
+                try:
+                    comp_code = _get_competition_code(int(parts[1]))
+                except (ValueError, IndexError):
+                    pass
+
+        for fixture in data:
+            fid = fixture.get("id")
+            if fid in seen_ids:
+                continue
+            home_name = (fixture.get("home_team", {}).get("name") or "").lower()
+            away_name = (fixture.get("away_team", {}).get("name") or "").lower()
+            if query_lower in home_name or query_lower in away_name:
+                seen_ids.add(fid)
+                # Enrich with competition code if not already present
+                enriched = dict(fixture)
+                comp = enriched.get("competition", {})
+                if not comp.get("code") and comp_code:
+                    enriched["competition"] = {**comp, "code": comp_code}
+                results.append(enriched)
+                if len(results) >= limit:
+                    return results
+
+    # Sort by date
+    results.sort(key=lambda x: x.get("date") or x.get("timestamp") or "", reverse=True)
+    return results[:limit]
+
+
 async def fetch_coach(team_id: int) -> Optional[Dict]:
-    """Fetch coach information for a team."""
+    """Fetch the CURRENT coach for a team by checking career end dates."""
     cache_key = f"coach_{team_id}"
     if _is_cache_valid(cache_key, 86400):  # 24-hour cache
         return _cache[cache_key]
@@ -1060,13 +1128,39 @@ async def fetch_coach(team_id: int) -> Optional[Dict]:
                     coaches = data.get("response", [])
 
                     if coaches:
-                        coach = coaches[0]
+                        # Find the current coach: the one whose career entry
+                        # for this team has end=null (still active)
+                        current_coach = None
+                        for coach in coaches:
+                            career = coach.get("career", [])
+                            for stint in career:
+                                stint_team = stint.get("team", {})
+                                if stint_team.get("id") == team_id and stint.get("end") is None:
+                                    current_coach = coach
+                                    break
+                            if current_coach:
+                                break
+
+                        # Fallback: if no active stint found, use the coach
+                        # whose most recent career entry is for this team
+                        if not current_coach:
+                            for coach in coaches:
+                                career = coach.get("career", [])
+                                if career and career[-1].get("team", {}).get("id") == team_id:
+                                    current_coach = coach
+                                    break
+
+                        # Final fallback: first coach in the list
+                        if not current_coach:
+                            current_coach = coaches[0]
+
                         coach_info = {
-                            "name": coach.get("name", "Unknown"),
-                            "photo": coach.get("photo"),
-                            "nationality": coach.get("nationality"),
-                            "age": coach.get("age"),
+                            "name": current_coach.get("name", "Unknown"),
+                            "photo": current_coach.get("photo"),
+                            "nationality": current_coach.get("nationality"),
+                            "age": current_coach.get("age"),
                         }
+                        print(f"[Coach] Found current coach for team {team_id}: {coach_info['name']}")
                         _set_cache(cache_key, coach_info)
                         return coach_info
 

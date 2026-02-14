@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
-import AdBanner from './AdBanner'
 
 const COMPETITION_NAMES = {
   'PL': 'Premier League',
@@ -136,8 +135,6 @@ export default function FixturesList({ competition: propCompetition }) {
           </div>
         )}
       </div>
-
-      <AdBanner format="leaderboard" slot="fixtures-top" />
 
       {fixtures.length === 0 ? (
         <div className="no-fixtures">

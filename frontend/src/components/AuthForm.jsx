@@ -13,6 +13,10 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [fullName, setFullName] = useState('')
+  const [dateOfBirth, setDateOfBirth] = useState('')
+  const [securityQuestion, setSecurityQuestion] = useState('')
+  const [securityAnswer, setSecurityAnswer] = useState('')
   const [referralCode] = useState(() => {
     const match = document.cookie.match(/spark_ref=([^;]+)/)
     return match ? match[1] : ''
@@ -90,21 +94,28 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
 
   const handleGoogleResponse = useCallback(async (response) => {
     if (!response.credential) return
-    if (captchaToken) {
-      setLoading(true)
-      setError('')
-      const result = await googleLogin(response.credential, referralRef.current, captchaToken)
-      if (!result.success) {
-        setError(result.error || 'Google login failed')
-      }
+    setLoading(true)
+    setError('')
+    // Try Google login directly - backend only requires CAPTCHA for new users
+    const result = await googleLogin(response.credential, referralRef.current, captchaToken)
+    if (result.success) {
       setLoading(false)
       setCaptchaToken('')
       if (captchaRef.current) captchaRef.current.resetCaptcha()
       return
     }
-    setGooglePendingToken(response.credential)
-    setShowCaptcha(true)
-    setError('Please complete the CAPTCHA to continue with Google sign-in.')
+    // If CAPTCHA needed (new user) - show CAPTCHA and store token for retry
+    if (result.error && result.error.toLowerCase().includes('captcha')) {
+      setGooglePendingToken(response.credential)
+      setShowCaptcha(true)
+      setError('New account detected. Please complete the CAPTCHA to continue.')
+      setLoading(false)
+      return
+    }
+    setError(result.error || 'Google login failed')
+    setLoading(false)
+    setCaptchaToken('')
+    if (captchaRef.current) captchaRef.current.resetCaptcha()
   }, [googleLogin, captchaToken])
 
   // Proceed with Google login once CAPTCHA is completed
@@ -220,7 +231,12 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           setAttemptsRemaining(result.attempts_remaining)
         }
       } else {
-        result = await register(email, password, '', referralCode, captchaToken)
+        result = await register(email, password, '', referralCode, captchaToken, {
+          full_name: fullName.trim() || undefined,
+          date_of_birth: dateOfBirth || undefined,
+          security_question: securityQuestion || undefined,
+          security_answer: securityAnswer.trim() || undefined,
+        })
         if (result.requires_verification) {
           setResendCooldown(60)
           setLoading(false)
@@ -603,6 +619,65 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
                       </svg>
                     )}
                   </button>
+                </div>
+              </div>
+
+              <div className="signup-personal-section">
+                <p className="signup-personal-label">Personal Information</p>
+
+                <div className="form-group">
+                  <label htmlFor="full-name">Full Name</label>
+                  <input
+                    id="full-name"
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Enter your full name"
+                    maxLength={100}
+                    disabled={loading}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="date-of-birth">Date of Birth</label>
+                  <input
+                    id="date-of-birth"
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(e) => setDateOfBirth(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="security-question">Security Question</label>
+                  <select
+                    id="security-question"
+                    value={securityQuestion}
+                    onChange={(e) => setSecurityQuestion(e.target.value)}
+                    disabled={loading}
+                  >
+                    <option value="">Select a security question</option>
+                    <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                    <option value="What was your first pet's name?">What was your first pet's name?</option>
+                    <option value="What city were you born in?">What city were you born in?</option>
+                    <option value="What is your favorite movie?">What is your favorite movie?</option>
+                    <option value="What was the name of your first school?">What was the name of your first school?</option>
+                    <option value="What is your childhood nickname?">What is your childhood nickname?</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="security-answer">Security Answer</label>
+                  <input
+                    id="security-answer"
+                    type="text"
+                    value={securityAnswer}
+                    onChange={(e) => setSecurityAnswer(e.target.value)}
+                    placeholder="Enter your answer"
+                    maxLength={200}
+                    disabled={loading}
+                  />
                 </div>
               </div>
             </>

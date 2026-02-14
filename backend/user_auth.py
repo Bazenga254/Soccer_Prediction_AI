@@ -92,7 +92,7 @@ def check_captcha_required(email: str, client_ip: str) -> bool:
     ).fetchone()
     conn.close()
 
-    if row and row["cnt"] >= 3:
+    if row and row["cnt"] >= 4:
         return True
 
     return False
@@ -293,6 +293,18 @@ def init_user_db():
             expires_at TEXT NOT NULL,
             used INTEGER DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS analysis_views (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            match_key TEXT NOT NULL,
+            viewed_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS analysis_view_locks (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id),
+            locked_until TEXT NOT NULL
+        );
     """)
 
     # Add columns via migration (for existing installs)
@@ -305,11 +317,79 @@ def init_user_db():
         "ALTER TABLE users ADD COLUMN last_known_ip TEXT",
         "ALTER TABLE users ADD COLUMN locked_until TEXT",
         "ALTER TABLE users ADD COLUMN password_changed_at TEXT",
+        "ALTER TABLE users ADD COLUMN full_name TEXT",
+        "ALTER TABLE users ADD COLUMN date_of_birth TEXT",
+        "ALTER TABLE users ADD COLUMN security_question TEXT",
+        "ALTER TABLE users ADD COLUMN security_answer_hash TEXT",
+        "ALTER TABLE users ADD COLUMN staff_role TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN role_id INTEGER REFERENCES roles(id)",
+        "ALTER TABLE users ADD COLUMN department TEXT",
+        "ALTER TABLE users ADD COLUMN password_expires_at TEXT",
     ]:
         try:
             conn.execute(col_sql)
         except sqlite3.OperationalError:
             pass  # Column already exists
+
+    # --- RBAC tables ---
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            display_name TEXT NOT NULL,
+            level INTEGER NOT NULL DEFAULT 0,
+            department TEXT,
+            description TEXT DEFAULT '',
+            is_system INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_id INTEGER NOT NULL REFERENCES roles(id),
+            module TEXT NOT NULL,
+            can_read INTEGER DEFAULT 0,
+            can_write INTEGER DEFAULT 0,
+            can_edit INTEGER DEFAULT 0,
+            can_delete INTEGER DEFAULT 0,
+            can_export INTEGER DEFAULT 0,
+            can_approve INTEGER DEFAULT 0,
+            data_scope TEXT DEFAULT 'own',
+            UNIQUE(role_id, module)
+        );
+
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            module TEXT,
+            target_type TEXT,
+            target_id INTEGER,
+            details TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_logs(user_id);
+        CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_logs(action);
+        CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);
+        CREATE INDEX IF NOT EXISTS idx_activity_module ON activity_logs(module);
+
+        CREATE TABLE IF NOT EXISTS staff_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            session_token_hash TEXT NOT NULL,
+            ip_address TEXT,
+            user_agent TEXT,
+            device_info TEXT,
+            started_at TEXT NOT NULL,
+            last_active_at TEXT NOT NULL,
+            ended_at TEXT,
+            is_active INTEGER DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_ss_user ON staff_sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_ss_active ON staff_sessions(is_active);
+    """)
 
     # Auto-verify all existing users (created before verification was required)
     conn.execute("""
@@ -319,6 +399,172 @@ def init_user_db():
 
     conn.commit()
     conn.close()
+
+
+def init_employee_tables():
+    """Create employee-specific tables: invites, invoices, expenses."""
+    conn = _get_db()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS employee_invites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invite_token TEXT UNIQUE NOT NULL,
+            role_name TEXT NOT NULL,
+            department TEXT,
+            created_by INTEGER NOT NULL,
+            created_by_name TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used_by INTEGER,
+            used_at TEXT,
+            is_active INTEGER DEFAULT 1,
+            note TEXT DEFAULT '',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_invite_token ON employee_invites(invite_token);
+
+        CREATE TABLE IF NOT EXISTS invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_number TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            amount REAL NOT NULL,
+            currency TEXT DEFAULT 'KES',
+            category TEXT DEFAULT 'general',
+            status TEXT DEFAULT 'pending',
+            client_name TEXT DEFAULT '',
+            created_by INTEGER NOT NULL,
+            approved_by INTEGER,
+            due_date TEXT,
+            paid_at TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_invoice_status ON invoices(status);
+
+        CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            amount REAL NOT NULL,
+            currency TEXT DEFAULT 'KES',
+            category TEXT DEFAULT 'operational',
+            submitted_by INTEGER NOT NULL,
+            approved_by INTEGER,
+            status TEXT DEFAULT 'pending',
+            receipt_url TEXT,
+            notes TEXT DEFAULT '',
+            approved_at TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_expense_status ON expenses(status);
+    """)
+    conn.commit()
+    conn.close()
+
+
+# --- Analysis View Tracking ---
+
+def get_analysis_views_status(user_id: int) -> dict:
+    """Check how many analysis views a free user has used in the current 24h window.
+    Returns dict with views_used, max_views, allowed, and reset_at (if blocked)."""
+    from datetime import datetime, timedelta
+    conn = _get_db()
+    now = datetime.utcnow()
+
+    # Check if there's an active lock
+    lock = conn.execute(
+        "SELECT locked_until FROM analysis_view_locks WHERE user_id = ?", (user_id,)
+    ).fetchone()
+
+    if lock and lock["locked_until"]:
+        locked_until = datetime.fromisoformat(lock["locked_until"])
+        if now < locked_until:
+            conn.close()
+            return {"views_used": 3, "max_views": 3, "allowed": False, "reset_at": locked_until.isoformat()}
+        # Lock expired - count unique matches viewed since lock expired
+        count = conn.execute(
+            "SELECT COUNT(DISTINCT match_key) as cnt FROM analysis_views WHERE user_id = ? AND viewed_at > ?",
+            (user_id, locked_until.isoformat())
+        ).fetchone()["cnt"]
+        conn.close()
+        return {"views_used": count, "max_views": 3, "allowed": count < 3, "reset_at": None}
+
+    # No lock ever - count all unique matches viewed
+    count = conn.execute(
+        "SELECT COUNT(DISTINCT match_key) as cnt FROM analysis_views WHERE user_id = ?", (user_id,)
+    ).fetchone()["cnt"]
+    conn.close()
+    return {"views_used": count, "max_views": 3, "allowed": count < 3, "reset_at": None}
+
+
+def record_analysis_view(user_id: int, match_key: str, balance_paid: bool = False) -> dict:
+    """Record that a user viewed a match analysis. Returns updated status."""
+    from datetime import datetime, timedelta
+    conn = _get_db()
+    now = datetime.utcnow()
+
+    # Determine current window start
+    lock = conn.execute(
+        "SELECT locked_until FROM analysis_view_locks WHERE user_id = ?", (user_id,)
+    ).fetchone()
+
+    window_start = "1970-01-01T00:00:00"
+    if lock and lock["locked_until"]:
+        locked_until = datetime.fromisoformat(lock["locked_until"])
+        if now < locked_until and not balance_paid:
+            # Still locked - but allow re-viewing matches that were already viewed (free or paid)
+            already_viewed = conn.execute(
+                "SELECT id FROM analysis_views WHERE user_id = ? AND match_key = ?",
+                (user_id, match_key)
+            ).fetchone()
+            if not already_viewed:
+                conn.close()
+                return {"views_used": 3, "max_views": 3, "allowed": False, "reset_at": locked_until.isoformat()}
+            # Match was already viewed (free or paid) - allow re-access
+            conn.close()
+            return {"views_used": 3, "max_views": 3, "allowed": True, "reset_at": locked_until.isoformat()}
+        if now < locked_until and balance_paid:
+            # Paid via balance — bypass lock, use current window_start
+            window_start = locked_until.isoformat()
+        else:
+            window_start = locked_until.isoformat()
+
+    # Check if this match was already viewed in current window (don't double-count)
+    already = conn.execute(
+        "SELECT id FROM analysis_views WHERE user_id = ? AND match_key = ? AND viewed_at > ?",
+        (user_id, match_key, window_start)
+    ).fetchone()
+
+    if already:
+        # Already viewed this match in current window, just return status
+        count = conn.execute(
+            "SELECT COUNT(DISTINCT match_key) as cnt FROM analysis_views WHERE user_id = ? AND viewed_at > ?",
+            (user_id, window_start)
+        ).fetchone()["cnt"]
+        conn.close()
+        return {"views_used": count, "max_views": 3, "allowed": True, "reset_at": None}
+
+    # Record the new view
+    conn.execute(
+        "INSERT INTO analysis_views (user_id, match_key, viewed_at) VALUES (?, ?, ?)",
+        (user_id, match_key, now.isoformat())
+    )
+
+    # Count unique matches in current window
+    count = conn.execute(
+        "SELECT COUNT(DISTINCT match_key) as cnt FROM analysis_views WHERE user_id = ? AND viewed_at > ?",
+        (user_id, window_start)
+    ).fetchone()["cnt"]
+
+    # If this was the 3rd unique match, set lock
+    if count >= 3:
+        new_lock = (now + timedelta(hours=24)).isoformat()
+        conn.execute(
+            "INSERT INTO analysis_view_locks (user_id, locked_until) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET locked_until = ?",
+            (user_id, new_lock, new_lock)
+        )
+
+    conn.commit()
+    conn.close()
+    return {"views_used": count, "max_views": 3, "allowed": True, "reset_at": None}
 
 
 # --- Username Generation (Discord-style) ---
@@ -380,13 +626,14 @@ def _verify_password(password: str, password_hash: str) -> bool:
     return check_hash == stored_hash
 
 
-def _create_token(user_id: int, username: str, tier: str, is_admin: bool) -> str:
+def _create_token(user_id: int, username: str, tier: str, is_admin: bool, staff_role: str = None) -> str:
     """Create a JWT token."""
     payload = {
         "user_id": user_id,
         "username": username,
         "tier": tier,
         "is_admin": is_admin,
+        "staff_role": staff_role,
         "exp": datetime.utcnow() + timedelta(days=30),
         "iat": datetime.utcnow(),
     }
@@ -658,6 +905,73 @@ def send_first_prediction_email(to_email: str, display_name: str = "") -> bool:
     return _send_zoho_email(to_email, "Your first prediction of the day! - Spark AI", html_body)
 
 
+def send_notification_email(to_email: str, display_name: str, notif_type: str, title: str, message: str, metadata: dict = None) -> bool:
+    """Send an email notification for important events. Returns True on success."""
+    greeting = display_name or "there"
+    meta = metadata or {}
+
+    # Choose color/icon based on type
+    type_styles = {
+        "new_follower":        {"icon": "&#128101;", "color": "#6c5ce7", "label": "New Follower"},
+        "new_prediction":      {"icon": "&#128276;", "color": "#6c5ce7", "label": "New Prediction"},
+        "comment":             {"icon": "&#128172;", "color": "#a78bfa", "label": "New Comment"},
+        "rating":              {"icon": "&#11088;",  "color": "#f97316", "label": "New Rating"},
+        "withdrawal":          {"icon": "&#128176;", "color": "#f59e0b", "label": "Withdrawal"},
+        "referral_subscription": {"icon": "&#129309;", "color": "#3b82f6", "label": "Referral"},
+    }
+    style = type_styles.get(notif_type, {"icon": "&#128276;", "color": "#3b82f6", "label": "Notification"})
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
+                background: #0f172a; color: #f1f5f9; padding: 40px; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <span style="font-size: 48px;">{style['icon']}</span>
+            <h1 style="color: #f1f5f9; margin: 8px 0; font-size: 22px;">{title}</h1>
+        </div>
+        <p style="color: #94a3b8;">Hey {greeting},</p>
+        <div style="background: rgba({_hex_to_rgb(style['color'])},0.1);
+                    border: 1px solid rgba({_hex_to_rgb(style['color'])},0.3);
+                    border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="color: {style['color']}; margin: 0; font-size: 14px;">
+                {message}
+            </p>
+        </div>
+        <div style="text-align: center; margin: 28px 0;">
+            <a href="https://www.spark-ai-prediction.com/predictions"
+               style="display: inline-block; background: {style['color']}; color: #ffffff;
+                      text-decoration: none; padding: 14px 32px; border-radius: 8px;
+                      font-weight: bold; font-size: 16px;">
+                View on Spark AI
+            </a>
+        </div>
+        <p style="color: #64748b; font-size: 13px; text-align: center;">
+            Spark AI Prediction
+        </p>
+    </div>
+    """
+
+    subject = f"{title} - Spark AI"
+    return _send_zoho_email(to_email, subject, html_body)
+
+
+def _hex_to_rgb(hex_color: str) -> str:
+    """Convert hex color like '#6c5ce7' to '108,92,231' for CSS rgba()."""
+    h = hex_color.lstrip("#")
+    return ",".join(str(int(h[i:i+2], 16)) for i in (0, 2, 4))
+
+
+def get_user_email_by_id(user_id: int) -> dict:
+    """Get a user's email and display_name by their ID. Returns dict or None."""
+    conn = _get_db()
+    row = conn.execute(
+        "SELECT id, email, display_name FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    if row:
+        return {"id": row["id"], "email": row["email"], "display_name": row["display_name"]}
+    return None
+
+
 def request_password_reset(email: str) -> Dict:
     """Request a password reset. Sends reset link via email."""
     email = email.lower().strip()
@@ -866,14 +1180,21 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
 
         now = datetime.now().isoformat()
         # Auto-verify if logging in with Google, update IP
-        conn.execute(
-            "UPDATE users SET last_login = ?, login_count = login_count + 1, email_verified = 1, last_known_ip = ? WHERE id = ?",
-            (now, client_ip or None, existing["id"]),
-        )
+        # Also auto-fill full_name from Google if not set
+        if google_name and not existing["full_name"]:
+            conn.execute(
+                "UPDATE users SET last_login = ?, login_count = login_count + 1, email_verified = 1, last_known_ip = ?, full_name = ? WHERE id = ?",
+                (now, client_ip or None, google_name.strip(), existing["id"]),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET last_login = ?, login_count = login_count + 1, email_verified = 1, last_known_ip = ? WHERE id = ?",
+                (now, client_ip or None, existing["id"]),
+            )
         conn.commit()
         conn.close()
 
-        token = _create_token(existing["id"], existing["username"], existing["tier"], bool(existing["is_admin"]))
+        token = _create_token(existing["id"], existing["username"], existing["tier"], bool(existing["is_admin"]), existing["staff_role"])
         return {
             "success": True,
             "token": token,
@@ -888,6 +1209,7 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
                 "referral_code": existing["referral_code"],
                 "is_admin": bool(existing["is_admin"]),
                 "created_at": existing["created_at"],
+                "profile_complete": bool(existing["security_question"] and existing["security_answer_hash"]),
             },
         }
     else:
@@ -912,11 +1234,14 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
             if referrer:
                 referred_by = referrer["id"]
 
+        # Auto-fill full_name from Google profile
+        google_full_name = google_name.strip() if google_name else None
+
         conn.execute(
             """INSERT INTO users (email, password_hash, display_name, username, avatar_color,
-               referral_code, referred_by, created_at, email_verified)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""",
-            (email, password_hash, display_name, username, avatar_color, ref_code, referred_by, now),
+               referral_code, referred_by, created_at, email_verified, full_name)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+            (email, password_hash, display_name, username, avatar_color, ref_code, referred_by, now, google_full_name),
         )
         conn.commit()
 
@@ -926,7 +1251,7 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
         # Send welcome email to new Google user
         _send_welcome_email(email, display_name)
 
-        token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]))
+        token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]), user["staff_role"])
         return {
             "success": True,
             "token": token,
@@ -941,6 +1266,7 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
                 "referral_code": user["referral_code"],
                 "is_admin": bool(user["is_admin"]),
                 "created_at": user["created_at"],
+                "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
             },
         }
 
@@ -1161,7 +1487,7 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
     if client_ip:
         record_login_attempt(client_ip, email, True)
 
-    token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]))
+    token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]), user["staff_role"])
 
     return {
         "success": True,
@@ -1177,6 +1503,7 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
             "referral_code": user["referral_code"],
             "is_admin": bool(user["is_admin"]),
             "created_at": user["created_at"],
+            "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
         },
     }
 
@@ -1231,7 +1558,7 @@ def verify_email(email: str, code: str) -> Dict:
     # Send welcome email after successful verification
     _send_welcome_email(email, user["display_name"])
 
-    token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]))
+    token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]), user["staff_role"])
 
     return {
         "success": True,
@@ -1247,6 +1574,7 @@ def verify_email(email: str, code: str) -> Dict:
             "referral_code": user["referral_code"],
             "is_admin": bool(user["is_admin"]),
             "created_at": user["created_at"],
+            "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
         },
     }
 
@@ -1312,6 +1640,14 @@ def get_user_profile(user_id: int) -> Optional[Dict]:
         "is_admin": bool(user["is_admin"]),
         "created_at": user["created_at"],
         "password_changed_at": user["password_changed_at"],
+        "full_name": user["full_name"],
+        "date_of_birth": user["date_of_birth"],
+        "security_question": user["security_question"],
+        "has_security_answer": bool(user["security_answer_hash"]),
+        "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+        "staff_role": user["staff_role"],
+        "role_id": user["role_id"],
+        "department": user["department"],
         "sensitive_actions_restricted": not sensitive_check["allowed"],
         "sensitive_actions_message": sensitive_check.get("message", ""),
         "sensitive_actions_remaining_seconds": sensitive_check.get("remaining_seconds", 0),
@@ -1406,12 +1742,34 @@ def list_all_users() -> List[Dict]:
         "tier": r["tier"],
         "is_active": bool(r["is_active"]),
         "is_admin": bool(r["is_admin"]),
+        "avatar_color": r["avatar_color"],
+        "full_name": r["full_name"],
+        "date_of_birth": r["date_of_birth"],
+        "staff_role": r["staff_role"],
         "referral_code": r["referral_code"],
         "referred_by": r["referred_by"],
         "created_at": r["created_at"],
         "last_login": r["last_login"],
         "login_count": r["login_count"],
     } for r in rows]
+
+
+def admin_reset_password(user_id: int, new_password: str) -> Dict:
+    """Admin: reset a user's password without cooldown restrictions."""
+    if len(new_password) < 8:
+        return {"success": False, "error": "Password must be at least 8 characters"}
+
+    conn = _get_db()
+    user = conn.execute("SELECT id, email FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "User not found"}
+
+    new_hash = _hash_password(new_password)
+    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": f"Password reset for {user['email']}"}
 
 
 def toggle_user_active(user_id: int, is_active: bool) -> bool:
@@ -1421,6 +1779,24 @@ def toggle_user_active(user_id: int, is_active: bool) -> bool:
     conn.commit()
     conn.close()
     return True
+
+
+def get_user_tier(user_id: int) -> Optional[str]:
+    """Get the current tier for a user directly from DB (lightweight)."""
+    conn = _get_db()
+    row = conn.execute("SELECT tier FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return row["tier"] if row else None
+
+
+def get_user_tier_and_status(user_id: int) -> Optional[Dict]:
+    """Get user's tier and active status from DB. Returns None if user not found."""
+    conn = _get_db()
+    row = conn.execute("SELECT tier, is_active FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"tier": row["tier"], "is_active": bool(row["is_active"])}
 
 
 def set_user_tier(user_id: int, tier: str) -> bool:
@@ -1456,6 +1832,182 @@ def get_user_stats() -> Dict:
         "new_today": new_today,
         "total_referrals": total_referrals,
     }
+
+
+# --- Personal Info & Account Deletion ---
+
+def update_personal_info(user_id: int, full_name: str = None, date_of_birth: str = None,
+                         security_question: str = None, security_answer: str = None) -> Dict:
+    """Update user's personal information fields."""
+    conn = _get_db()
+    user = conn.execute("SELECT id, security_question FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "User not found"}
+
+    updates = []
+    params = []
+
+    if full_name is not None:
+        if len(full_name.strip()) > 100:
+            conn.close()
+            return {"success": False, "error": "Full name must be under 100 characters"}
+        updates.append("full_name = ?")
+        params.append(full_name.strip() or None)
+
+    if date_of_birth is not None:
+        if date_of_birth:
+            # Validate date format YYYY-MM-DD
+            try:
+                datetime.strptime(date_of_birth, "%Y-%m-%d")
+            except ValueError:
+                conn.close()
+                return {"success": False, "error": "Invalid date format. Use YYYY-MM-DD."}
+        updates.append("date_of_birth = ?")
+        params.append(date_of_birth or None)
+
+    if security_question is not None:
+        # Once set, security question cannot be changed
+        if user["security_question"]:
+            conn.close()
+            return {"success": False, "error": "Security question cannot be changed once set."}
+        updates.append("security_question = ?")
+        params.append(security_question.strip() or None)
+
+    if security_answer is not None:
+        if security_answer.strip():
+            answer_hash = _hash_password(security_answer.strip().lower())
+            updates.append("security_answer_hash = ?")
+            params.append(answer_hash)
+        else:
+            updates.append("security_answer_hash = ?")
+            params.append(None)
+
+    if not updates:
+        conn.close()
+        return {"success": False, "error": "No fields to update"}
+
+    params.append(user_id)
+    conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
+
+def verify_security_answer(user_id: int, answer: str) -> bool:
+    """Verify a user's security answer (for admin identity verification)."""
+    conn = _get_db()
+    user = conn.execute("SELECT security_answer_hash FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not user or not user["security_answer_hash"]:
+        return False
+    return _verify_password(answer.strip().lower(), user["security_answer_hash"])
+
+
+VALID_STAFF_ROLES = {'super_admin', 'customer_care', 'accounting', 'technical_support'}
+
+
+def set_staff_role(user_id: int, role: str) -> Dict:
+    """Assign or remove a staff role for a user. role=None removes the role."""
+    if role is not None and role not in VALID_STAFF_ROLES:
+        return {"success": False, "error": f"Invalid role. Must be one of: {', '.join(VALID_STAFF_ROLES)}"}
+    conn = _get_db()
+    user = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "User not found"}
+    conn.execute("UPDATE users SET staff_role = ? WHERE id = ?", (role, user_id))
+    conn.commit()
+    conn.close()
+    return {"success": True, "role": role}
+
+
+def create_staff_account(email: str, password: str, display_name: str, role: str) -> Dict:
+    """Create a new staff account directly (bypasses captcha, email verification, and access codes)."""
+    email = email.lower().strip()
+
+    if not email or "@" not in email:
+        return {"success": False, "error": "Valid email is required"}
+
+    if len(password) < 6:
+        return {"success": False, "error": "Password must be at least 6 characters"}
+
+    if role not in VALID_STAFF_ROLES:
+        return {"success": False, "error": f"Invalid role. Must be one of: {', '.join(VALID_STAFF_ROLES)}"}
+
+    if not display_name.strip():
+        return {"success": False, "error": "Display name is required"}
+
+    conn = _get_db()
+
+    existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    if existing:
+        conn.close()
+        return {"success": False, "error": "Email already registered"}
+
+    username = _generate_unique_username(conn)
+    password_hash = _hash_password(password)
+    ref_code = _generate_referral_code()
+    avatar_color = random.choice(AVATAR_COLORS)
+    now = datetime.now().isoformat()
+
+    conn.execute(
+        """INSERT INTO users (email, password_hash, display_name, username, avatar_color,
+           referral_code, created_at, email_verified, staff_role, full_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+        (email, password_hash, display_name.strip(), username, avatar_color, ref_code, now, role, display_name.strip()),
+    )
+    conn.commit()
+
+    user = conn.execute("SELECT id, username, display_name, email, staff_role FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+
+    return {
+        "success": True,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "username": user["username"],
+            "display_name": user["display_name"],
+            "staff_role": user["staff_role"],
+        }
+    }
+
+
+def get_staff_members() -> list:
+    """Get all users with a staff role."""
+    conn = _get_db()
+    rows = conn.execute(
+        "SELECT id, email, display_name, username, avatar_color, staff_role, is_active, created_at "
+        "FROM users WHERE staff_role IS NOT NULL ORDER BY staff_role, display_name"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_staff_role(user_id: int):
+    """Get a user's staff role. Returns None if not staff."""
+    conn = _get_db()
+    row = conn.execute("SELECT staff_role FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return row["staff_role"] if row else None
+
+
+def delete_user(user_id: int) -> Dict:
+    """Delete a user account from the database."""
+    conn = _get_db()
+    user = conn.execute("SELECT id, email FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "User not found"}
+
+    conn.execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM login_attempts WHERE email = ?", (user["email"],))
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return {"success": True}
 
 
 # --- Referral Functions ---

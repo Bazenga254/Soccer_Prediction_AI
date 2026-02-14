@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 
 export default function EarningsDropdown() {
   const [isOpen, setIsOpen] = useState(false)
   const [earnings, setEarnings] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [hidden, setHidden] = useState(() => localStorage.getItem('earnings_hidden') === 'true')
   const dropdownRef = useRef(null)
+  const navigate = useNavigate()
 
   // Fetch balance on mount so it always shows
   useEffect(() => {
@@ -24,7 +26,6 @@ export default function EarningsDropdown() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Use axios without manual headers - AuthContext sets Authorization globally
   const fetchEarnings = async () => {
     setLoading(true)
     try {
@@ -44,7 +45,20 @@ export default function EarningsDropdown() {
     setIsOpen(!isOpen)
   }
 
+  const toggleHidden = (e) => {
+    e.stopPropagation()
+    const next = !hidden
+    setHidden(next)
+    localStorage.setItem('earnings_hidden', next ? 'true' : 'false')
+  }
+
+  const goToDashboard = () => {
+    setIsOpen(false)
+    setTimeout(() => navigate('/creator'), 50)
+  }
+
   const balance = earnings ? earnings.balance_usd : 0
+  const accountBalance = earnings ? (earnings.account_balance_usd || 0) : 0
 
   return (
     <div className="earnings-dropdown-wrapper" ref={dropdownRef}>
@@ -53,13 +67,27 @@ export default function EarningsDropdown() {
           <line x1="12" y1="1" x2="12" y2="23" />
           <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
         </svg>
-        <span className="earnings-inline-amount">${balance.toFixed(2)}</span>
+        <span className="earnings-inline-amount">{hidden ? '***' : `$${balance.toFixed(2)}`}</span>
       </button>
 
       {isOpen && (
         <div className="earnings-dropdown">
           <div className="earnings-dropdown-header">
             <span className="earnings-dropdown-title">Earnings</span>
+            <button className="earnings-privacy-toggle" onClick={toggleHidden} title={hidden ? 'Show amounts' : 'Hide amounts'}>
+              {hidden ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
           </div>
 
           <div className="earnings-dropdown-body">
@@ -69,14 +97,25 @@ export default function EarningsDropdown() {
               <div className="earnings-empty">Failed to load earnings</div>
             ) : (
               <>
+                {/* Account Balance (top-up) */}
+                {(accountBalance > 0 || (earnings.account_balance_kes || 0) > 0) && (
+                  <div className="earnings-account-balance">
+                    <div className="earnings-account-label">Account Balance</div>
+                    <div className="earnings-account-amount">
+                      {hidden ? '****' : `$${accountBalance.toFixed(2)}`}
+                    </div>
+                  </div>
+                )}
+
+                {/* Creator Earnings */}
                 <div className="earnings-balance-card">
-                  <div className="earnings-balance-label">Available Balance</div>
-                  <div className="earnings-balance-amount">${earnings.balance_usd.toFixed(2)}</div>
+                  <div className="earnings-balance-label">Creator Earnings</div>
+                  <div className="earnings-balance-amount">{hidden ? '****' : `$${earnings.balance_usd.toFixed(2)}`}</div>
                 </div>
 
                 <div className="earnings-stats-row">
                   <div className="earnings-stat">
-                    <span className="earnings-stat-value">${earnings.total_earned_usd.toFixed(2)}</span>
+                    <span className="earnings-stat-value">{hidden ? '***' : `$${earnings.total_earned_usd.toFixed(2)}`}</span>
                     <span className="earnings-stat-label">Total Earned</span>
                   </div>
                   <div className="earnings-stat">
@@ -95,17 +134,18 @@ export default function EarningsDropdown() {
                     {earnings.recent_sales.map((sale, i) => (
                       <div key={i} className="earnings-sale-item">
                         <span className="sale-match">{sale.match}</span>
-                        <span className="sale-amount">+${sale.amount.toFixed(2)}</span>
+                        <span className="sale-amount">{hidden ? '***' : `+$${sale.amount.toFixed(2)}`}</span>
                       </div>
                     ))}
                   </div>
                 )}
 
-                <Link to="/creator" className="earnings-view-all" onClick={() => setIsOpen(false)}>
-                  View Full Dashboard
-                </Link>
               </>
             )}
+          </div>
+
+          <div className="earnings-dropdown-footer" onMouseDown={(e) => { e.stopPropagation(); goToDashboard() }}>
+            View Full Dashboard
           </div>
         </div>
       )}

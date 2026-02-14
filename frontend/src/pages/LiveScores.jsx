@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import LiveChatPopup from '../components/LiveChatPopup'
 import axios from 'axios'
 
 // League priority: lower number = shown first
@@ -49,6 +51,12 @@ export default function LiveScores() {
   const [error, setError] = useState(null)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [expandedMatch, setExpandedMatch] = useState(null)
+  const [chatMatch, setChatMatch] = useState(null)
+  const [expandedTab, setExpandedTab] = useState('stats') // 'stats' | 'events' | 'analysis'
+  const [matchStats, setMatchStats] = useState({}) // { fixtureId: { home: {...}, away: {...} } }
+  const [statsLoading, setStatsLoading] = useState({})
+  const matchStatsRef = useRef({})
+  const statsLoadingRef = useRef({})
   const [favorites, setFavorites] = useState(() => {
     try { return JSON.parse(localStorage.getItem('live_favorites') || '[]') } catch { return [] }
   })
@@ -63,6 +71,42 @@ export default function LiveScores() {
       return next
     })
   }
+
+  const fetchMatchStats = useCallback(async (fixtureId, homeTeamId, awayTeamId, forceRefresh = false) => {
+    // Use refs for guard checks to avoid stale closure issues
+    if (!forceRefresh && (matchStatsRef.current[fixtureId] || statsLoadingRef.current[fixtureId])) return
+    statsLoadingRef.current[fixtureId] = true
+    setStatsLoading(prev => ({ ...prev, [fixtureId]: true }))
+    try {
+      const res = await axios.get(`/api/live-stats/${fixtureId}`)
+      const rawStats = res.data.statistics
+      if (rawStats && typeof rawStats === 'object') {
+        // Map team IDs to home/away
+        const parsed = { home: {}, away: {} }
+        Object.entries(rawStats).forEach(([teamId, data]) => {
+          if (parseInt(teamId) === homeTeamId) parsed.home = data.stats || {}
+          else if (parseInt(teamId) === awayTeamId) parsed.away = data.stats || {}
+        })
+        matchStatsRef.current[fixtureId] = parsed
+        setMatchStats(prev => ({ ...prev, [fixtureId]: parsed }))
+      }
+    } catch (err) {
+      console.error('[LiveScores] Stats fetch error for fixture', fixtureId, err)
+    }
+    statsLoadingRef.current[fixtureId] = false
+    setStatsLoading(prev => ({ ...prev, [fixtureId]: false }))
+  }, []) // No state dependencies - uses refs for guards
+
+  const handleExpand = useCallback((match) => {
+    setExpandedMatch(prev => {
+      const newId = prev === match.id ? null : match.id
+      if (newId) {
+        fetchMatchStats(match.id, match.home_team.id, match.away_team.id)
+      }
+      return newId
+    })
+    setExpandedTab('stats')
+  }, [fetchMatchStats])
 
   const fetchLiveMatches = useCallback(async (isInitial = false) => {
     try {
@@ -106,6 +150,21 @@ export default function LiveScores() {
     const interval = setInterval(() => fetchLiveMatches(false), 45000)
     return () => clearInterval(interval)
   }, [fetchLiveMatches])
+
+  // Auto-refresh stats for expanded live match every 60s
+  useEffect(() => {
+    if (!expandedMatch) return
+    const match = liveMatches.find(m => m.id === expandedMatch)
+    if (!match || !['1H', '2H', 'LIVE', 'ET', 'HT'].includes(match.status)) return
+    const interval = setInterval(() => {
+      // Clear cached stats from ref and state, then force re-fetch
+      delete matchStatsRef.current[expandedMatch]
+      delete statsLoadingRef.current[expandedMatch]
+      setMatchStats(prev => { const next = { ...prev }; delete next[expandedMatch]; return next })
+      fetchMatchStats(expandedMatch, match.home_team.id, match.away_team.id, true)
+    }, 60000)
+    return () => clearInterval(interval)
+  }, [expandedMatch, liveMatches, fetchMatchStats])
 
   // Status helpers
   const isLive = (status) => ['1H', '2H', 'LIVE', 'ET', 'HT'].includes(status)
@@ -262,7 +321,7 @@ export default function LiveScores() {
                     <div key={match.id}>
                       <div
                         className={`live-match-row ${isLive(match.status) ? 'is-live' : ''} ${isFinished(match.status) ? 'is-ft' : ''} ${hasGoal ? 'goal-flash' : ''}`}
-                        onClick={() => setExpandedMatch(expandedMatch === match.id ? null : match.id)}
+                        onClick={() => handleExpand(match)}
                       >
                         <button
                           className={`fav-star ${isFav ? 'active' : ''}`}
@@ -305,11 +364,190 @@ export default function LiveScores() {
                       </div>
 
                       {/* Expanded analysis panel */}
-                      {expandedMatch === match.id && (
+                      {expandedMatch === match.id && (() => {
+                        const stats = matchStats[match.id] || match.statistics
+                        const hasStats = stats && (Object.keys(stats.home || {}).length > 0 || Object.keys(stats.away || {}).length > 0)
+                        const isStatsLoading = statsLoading[match.id]
+                        const matchEvents = match.events || []
+                        const goalEvents = matchEvents.filter(e => e.type === 'Goal')
+                        const homeGoalEvents = goalEvents.filter(e => e.team_id === match.home_team.id)
+                        const awayGoalEvents = goalEvents.filter(e => e.team_id === match.away_team.id)
+
+                        // Helper to get stat value
+                        const getStat = (key) => {
+                          const h = stats?.home?.[key]
+                          const a = stats?.away?.[key]
+                          return { home: h, away: a, available: h != null || a != null }
+                        }
+
+                        // Helper to try multiple key variants
+                        const getStatMulti = (...keys) => {
+                          for (const k of keys) {
+                            const r = getStat(k)
+                            if (r.available) return { ...r, foundKey: k }
+                          }
+                          return { home: null, away: null, available: false, foundKey: null }
+                        }
+
+                        // Stats to display (with key variants for API inconsistencies)
+                        const statRows = [
+                          { keys: ['Ball Possession'], label: 'Possession' },
+                          { keys: ['Total Shots'], label: 'Total Shots' },
+                          { keys: ['Shots on Goal'], label: 'Shots on Target' },
+                          { keys: ['Shots off Goal'], label: 'Shots off Target' },
+                          { keys: ['Corner Kicks'], label: 'Corners' },
+                          { keys: ['Fouls'], label: 'Fouls' },
+                          { keys: ['Yellow Cards'], label: 'Yellow Cards' },
+                          { keys: ['Red Cards'], label: 'Red Cards' },
+                          { keys: ['Offsides'], label: 'Offsides' },
+                          { keys: ['Passes accurate', 'Passes Accurate'], label: 'Accurate Passes' },
+                          { keys: ['Passes %', 'Pass Accuracy'], label: 'Pass Accuracy' },
+                          { keys: ['expected_goals'], label: 'Expected Goals (xG)' },
+                        ].map(s => {
+                          const result = getStatMulti(...s.keys)
+                          return { ...s, ...result }
+                        }).filter(s => s.available)
+
+                        return (
                         <div className="match-expanded-panel">
-                          {analysis && isLive(match.status) ? (
+                          {/* Tab Bar */}
+                          <div className="expanded-tabs">
+                            <button className={`expanded-tab ${expandedTab === 'stats' ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); setExpandedTab('stats') }}>Stats</button>
+                            <button className={`expanded-tab ${expandedTab === 'events' ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); setExpandedTab('events') }}>Events</button>
+                            {analysis && isLive(match.status) && (
+                              <button className={`expanded-tab ${expandedTab === 'analysis' ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); setExpandedTab('analysis') }}>Analysis</button>
+                            )}
+                          </div>
+
+                          {/* === STATS TAB === */}
+                          {expandedTab === 'stats' && (
+                            <div className="match-stats-panel">
+                              {/* Score header with goal scorers */}
+                              <div className="stats-score-header">
+                                <div className="stats-team-col home">
+                                  {match.home_team.crest && <img src={match.home_team.crest} alt="" className="stats-team-crest" />}
+                                  <span className="stats-team-name">{match.home_team.name}</span>
+                                </div>
+                                <div className="stats-score-center">
+                                  <span className="stats-score-num">{match.goals?.home ?? 0} - {match.goals?.away ?? 0}</span>
+                                  <span className="stats-match-status">{getMatchStatus(match.status, match.elapsed)}</span>
+                                </div>
+                                <div className="stats-team-col away">
+                                  {match.away_team.crest && <img src={match.away_team.crest} alt="" className="stats-team-crest" />}
+                                  <span className="stats-team-name">{match.away_team.name}</span>
+                                </div>
+                              </div>
+
+                              {/* Goal scorers under score */}
+                              {goalEvents.length > 0 && (
+                                <div className="stats-scorers-row">
+                                  <div className="stats-scorers-col home">
+                                    {homeGoalEvents.map((g, i) => (
+                                      <span key={i} className="stats-scorer">{g.player} {g.time}'</span>
+                                    ))}
+                                  </div>
+                                  <div className="stats-scorers-col away">
+                                    {awayGoalEvents.map((g, i) => (
+                                      <span key={i} className="stats-scorer">{g.player} {g.time}'</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Stats comparison bars */}
+                              {hasStats && statRows.length > 0 ? (
+                                <div className="stats-comparison">
+                                  {statRows.map((row) => {
+                                    const hVal = row.home
+                                    const aVal = row.away
+                                    const hNum = typeof hVal === 'string' ? parseFloat(hVal) : (hVal || 0)
+                                    const aNum = typeof aVal === 'string' ? parseFloat(aVal) : (aVal || 0)
+                                    const total = hNum + aNum || 1
+                                    const hPct = Math.round((hNum / total) * 100)
+                                    const aPct = 100 - hPct
+                                    const hDisplay = hVal ?? 0
+                                    const aDisplay = aVal ?? 0
+                                    return (
+                                      <div key={row.label} className="stat-comparison-row">
+                                        <span className={`stat-val home ${hNum > aNum ? 'leading' : ''}`}>{hDisplay}</span>
+                                        <div className="stat-bar-section">
+                                          <span className="stat-label">{row.label}</span>
+                                          <div className="stat-bar-track">
+                                            <div className={`stat-bar-home ${hNum > aNum ? 'leading' : hNum < aNum ? 'trailing' : ''}`} style={{ width: `${hPct}%` }} />
+                                            <div className={`stat-bar-away ${aNum > hNum ? 'leading' : aNum < hNum ? 'trailing' : ''}`} style={{ width: `${aPct}%` }} />
+                                          </div>
+                                        </div>
+                                        <span className={`stat-val away ${aNum > hNum ? 'leading' : ''}`}>{aDisplay}</span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="stats-unavailable">
+                                  {isStatsLoading ? (
+                                    <><div className="spinner" style={{ width: 20, height: 20, margin: '0 auto 8px' }}></div><p>Loading statistics...</p></>
+                                  ) : (
+                                    <p>Statistics not yet available for this match.</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* === EVENTS TAB === */}
+                          {expandedTab === 'events' && (
+                            <div className="match-events-timeline">
+                              {matchEvents.length > 0 ? (
+                                <>
+                                  <div className="events-timeline-header">
+                                    <span className="etl-team-name">{match.home_team.name}</span>
+                                    <span className="etl-center-label">Match Events</span>
+                                    <span className="etl-team-name">{match.away_team.name}</span>
+                                  </div>
+                                  <div className="events-timeline-list">
+                                    {matchEvents.map((event, idx) => {
+                                      const isHome = event.team_id === match.home_team.id
+                                      const icon = event.type === 'Goal' ? (event.detail === 'Own Goal' ? '\u26BD\u274C' : '\u26BD')
+                                        : event.type === 'Card' ? (event.detail === 'Red Card' ? '\uD83D\uDFE5' : event.detail === 'Second Yellow card' ? '\uD83D\uDFE8\uD83D\uDFE5' : '\uD83D\uDFE8')
+                                        : event.type === 'subst' ? '\uD83D\uDD04' : '\uD83D\uDCCB'
+                                      return (
+                                        <div key={idx} className={`etl-event ${isHome ? 'home' : 'away'}`}>
+                                          {isHome && (
+                                            <div className="etl-event-content home">
+                                              <span className="etl-player">{event.player}</span>
+                                              {event.detail && event.detail !== event.type && (
+                                                <span className="etl-detail">{event.detail}</span>
+                                              )}
+                                            </div>
+                                          )}
+                                          <div className="etl-time-col">
+                                            <span className="etl-icon">{icon}</span>
+                                            <span className="etl-time">{event.time}'</span>
+                                          </div>
+                                          {!isHome && (
+                                            <div className="etl-event-content away">
+                                              <span className="etl-player">{event.player}</span>
+                                              {event.detail && event.detail !== event.type && (
+                                                <span className="etl-detail">{event.detail}</span>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="stats-unavailable">
+                                  <p>No events recorded yet.</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* === ANALYSIS TAB === */}
+                          {expandedTab === 'analysis' && analysis && isLive(match.status) && (
                             <div className="lma-container lma-compact">
-                              {/* Dynamic bars: Domination, Likely to Score, Aggression */}
                               {[
                                 { key: 'dom', label: 'DOMINATION', data: analysis.domination },
                                 { key: 'lts', label: 'LIKELY TO SCORE', data: analysis.likely_next_goal },
@@ -339,7 +577,6 @@ export default function LiveScores() {
                                 )
                               })}
 
-                              {/* Neutral bars: Possession, Shots, Attacks */}
                               {analysis.possession && (() => {
                                 const h = analysis.possession.home || 50
                                 const a = analysis.possession.away || 50
@@ -377,43 +614,32 @@ export default function LiveScores() {
                                   </div>
                                 )
                               })()}
-
-                              <button className="full-analysis-btn" onClick={(e) => { e.stopPropagation(); handleMatchClick(match) }}>
-                                Full Match Analysis
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="lma-container lma-compact">
-                              <div className="ft-summary">
-                                {isFinished(match.status) ? (
-                                  <span>Final Score: {match.goals?.home ?? 0} - {match.goals?.away ?? 0}</span>
-                                ) : (
-                                  <span>Match in progress</span>
-                                )}
-                              </div>
-                              <button className="full-analysis-btn" onClick={(e) => { e.stopPropagation(); handleMatchClick(match) }}>
-                                Full Match Analysis
-                              </button>
                             </div>
                           )}
 
-                          {/* Recent Events */}
-                          {match.events && match.events.length > 0 && (
-                            <div className="match-events-list">
-                              {match.events.slice(-5).reverse().map((event, idx) => (
-                                <div key={idx} className="event-row">
-                                  <span className="event-time-badge">{event.time}'</span>
-                                  <span className="event-type-icon">
-                                    {event.type === 'Goal' ? '⚽' : event.type === 'Card' ? (event.detail === 'Red Card' ? '🟥' : '🟨') : event.type === 'subst' ? '🔄' : '📋'}
-                                  </span>
-                                  <span className="event-text">{event.player}</span>
-                                  <span className="event-team-name">{event.team}</span>
-                                </div>
-                              ))}
+                          {/* Action buttons */}
+                          <div className="expanded-actions">
+                            <button className="full-analysis-btn" onClick={(e) => { e.stopPropagation(); handleMatchClick(match) }}>
+                              Full Match Analysis
+                            </button>
+                            <div className="match-live-chat-section" onClick={e => e.stopPropagation()}>
+                              <button
+                                className="match-chat-toggle"
+                                onClick={() => setChatMatch({
+                                  key: String(match.id),
+                                  name: `${match.home_team.name} vs ${match.away_team.name}`
+                                })}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                </svg>
+                                <span>Live Chat</span>
+                              </button>
                             </div>
-                          )}
+                          </div>
                         </div>
-                      )}
+                        )
+                      })()}
                     </div>
                   )
                 })}
@@ -421,6 +647,14 @@ export default function LiveScores() {
             </div>
           ))}
         </div>
+      )}
+
+      {chatMatch && (
+        <LiveChatPopup
+          matchKey={chatMatch.key}
+          matchName={chatMatch.name}
+          onClose={() => setChatMatch(null)}
+        />
       )}
     </div>
   )

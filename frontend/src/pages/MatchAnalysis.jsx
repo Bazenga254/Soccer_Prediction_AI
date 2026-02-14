@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useLocation, useNavigate } from 'react-router-dom'
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom'
 import axios from 'axios'
 import PlayerImpact from '../components/PlayerImpact'
+import LiveChatPopup from '../components/LiveChatPopup'
 import { useBetSlip } from '../context/BetSlipContext'
 import { useAuth } from '../context/AuthContext'
-import AdBanner from '../components/AdBanner'
 
 function formatDateTime(dateStr) {
   if (!dateStr) return ''
@@ -1285,6 +1285,125 @@ function LiveAnalysisSection({ analysis, teamAName, teamBName }) {
   )
 }
 
+// Live Match Statistics (possession, shots, corners, fouls, etc.) - Free tier
+function LiveMatchStatsPanel({ statistics, teamAName, teamBName, homeTeamCrest, awayTeamCrest, homeTeamId, goals, status, elapsed, events }) {
+  if (!statistics) return null
+  const { home, away } = statistics
+  if (!home || !away || (Object.keys(home).length === 0 && Object.keys(away).length === 0)) return null
+
+  const getStat = (...keys) => {
+    for (const k of keys) {
+      if (home[k] != null || away[k] != null) return { home: home[k], away: away[k], label: k }
+    }
+    return null
+  }
+
+  const statRows = [
+    { data: getStat('Ball Possession'), label: 'Possession' },
+    { data: getStat('Total Shots'), label: 'Total Shots' },
+    { data: getStat('Shots on Goal'), label: 'Shots on Target' },
+    { data: getStat('Shots off Goal'), label: 'Shots off Target' },
+    { data: getStat('Corner Kicks'), label: 'Corners' },
+    { data: getStat('Fouls'), label: 'Fouls' },
+    { data: getStat('Yellow Cards'), label: 'Yellow Cards' },
+    { data: getStat('Red Cards'), label: 'Red Cards' },
+    { data: getStat('Offsides'), label: 'Offsides' },
+    { data: getStat('Passes accurate', 'Passes Accurate'), label: 'Accurate Passes' },
+    { data: getStat('Passes %', 'Pass Accuracy'), label: 'Pass Accuracy' },
+    { data: getStat('expected_goals'), label: 'Expected Goals (xG)' },
+  ].filter(s => s.data)
+
+  if (statRows.length === 0) return null
+
+  const getStatus = () => {
+    switch (status) {
+      case '1H': case '2H': case 'LIVE': return `${elapsed}'`
+      case 'HT': return 'HT'
+      case 'FT': return 'FT'
+      case 'ET': return `ET ${elapsed}'`
+      case 'AET': return 'AET'
+      case 'P': case 'PEN': return 'PEN'
+      default: return status || ''
+    }
+  }
+
+  const isLiveNow = ['1H', '2H', 'LIVE', 'ET', 'HT'].includes(status)
+
+  return (
+    <div className="analysis-section live-stats-section">
+      <div className="live-stats-header">
+        {isLiveNow && <span className="lma-live-dot"></span>}
+        <h3 className="section-title" style={{ margin: 0 }}>Match Statistics</h3>
+      </div>
+      {isLiveNow && <p className="section-subtitle">Live stats — auto-updates every 30 seconds</p>}
+
+      {/* Score header */}
+      <div className="stats-score-header">
+        <div className="stats-team-col home">
+          {homeTeamCrest && <img src={homeTeamCrest} alt="" className="stats-team-crest" />}
+          <span className="stats-team-name">{teamAName}</span>
+        </div>
+        <div className="stats-score-center">
+          <span className="stats-score-num">{goals?.home ?? '?'} - {goals?.away ?? '?'}</span>
+          <span className="stats-match-status">{getStatus()}</span>
+        </div>
+        <div className="stats-team-col away">
+          {awayTeamCrest && <img src={awayTeamCrest} alt="" className="stats-team-crest" />}
+          <span className="stats-team-name">{teamBName}</span>
+        </div>
+      </div>
+
+      {/* Goal scorers */}
+      {events && events.length > 0 && (() => {
+        const goalEvents = events.filter(e => e.type === 'Goal')
+        if (goalEvents.length === 0) return null
+        const homeGoals = goalEvents.filter(e => e.team_id === homeTeamId)
+        const awayGoals = goalEvents.filter(e => e.team_id !== homeTeamId)
+        return (
+          <div className="stats-scorers-row">
+            <div className="stats-scorers-col home">
+              {homeGoals.map((g, i) => (
+                <span key={i} className="stats-scorer">{g.player} {g.time}'</span>
+              ))}
+            </div>
+            <div className="stats-scorers-col away">
+              {awayGoals.map((g, i) => (
+                <span key={i} className="stats-scorer">{g.player} {g.time}'</span>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Stat comparison bars */}
+      <div className="stats-comparison">
+        {statRows.map(({ data, label }) => {
+          const hVal = data.home
+          const aVal = data.away
+          const hNum = typeof hVal === 'string' ? parseFloat(hVal) : (hVal || 0)
+          const aNum = typeof aVal === 'string' ? parseFloat(aVal) : (aVal || 0)
+          const total = hNum + aNum || 1
+          const hPct = Math.round((hNum / total) * 100)
+          const aPct = 100 - hPct
+          return (
+            <div key={label} className="stat-comparison-row">
+              <span className={`stat-val home ${hNum > aNum ? 'leading' : ''}`}>{hVal ?? 0}</span>
+              <div className="stat-bar-section">
+                <span className="stat-label">{label}</span>
+                <div className="stat-bar-track">
+                  <div className={`stat-bar-home ${hNum > aNum ? 'leading' : hNum < aNum ? 'trailing' : ''}`} style={{ width: `${hPct}%` }} />
+                  <div className={`stat-bar-away ${aNum > hNum ? 'leading' : aNum < hNum ? 'trailing' : ''}`} style={{ width: `${aPct}%` }} />
+                </div>
+              </div>
+              <span className={`stat-val away ${aNum > hNum ? 'leading' : ''}`}>{aVal ?? 0}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // Formation Display with pitch visualization
 function FormationDisplay({ lineups }) {
   if (!lineups || lineups.length === 0) return null
@@ -1970,9 +2089,26 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
         </div>
       </div>
 
-      <AdBanner format="banner" slot="analysis-bottom" />
     </div>
   )
+}
+
+function CountdownTimer({ resetAt, onExpire }) {
+  const [timeLeft, setTimeLeft] = useState('')
+  useEffect(() => {
+    const update = () => {
+      const diff = new Date(resetAt).getTime() - Date.now()
+      if (diff <= 0) { onExpire?.(); return }
+      const h = Math.floor(diff / 3600000)
+      const m = Math.floor((diff % 3600000) / 60000)
+      const s = Math.floor((diff % 60000) / 1000)
+      setTimeLeft(`${h}h ${m}m ${s}s`)
+    }
+    update()
+    const id = setInterval(update, 1000)
+    return () => clearInterval(id)
+  }, [resetAt, onExpire])
+  return <span className="analysis-countdown">{timeLeft}</span>
 }
 
 export default function MatchAnalysis() {
@@ -1984,6 +2120,7 @@ export default function MatchAnalysis() {
   const competitionName = COMPETITION_NAMES[competition] || fixture?.competition?.name || 'League'
   const fixtureId = fixture?.id
 
+  const { user } = useAuth()
   const [prediction, setPrediction] = useState(null)
   const [h2hData, setH2hData] = useState(null)
   const [matchStats, setMatchStats] = useState(null)
@@ -1991,7 +2128,15 @@ export default function MatchAnalysis() {
   const [error, setError] = useState(null)
   const [lineups, setLineups] = useState(null)
   const [liveData, setLiveData] = useState(null)
+  const [liveStats, setLiveStats] = useState(null)
+  const [showChat, setShowChat] = useState(true)
+  const [viewBlocked, setViewBlocked] = useState(false)
+  const [viewResetAt, setViewResetAt] = useState(null)
+  const [balanceUsd, setBalanceUsd] = useState(0)
+  const [balanceLoading, setBalanceLoading] = useState(false)
+  const [fetchTrigger, setFetchTrigger] = useState(0)
   const pollRef = useRef(null)
+  const matchKey = `${homeId}-${awayId}-${competition}`
 
   const isLive = (status) => ['1H', '2H', 'LIVE', 'ET', 'HT'].includes(status)
   const matchIsLive = isLive(liveData?.status || fixture?.status)
@@ -2001,6 +2146,28 @@ export default function MatchAnalysis() {
     const fetchAllData = async () => {
       setLoading(true)
       setError(null)
+
+      // Check & record analysis view for free users
+      if (user && user.tier !== 'pro') {
+        try {
+          const viewRes = await axios.post('/api/analysis-views/record', { match_key: matchKey })
+          if (!viewRes.data.allowed) {
+            setViewBlocked(true)
+            setViewResetAt(viewRes.data.reset_at)
+            // Fetch balance to show "Use Balance" option
+            try {
+              const balRes = await axios.get('/api/user/balance')
+              setBalanceUsd(balRes.data.balance?.balance_usd || 0)
+            } catch { /* ignore */ }
+            setLoading(false)
+            return
+          }
+        } catch (err) {
+          if (err.response?.status === 401) {
+            // Not logged in, let them view (or handle differently)
+          }
+        }
+      }
 
       try {
         const requests = [
@@ -2053,7 +2220,30 @@ export default function MatchAnalysis() {
     }
 
     fetchAllData()
-  }, [homeId, awayId, competition, fixtureId])
+  }, [homeId, awayId, competition, fixtureId, fetchTrigger])
+
+  // Fetch fixture statistics (possession, shots, corners, etc.)
+  const fetchLiveStats = useCallback(async () => {
+    if (!fixtureId) return
+    try {
+      const res = await axios.get(`/api/live-stats/${fixtureId}`)
+      const rawStats = res.data.statistics
+      if (rawStats && typeof rawStats === 'object') {
+        const parsed = { home: {}, away: {} }
+        const homeTeamId = fixture?.home_team?.id || parseInt(homeId)
+        const awayTeamId = fixture?.away_team?.id || parseInt(awayId)
+        Object.entries(rawStats).forEach(([teamId, data]) => {
+          if (parseInt(teamId) === homeTeamId) parsed.home = data.stats || data || {}
+          else if (parseInt(teamId) === awayTeamId) parsed.away = data.stats || data || {}
+        })
+        if (Object.keys(parsed.home).length > 0 || Object.keys(parsed.away).length > 0) {
+          setLiveStats(parsed)
+        }
+      }
+    } catch (e) {
+      // Stats not available yet - that's fine
+    }
+  }, [fixtureId, fixture?.home_team?.id, fixture?.away_team?.id, homeId, awayId])
 
   // Poll for live match data every 30 seconds when match is live
   const pollLiveData = useCallback(async () => {
@@ -2068,13 +2258,27 @@ export default function MatchAnalysis() {
     }
   }, [fixtureId])
 
+  // Fetch stats once on mount for any match that has a fixture ID (live, FT, PEN, etc.)
   useEffect(() => {
-    if (fixtureId && isLive(fixture?.status)) {
+    if (fixtureId) {
+      fetchLiveStats()
+    }
+  }, [fixtureId, fetchLiveStats])
+
+  // Poll live data + stats for active matches
+  useEffect(() => {
+    const matchStatus = fixture?.status
+    const isActiveMatch = isLive(matchStatus) || ['FT', 'AET', 'PEN', 'P'].includes(matchStatus)
+    if (fixtureId && isActiveMatch) {
       pollLiveData()
-      pollRef.current = setInterval(pollLiveData, 30000)
+      const interval = setInterval(() => {
+        pollLiveData()
+        if (isLive(matchStatus)) fetchLiveStats()
+      }, 30000)
+      pollRef.current = interval
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [fixtureId, fixture?.status, pollLiveData])
+  }, [fixtureId, fixture?.status, pollLiveData, fetchLiveStats])
 
   const teamAName = prediction?.match_info?.team_a?.name || fixture?.home_team?.name || 'Home Team'
   const teamBName = prediction?.match_info?.team_b?.name || fixture?.away_team?.name || 'Away Team'
@@ -2084,6 +2288,8 @@ export default function MatchAnalysis() {
   const currentStatus = liveData?.status || fixture?.status
   const currentElapsed = liveData?.elapsed || fixture?.elapsed
   const currentAnalysis = liveData?.live_analysis || fixture?.live_analysis
+  const currentStatistics = liveStats || null
+  const currentEvents = liveData?.events || fixture?.events || []
 
   const getMatchStatus = (status, elapsed) => {
     switch (status) {
@@ -2100,7 +2306,7 @@ export default function MatchAnalysis() {
   return (
     <div className="match-analysis-page">
       <button className="back-btn" onClick={() => navigate(-1)}>
-        ← Back to {competitionName} Fixtures
+        ← Back to {location.state?.from === 'predictions' ? 'Predictions' : `${competitionName} Fixtures`}
       </button>
 
       <div className="header-disclaimer" style={{ margin: '0 auto 16px', maxWidth: 520 }}>
@@ -2180,7 +2386,69 @@ export default function MatchAnalysis() {
         </div>
       )}
 
-      {!loading && !error && (
+      {/* Live Match Statistics - Free tier (always visible, even when views are blocked) */}
+      {!loading && currentStatistics && (
+        <LiveMatchStatsPanel
+          statistics={currentStatistics}
+          teamAName={teamAName}
+          teamBName={teamBName}
+          homeTeamCrest={fixture?.home_team?.crest}
+          awayTeamCrest={fixture?.away_team?.crest}
+          homeTeamId={fixture?.home_team?.id}
+          goals={currentGoals}
+          status={currentStatus}
+          elapsed={currentElapsed}
+          events={currentEvents}
+        />
+      )}
+
+      {viewBlocked && (
+        <div className="analysis-view-blocked">
+          <div className="analysis-blurred-placeholder">
+            <div className="blurred-card" /><div className="blurred-card short" /><div className="blurred-card" />
+          </div>
+          <div className="analysis-blocked-overlay">
+            <div className="analysis-blocked-icon">{'\u{1F512}'}</div>
+            <h2 className="analysis-blocked-title">Free Views Used Up</h2>
+            <p className="analysis-blocked-text">
+              You've used your 3 free match analyses.
+              {viewResetAt && (<>
+                {' '}Your free views reset in{' '}
+                <CountdownTimer resetAt={viewResetAt} onExpire={() => { setViewBlocked(false); window.location.reload() }} />.
+              </>)}
+            </p>
+            {balanceUsd >= 0.50 && (
+              <button
+                className="balance-pay-btn"
+                disabled={balanceLoading}
+                onClick={async () => {
+                  setBalanceLoading(true)
+                  try {
+                    const deductRes = await axios.post('/api/balance/use-for-analysis')
+                    if (deductRes.data.success) {
+                      await axios.post('/api/analysis-views/record', { match_key: matchKey, balance_paid: true })
+                      setBalanceUsd(deductRes.data.balance?.balance_usd || 0)
+                      setViewBlocked(false)
+                      setFetchTrigger(prev => prev + 1)
+                    }
+                  } catch { /* ignore */ }
+                  setBalanceLoading(false)
+                }}
+              >
+                {balanceLoading ? 'Processing...' : `Use Balance ($0.50) \u2014 $${balanceUsd.toFixed(2)} available`}
+              </button>
+            )}
+            <Link to="/upgrade" className="analysis-blocked-upgrade-btn">
+              {'\u{1F680}'} {balanceUsd < 0.50 ? 'Deposit $2 to Unlock' : 'Upgrade to Pro for Unlimited Access'}
+            </Link>
+            <button className="analysis-blocked-back-btn" onClick={() => navigate(-1)}>
+              ← Go Back
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && !viewBlocked && (
         <div className="analysis-results">
           {/* Live Analysis (real-time polled or from fixture) */}
           {currentAnalysis && (
@@ -2280,6 +2548,14 @@ export default function MatchAnalysis() {
             teamBName={teamBName}
           />
         </div>
+      )}
+
+      {showChat && fixtureId && !viewBlocked && (
+        <LiveChatPopup
+          matchKey={String(fixtureId)}
+          matchName={`${teamAName} vs ${teamBName}`}
+          onClose={() => setShowChat(false)}
+        />
       )}
     </div>
   )

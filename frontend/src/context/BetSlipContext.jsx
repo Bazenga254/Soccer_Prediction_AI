@@ -9,6 +9,11 @@ export function BetSlipProvider({ children }) {
   const [confirmResult, setConfirmResult] = useState(null)
 
   const addBet = useCallback((bet) => {
+    // Auto-capture competitionId from URL if not provided
+    if (!bet.competitionId) {
+      const match = window.location.pathname.match(/\/match\/([^/]+)\//)
+      if (match) bet.competitionId = match[1]
+    }
     setSelectedBets(prev => {
       // Check if this exact bet already exists (same match + same category + same outcome)
       const existingIndex = prev.findIndex(

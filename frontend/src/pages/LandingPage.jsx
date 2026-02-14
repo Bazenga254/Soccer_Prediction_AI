@@ -147,18 +147,19 @@ const STEPS = [
 ]
 
 const FREE_FEATURES = [
-  '3 predictions per day',
-  'Basic match analysis',
-  'H2H statistics',
+  '3 match analyses per 24h',
+  '2 jackpot analyses, then 1 per 72h',
+  '10 AI chat prompts',
+  'Basic H2H statistics',
   '1 community share per day',
 ]
 
 const PRO_FEATURES = [
-  'Unlimited predictions',
-  'Advanced analytics',
-  'Value betting insights',
+  'Unlimited match analyses',
+  'Unlimited jackpot analyses',
+  'Unlimited AI chat prompts',
+  'Advanced analytics & value betting',
   'Ad-free experience',
-  'Unlimited community shares',
   'Priority support',
 ]
 
@@ -295,7 +296,7 @@ export default function LandingPage() {
               <div className="landing-plan-header">
                 <h3 className="landing-plan-name">Pro Weekly</h3>
                 <div className="landing-plan-price">
-                  <span className="landing-price-amount">$9</span>
+                  <span className="landing-price-amount">$15</span>
                   <span className="landing-price-period">/ week</span>
                 </div>
               </div>
@@ -314,11 +315,11 @@ export default function LandingPage() {
 
             {/* Pro Monthly */}
             <div className="landing-plan-card">
-              <div className="landing-plan-save">Save 19%</div>
+              <div className="landing-plan-save">Save 20%</div>
               <div className="landing-plan-header">
                 <h3 className="landing-plan-name">Pro Monthly</h3>
                 <div className="landing-plan-price">
-                  <span className="landing-price-amount">$29</span>
+                  <span className="landing-price-amount">$48</span>
                   <span className="landing-price-period">/ month</span>
                 </div>
               </div>

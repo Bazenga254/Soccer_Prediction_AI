@@ -1,9 +1,21 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import axios from 'axios'
+import { isSoundEnabled, setSoundEnabled } from '../sounds'
+
+const SECURITY_QUESTIONS = [
+  "What is your mother's maiden name?",
+  "What was your first pet's name?",
+  "What city were you born in?",
+  "What is your favorite movie?",
+  "What was the name of your first school?",
+  "What is your childhood nickname?",
+]
 
 export default function Profile() {
-  const { user, updateUser, refreshProfile } = useAuth()
+  const { user, updateUser, refreshProfile, logout } = useAuth()
+  const navigate = useNavigate()
   const [editingUsername, setEditingUsername] = useState(false)
   const [newUsername, setNewUsername] = useState(user?.username || '')
   const [usernameAvailable, setUsernameAvailable] = useState(null)
@@ -13,6 +25,23 @@ export default function Profile() {
   const [uploading, setUploading] = useState(false)
   const [copied, setCopied] = useState(false)
   const fileInputRef = useRef(null)
+
+  // Personal info state
+  const [fullName, setFullName] = useState(user?.full_name || '')
+  const [dateOfBirth, setDateOfBirth] = useState(user?.date_of_birth || '')
+  const [securityQuestion, setSecurityQuestion] = useState(user?.security_question || '')
+  const [securityAnswer, setSecurityAnswer] = useState('')
+  const [savingPersonal, setSavingPersonal] = useState(false)
+
+  // Sound preference state
+  const [soundOn, setSoundOn] = useState(isSoundEnabled)
+
+  // Delete account state
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     const fetchReferralStats = async () => {
@@ -103,6 +132,60 @@ export default function Profile() {
       }
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to remove avatar')
+    }
+  }
+
+  const savePersonalInfo = async () => {
+    setError('')
+    setSuccess('')
+    setSavingPersonal(true)
+    try {
+      const payload = {}
+      if (fullName !== (user.full_name || '')) payload.full_name = fullName
+      if (dateOfBirth !== (user.date_of_birth || '')) payload.date_of_birth = dateOfBirth
+      if (securityQuestion !== (user.security_question || '')) payload.security_question = securityQuestion
+      if (securityAnswer.trim()) payload.security_answer = securityAnswer
+
+      if (Object.keys(payload).length === 0) {
+        setError('No changes to save')
+        setTimeout(() => setError(''), 3000)
+        setSavingPersonal(false)
+        return
+      }
+
+      await axios.put('/api/user/personal-info', payload)
+      await refreshProfile()
+      setSecurityAnswer('')
+      setSuccess('Personal information updated!')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update personal info')
+      setTimeout(() => setError(''), 5000)
+    } finally {
+      setSavingPersonal(false)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeleteError('')
+    if (deleteConfirmText !== 'DELETE') {
+      setDeleteError('Please type DELETE to confirm')
+      return
+    }
+    if (!deletePassword) {
+      setDeleteError('Please enter your password')
+      return
+    }
+    setDeleting(true)
+    try {
+      await axios.delete('/api/user/account', { data: { password: deletePassword } })
+      setShowDeleteModal(false)
+      logout()
+      navigate('/')
+    } catch (err) {
+      setDeleteError(err.response?.data?.detail || 'Failed to delete account')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -216,6 +299,92 @@ export default function Profile() {
           </div>
         </div>
 
+        {/* Personal Information */}
+        <div className="profile-personal-info">
+          <h3 className="profile-section-title">Personal Information</h3>
+          <p className="profile-section-desc">This information helps us verify your identity for support requests.</p>
+
+          <div className="personal-info-form">
+            <div className="personal-info-field">
+              <label>Full Name</label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Enter your full name"
+                maxLength={100}
+              />
+            </div>
+
+            <div className="personal-info-field">
+              <label>Date of Birth</label>
+              <input
+                type="date"
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+              />
+            </div>
+
+            <div className="personal-info-field">
+              <label>Security Question {user.security_question && <span className="security-set-badge">Set</span>}</label>
+              <select
+                value={securityQuestion}
+                onChange={(e) => setSecurityQuestion(e.target.value)}
+                disabled={!!user.security_question}
+              >
+                <option value="">Select a security question</option>
+                {SECURITY_QUESTIONS.map(q => (
+                  <option key={q} value={q}>{q}</option>
+                ))}
+              </select>
+              {user.security_question && (
+                <p className="security-question-disclaimer">Your security question cannot be changed once set, not even by an admin. This is for your account protection.</p>
+              )}
+            </div>
+
+            <div className="personal-info-field">
+              <label>Security Answer {user.has_security_answer && <span className="security-set-badge">Set</span>}</label>
+              <input
+                type="text"
+                value={securityAnswer}
+                onChange={(e) => setSecurityAnswer(e.target.value)}
+                placeholder={user.has_security_answer ? 'Enter new answer to change' : 'Enter your answer'}
+                maxLength={200}
+              />
+            </div>
+
+            <button
+              className="save-personal-btn"
+              onClick={savePersonalInfo}
+              disabled={savingPersonal}
+            >
+              {savingPersonal ? 'Saving...' : 'Save Personal Info'}
+            </button>
+          </div>
+        </div>
+
+        {/* Preferences */}
+        <div className="profile-preferences">
+          <h3 className="profile-section-title">Preferences</h3>
+          <div className="preference-row">
+            <div className="preference-info">
+              <span className="preference-label">Sound Notifications</span>
+              <span className="preference-desc">Play a sound when new messages arrive in support chat</span>
+            </div>
+            <button
+              className={`sound-toggle ${soundOn ? 'on' : 'off'}`}
+              onClick={() => {
+                const next = !soundOn
+                setSoundOn(next)
+                setSoundEnabled(next)
+              }}
+              aria-label={soundOn ? 'Disable sounds' : 'Enable sounds'}
+            >
+              <span className="sound-toggle-knob" />
+            </button>
+          </div>
+        </div>
+
         {/* Referral System */}
         <div className="profile-field">
           <label>Referral Program</label>
@@ -271,7 +440,72 @@ export default function Profile() {
             <span>{new Date(user.created_at).toLocaleDateString()}</span>
           </div>
         </div>
+
+        {/* Danger Zone */}
+        <div className="profile-danger-zone">
+          <h3 className="danger-zone-title">Danger Zone</h3>
+          <p className="danger-zone-desc">
+            Once you delete your account, there is no going back. All your data, predictions, and community posts will be permanently removed.
+          </p>
+          <button className="delete-account-btn" onClick={() => setShowDeleteModal(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            Delete Account
+          </button>
+        </div>
       </div>
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="delete-modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="delete-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="delete-modal-title">Delete Account</h3>
+            <div className="delete-modal-warning">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <p>This action is <strong>permanent</strong> and cannot be undone. All your data will be deleted.</p>
+            </div>
+
+            {deleteError && <div className="delete-modal-error">{deleteError}</div>}
+
+            <div className="delete-modal-field">
+              <label>Enter your password to confirm</label>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder="Your password"
+              />
+            </div>
+
+            <div className="delete-modal-field">
+              <label>Type <strong>DELETE</strong> to confirm</label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+              />
+            </div>
+
+            <div className="delete-modal-actions">
+              <button className="delete-modal-cancel" onClick={() => { setShowDeleteModal(false); setDeletePassword(''); setDeleteConfirmText(''); setDeleteError('') }}>
+                Cancel
+              </button>
+              <button
+                className="delete-modal-confirm"
+                onClick={handleDeleteAccount}
+                disabled={deleting || deleteConfirmText !== 'DELETE' || !deletePassword}
+              >
+                {deleting ? 'Deleting...' : 'Permanently Delete Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
