@@ -842,7 +842,7 @@ def _get_order_clause(sort_by: str) -> str:
         ) DESC, cp.created_at DESC"""
 
 
-def get_public_predictions(page: int = 1, per_page: int = 20, user_id: int = None, sort_by: str = "best") -> Dict:
+def get_public_predictions(page: int = 1, per_page: int = 20, user_id: int = None, sort_by: str = "best", viewer_id: int = None) -> Dict:
     """Get public community predictions (paginated). Optionally filter by user_id."""
     conn = _get_db()
     offset = (page - 1) * per_page
@@ -930,12 +930,28 @@ def get_public_predictions(page: int = 1, per_page: int = 20, user_id: int = Non
             ).fetchone()["c"]
             followers_map[uid] = cnt
 
+    # Check which paid predictions the viewer has purchased
+    purchased_ids = set()
+    if viewer_id:
+        paid_pred_ids = [r["id"] for r in rows if r["is_paid"]]
+        if paid_pred_ids:
+            ph = ",".join("?" * len(paid_pred_ids))
+            bought = conn.execute(
+                f"SELECT prediction_id FROM prediction_purchases WHERE buyer_id = ? AND prediction_id IN ({ph})",
+                [viewer_id] + paid_pred_ids,
+            ).fetchall()
+            purchased_ids = {b["prediction_id"] for b in bought}
+
     conn.close()
 
     predictions = []
     for i, r in enumerate(rows):
         rxn = reactions_map.get(r["id"], {"likes": 0, "dislikes": 0})
-        predictions.append({
+        is_paid = bool(r["is_paid"])
+        is_owner = viewer_id and r["user_id"] == viewer_id
+        unlocked = not is_paid or is_owner or r["id"] in purchased_ids
+
+        pred = {
             "id": r["id"],
             "rank": offset + i + 1,
             "user_id": r["user_id"],
@@ -948,15 +964,9 @@ def get_public_predictions(page: int = 1, per_page: int = 20, user_id: int = Non
             "team_b_name": r["team_b_name"],
             "competition": r["competition"],
             "competition_code": r["competition_code"] if "competition_code" in r.keys() else "",
-            "predicted_result": r["predicted_result"],
-            "predicted_result_prob": r["predicted_result_prob"],
-            "predicted_over25": r["predicted_over25"],
-            "predicted_btts": r["predicted_btts"],
-            "best_value_bet": r["best_value_bet"],
-            "best_value_prob": r["best_value_prob"],
-            "analysis_summary": r["analysis_summary"],
-            "is_paid": bool(r["is_paid"]),
+            "is_paid": is_paid,
             "price_usd": r["price_usd"],
+            "unlocked": unlocked,
             "match_finished": bool(r["match_finished"]),
             "result_correct": r["result_correct"],
             "avg_rating": round(r["avg_rating"], 1),
@@ -968,7 +978,21 @@ def get_public_predictions(page: int = 1, per_page: int = 20, user_id: int = Non
             "followers_count": followers_map.get(r["user_id"], 0),
             "is_live_bet": bool(r["is_live_bet"]) if "is_live_bet" in r.keys() else False,
             "created_at": r["created_at"],
-        })
+        }
+
+        # Only include prediction details if free or unlocked
+        if unlocked:
+            pred.update({
+                "predicted_result": r["predicted_result"],
+                "predicted_result_prob": r["predicted_result_prob"],
+                "predicted_over25": r["predicted_over25"],
+                "predicted_btts": r["predicted_btts"],
+                "best_value_bet": r["best_value_bet"],
+                "best_value_prob": r["best_value_prob"],
+                "analysis_summary": r["analysis_summary"],
+            })
+
+        predictions.append(pred)
 
     return {
         "predictions": predictions,

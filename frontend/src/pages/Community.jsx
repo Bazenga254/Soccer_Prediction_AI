@@ -315,6 +315,8 @@ function PredictionCard({ pred, onRate, onPurchase }) {
   const handleCardClick = (e) => {
     // Don't navigate if clicking on interactive elements
     if (e.target.closest('button, a, .live-chat-section, .reaction-buttons, .star-rating, input')) return
+    // Block navigation for locked paid predictions
+    if (isPaidLocked) return
     // Parse fixture_id: "homeId-awayId-YYYYMMDD"
     const parts = (pred.fixture_id || '').split('-')
     if (parts.length >= 2) {
@@ -345,7 +347,7 @@ function PredictionCard({ pred, onRate, onPurchase }) {
   const isPaidLocked = pred.is_paid && !pred.unlocked
 
   return (
-    <div className={`community-card ${pred.is_paid ? 'paid-card' : ''}`} onClick={handleCardClick} style={{ cursor: 'pointer' }}>
+    <div className={`community-card ${pred.is_paid ? 'paid-card' : ''}`} onClick={handleCardClick} style={{ cursor: isPaidLocked ? 'default' : 'pointer' }}>
       <div className="community-card-top">
         {pred.rank && (
           <div className="prediction-rank-number">

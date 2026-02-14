@@ -1742,11 +1742,13 @@ async def global_search(q: str = Query("", min_length=2)):
 
 
 @app.get("/api/community/predictions")
-async def get_community_predictions(page: int = 1, per_page: int = 20, user_id: int = None, sort_by: str = "best"):
+async def get_community_predictions(page: int = 1, per_page: int = 20, user_id: int = None, sort_by: str = "best", authorization: str = Header(None)):
     """Get public community predictions. sort_by: best|new|top_rated|hot"""
     if sort_by not in ("best", "new", "top_rated", "hot"):
         sort_by = "best"
-    return community.get_public_predictions(page=page, per_page=per_page, user_id=user_id, sort_by=sort_by)
+    payload = _get_current_user(authorization)
+    viewer_id = payload["user_id"] if payload else None
+    return community.get_public_predictions(page=page, per_page=per_page, user_id=user_id, sort_by=sort_by, viewer_id=viewer_id)
 
 
 @app.get("/api/community/my-shared")
