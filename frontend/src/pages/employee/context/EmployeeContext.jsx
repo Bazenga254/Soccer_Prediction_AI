@@ -45,7 +45,7 @@ export function EmployeeProvider({ children }) {
           axios.get('/api/admin/my-permissions', { headers: { Authorization: `Bearer ${token}` } }),
         ])
 
-        const profile = profileRes.data
+        const profile = profileRes.data.user || profileRes.data
         if (!profile.staff_role && !profile.role_id) {
           setLoading(false)
           return
@@ -54,8 +54,8 @@ export function EmployeeProvider({ children }) {
         setCurrentUser(profile)
         setIsLoggedIn(true)
 
-        if (permsRes.data.permissions) {
-          setPermissions(permsRes.data.permissions)
+        if (permsRes.data.modules) {
+          setPermissions(permsRes.data.modules)
         }
         if (permsRes.data.role) {
           setRoleInfo(permsRes.data.role)
@@ -73,7 +73,7 @@ export function EmployeeProvider({ children }) {
   useEffect(() => {
     if (!isLoggedIn) return
     const interval = setInterval(() => {
-      axios.get('/api/heartbeat', { headers: getAuthHeaders() }).catch(() => {})
+      axios.post('/api/heartbeat', {}, { headers: getAuthHeaders() }).catch(() => {})
     }, 60000)
     return () => clearInterval(interval)
   }, [isLoggedIn, getAuthHeaders])
