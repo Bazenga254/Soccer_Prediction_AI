@@ -36,7 +36,7 @@ export default function StaffTab() {
   const [createEmail, setCreateEmail] = useState('')
   const [createPassword, setCreatePassword] = useState('')
   const [createName, setCreateName] = useState('')
-  const [createRole, setCreateRole] = useState('customer_care')
+  const [createRole, setCreateRole] = useState('customer_support_agent')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
   const [createSuccess, setCreateSuccess] = useState('')
@@ -114,7 +114,7 @@ export default function StaffTab() {
         setCreateEmail('')
         setCreatePassword('')
         setCreateName('')
-        setCreateRole('customer_care')
+        setCreateRole('customer_support_agent')
         fetchStaff()
         setTimeout(() => setCreateSuccess(''), 5000)
       }
@@ -191,15 +191,26 @@ export default function StaffTab() {
               <div className="admin-create-staff-field">
                 <label>Role</label>
                 <select value={createRole} onChange={(e) => setCreateRole(e.target.value)}>
-                  <option value="customer_care">Customer Care</option>
-                  <option value="accounting">Accounting</option>
-                  <option value="technical_support">Technical Support</option>
-                  <option value="super_admin">Super Admin</option>
+                  <optgroup label="Management">
+                    <option value="owner">Owner</option>
+                    <option value="general_manager">General Manager</option>
+                  </optgroup>
+                  <optgroup label="Heads of Department">
+                    <option value="sales_hod">Sales HOD</option>
+                    <option value="customer_care_hod">Customer Care HOD</option>
+                    <option value="marketing_hod">Marketing HOD</option>
+                    <option value="predictions_hod">Predictions HOD</option>
+                  </optgroup>
+                  <optgroup label="Agents">
+                    <option value="customer_support_agent">Customer Support Agent</option>
+                    <option value="sales_agent">Sales Agent</option>
+                    <option value="prediction_analyst">Prediction Analyst</option>
+                  </optgroup>
                 </select>
               </div>
             </div>
             <p className="admin-create-staff-note">
-              Staff accounts bypass email verification and access codes. The staff member can log in immediately using their email and password, and will see the admin panel based on their assigned role.
+              Staff accounts bypass email verification and access codes. The staff member can log in immediately and will be redirected to the Employee Portal based on their assigned role.
             </p>
             <button type="submit" className="admin-create-staff-submit" disabled={creating}>
               {creating ? 'Creating...' : 'Create Staff Account'}
@@ -240,7 +251,7 @@ export default function StaffTab() {
                     {getRoleDisplay(u)}
                   </span>
                 ) : (
-                  <button className="admin-action-btn upgrade" onClick={() => { setAssignModal(u); setSelectedRole('customer_care') }}>
+                  <button className="admin-action-btn upgrade" onClick={() => { setAssignModal(u); setSelectedRole('customer_support_agent') }}>
                     Assign Role
                   </button>
                 )}
@@ -268,7 +279,7 @@ export default function StaffTab() {
                 {getRoleDisplay(s)}
               </span>
               <button className="admin-action-btn suspend" onClick={() => handleRemoveRole(s.id)}>Remove</button>
-              <button className="admin-action-btn reset-pw" onClick={() => { setAssignModal(s); setSelectedRole(s.staff_role || 'customer_care') }}>
+              <button className="admin-action-btn reset-pw" onClick={() => { setAssignModal(s); setSelectedRole(s.role_name || s.staff_role || 'customer_support_agent') }}>
                 Change Role
               </button>
             </div>
@@ -288,10 +299,21 @@ export default function StaffTab() {
               onChange={(e) => setSelectedRole(e.target.value)}
               className="admin-modal-input"
             >
-              <option value="customer_care">Customer Care</option>
-              <option value="accounting">Accounting</option>
-              <option value="technical_support">Technical Support</option>
-              <option value="super_admin">Super Admin</option>
+              <optgroup label="Management">
+                <option value="owner">Owner</option>
+                <option value="general_manager">General Manager</option>
+              </optgroup>
+              <optgroup label="Heads of Department">
+                <option value="sales_hod">Sales HOD</option>
+                <option value="customer_care_hod">Customer Care HOD</option>
+                <option value="marketing_hod">Marketing HOD</option>
+                <option value="predictions_hod">Predictions HOD</option>
+              </optgroup>
+              <optgroup label="Agents">
+                <option value="customer_support_agent">Customer Support Agent</option>
+                <option value="sales_agent">Sales Agent</option>
+                <option value="prediction_analyst">Prediction Analyst</option>
+              </optgroup>
             </select>
             <div className="admin-modal-actions">
               <button className="admin-modal-cancel" onClick={() => setAssignModal(null)}>Cancel</button>

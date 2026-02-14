@@ -1906,17 +1906,45 @@ def verify_security_answer(user_id: int, answer: str) -> bool:
 
 VALID_STAFF_ROLES = {'super_admin', 'customer_care', 'accounting', 'technical_support'}
 
+# RBAC role names (new system) - these map to roles table
+RBAC_ROLE_NAMES = {
+    'owner', 'general_manager', 'sales_hod', 'customer_care_hod',
+    'marketing_hod', 'predictions_hod', 'sales_agent',
+    'customer_support_agent', 'prediction_analyst',
+}
+
+# All valid roles (legacy + RBAC)
+ALL_VALID_ROLES = VALID_STAFF_ROLES | RBAC_ROLE_NAMES
+
 
 def set_staff_role(user_id: int, role: str) -> Dict:
-    """Assign or remove a staff role for a user. role=None removes the role."""
-    if role is not None and role not in VALID_STAFF_ROLES:
-        return {"success": False, "error": f"Invalid role. Must be one of: {', '.join(VALID_STAFF_ROLES)}"}
+    """Assign or remove a staff role for a user. role=None removes the role.
+    Supports both legacy roles and RBAC role names."""
+    if role is not None and role not in ALL_VALID_ROLES:
+        return {"success": False, "error": f"Invalid role. Must be one of: {', '.join(sorted(ALL_VALID_ROLES))}"}
     conn = _get_db()
     user = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
         conn.close()
         return {"success": False, "error": "User not found"}
-    conn.execute("UPDATE users SET staff_role = ? WHERE id = ?", (role, user_id))
+
+    if role is None:
+        # Remove role entirely
+        conn.execute("UPDATE users SET staff_role = NULL, role_id = NULL, department = NULL WHERE id = ?", (user_id,))
+    elif role in RBAC_ROLE_NAMES:
+        # New RBAC role - look up role_id from roles table and set both fields
+        rbac_role = conn.execute("SELECT id, department FROM roles WHERE name = ?", (role,)).fetchone()
+        if rbac_role:
+            conn.execute(
+                "UPDATE users SET staff_role = ?, role_id = ?, department = ? WHERE id = ?",
+                (role, rbac_role["id"], rbac_role["department"], user_id),
+            )
+        else:
+            conn.execute("UPDATE users SET staff_role = ? WHERE id = ?", (role, user_id))
+    else:
+        # Legacy role
+        conn.execute("UPDATE users SET staff_role = ? WHERE id = ?", (role, user_id))
+
     conn.commit()
     conn.close()
     return {"success": True, "role": role}
@@ -1932,8 +1960,8 @@ def create_staff_account(email: str, password: str, display_name: str, role: str
     if len(password) < 6:
         return {"success": False, "error": "Password must be at least 6 characters"}
 
-    if role not in VALID_STAFF_ROLES:
-        return {"success": False, "error": f"Invalid role. Must be one of: {', '.join(VALID_STAFF_ROLES)}"}
+    if role not in ALL_VALID_ROLES:
+        return {"success": False, "error": f"Invalid role. Must be one of: {', '.join(sorted(ALL_VALID_ROLES))}"}
 
     if not display_name.strip():
         return {"success": False, "error": "Display name is required"}
@@ -1951,15 +1979,24 @@ def create_staff_account(email: str, password: str, display_name: str, role: str
     avatar_color = random.choice(AVATAR_COLORS)
     now = datetime.now().isoformat()
 
+    # Look up RBAC role_id and department if it's an RBAC role
+    role_id = None
+    department = None
+    if role in RBAC_ROLE_NAMES:
+        rbac_role = conn.execute("SELECT id, department FROM roles WHERE name = ?", (role,)).fetchone()
+        if rbac_role:
+            role_id = rbac_role["id"]
+            department = rbac_role["department"]
+
     conn.execute(
         """INSERT INTO users (email, password_hash, display_name, username, avatar_color,
-           referral_code, created_at, email_verified, staff_role, full_name)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
-        (email, password_hash, display_name.strip(), username, avatar_color, ref_code, now, role, display_name.strip()),
+           referral_code, created_at, email_verified, staff_role, full_name, role_id, department)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)""",
+        (email, password_hash, display_name.strip(), username, avatar_color, ref_code, now, role, display_name.strip(), role_id, department),
     )
     conn.commit()
 
-    user = conn.execute("SELECT id, username, display_name, email, staff_role FROM users WHERE email = ?", (email,)).fetchone()
+    user = conn.execute("SELECT id, username, display_name, email, staff_role, role_id, department FROM users WHERE email = ?", (email,)).fetchone()
     conn.close()
 
     return {
@@ -1970,16 +2007,23 @@ def create_staff_account(email: str, password: str, display_name: str, role: str
             "username": user["username"],
             "display_name": user["display_name"],
             "staff_role": user["staff_role"],
+            "role_id": user["role_id"],
+            "department": user["department"],
         }
     }
 
 
 def get_staff_members() -> list:
-    """Get all users with a staff role."""
+    """Get all users with a staff role, including RBAC role info."""
     conn = _get_db()
     rows = conn.execute(
-        "SELECT id, email, display_name, username, avatar_color, staff_role, is_active, created_at "
-        "FROM users WHERE staff_role IS NOT NULL ORDER BY staff_role, display_name"
+        """SELECT u.id, u.email, u.display_name, u.username, u.avatar_color,
+                  u.staff_role, u.is_active, u.created_at, u.role_id, u.department,
+                  r.name AS role_name, r.display_name AS role_display_name, r.level AS role_level
+           FROM users u
+           LEFT JOIN roles r ON u.role_id = r.id
+           WHERE u.staff_role IS NOT NULL OR u.role_id IS NOT NULL
+           ORDER BY COALESCE(r.level, 99), u.display_name"""
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
