@@ -1210,6 +1210,9 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
                 "is_admin": bool(existing["is_admin"]),
                 "created_at": existing["created_at"],
                 "profile_complete": bool(existing["security_question"] and existing["security_answer_hash"]),
+                "staff_role": existing["staff_role"],
+                "role_id": existing["role_id"],
+                "department": existing["department"],
             },
         }
     else:
@@ -1267,6 +1270,9 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
                 "is_admin": bool(user["is_admin"]),
                 "created_at": user["created_at"],
                 "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+                "staff_role": user["staff_role"],
+                "role_id": user["role_id"],
+                "department": user["department"],
             },
         }
 
@@ -1504,6 +1510,9 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
             "is_admin": bool(user["is_admin"]),
             "created_at": user["created_at"],
             "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+            "staff_role": user["staff_role"],
+            "role_id": user["role_id"],
+            "department": user["department"],
         },
     }
 
@@ -1575,6 +1584,9 @@ def verify_email(email: str, code: str) -> Dict:
             "is_admin": bool(user["is_admin"]),
             "created_at": user["created_at"],
             "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+            "staff_role": user["staff_role"],
+            "role_id": user["role_id"],
+            "department": user["department"],
         },
     }
 
