@@ -20132,19 +20132,70 @@ body {
 
 @media (max-width: 768px) {
   .jackpot-page {
-    padding: 12px;
+    padding: 16px;
+  }
+
+  .jackpot-header {
+    margin-bottom: 20px;
   }
 
   .jackpot-header h2 {
-    font-size: 22px;
+    font-size: 20px;
+  }
+
+  .jackpot-header p {
+    font-size: 13px;
+    padding: 0 8px;
   }
 
   .jackpot-header-icon {
-    font-size: 36px;
+    font-size: 32px;
+  }
+
+  .jackpot-league-tabs {
+    gap: 6px;
+    padding: 4px 0 12px;
+  }
+
+  .jackpot-league-chip {
+    padding: 6px 12px;
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  .chip-flag {
+    font-size: 14px;
+  }
+
+  .jackpot-date-header {
+    padding: 8px 12px;
+    font-size: 13px;
+    margin-bottom: 10px;
   }
 
   .jackpot-fixtures-grid {
     grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .jackpot-fixture-card {
+    padding: 12px 14px;
+    gap: 6px;
+  }
+
+  .jackpot-fixture-team {
+    font-size: 13px;
+  }
+
+  .jackpot-fixture-team span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .jackpot-crest {
+    width: 20px;
+    height: 20px;
   }
 
   .jackpot-combinations-grid {
