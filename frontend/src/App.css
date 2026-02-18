@@ -10042,6 +10042,7 @@ body {
 .profile-page {
   max-width: 600px;
   margin: 0 auto;
+  overflow-x: hidden;
 }
 
 .profile-container {
@@ -10049,6 +10050,9 @@ body {
   border-radius: 16px;
   padding: 32px;
   border: 1px solid #334155;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
 }
 
 .profile-title {
@@ -10844,14 +10848,40 @@ body {
   margin-top: 8px;
 }
 
+@media (max-width: 768px) {
+  .profile-container {
+    padding: 16px;
+    border-radius: 10px;
+  }
+  .txn-filter-tab {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .txn-amount-col {
+    max-width: 120px;
+    word-break: break-word;
+  }
+  .txn-amount {
+    font-size: 13px;
+  }
+  .txn-status {
+    font-size: 9px;
+  }
+}
 @media (max-width: 480px) {
+  .profile-container {
+    padding: 12px;
+  }
   .profile-transactions { padding: 14px; }
   .txn-filter-tabs { gap: 4px; }
   .txn-filter-tab { padding: 5px 10px; font-size: 11px; }
   .txn-item { gap: 8px; }
   .txn-icon-wrap { width: 30px; height: 30px; border-radius: 8px; }
   .txn-desc { font-size: 12px; }
-  .txn-amount { font-size: 13px; }
+  .txn-amount { font-size: 12px; }
+  .txn-amount-col {
+    max-width: 100px;
+  }
 }
 
 /* Danger Zone */
@@ -13739,6 +13769,8 @@ body {
   max-width: 900px;
   margin: 0 auto;
   padding: 20px 16px;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .creator-header {
@@ -13768,6 +13800,8 @@ body {
   border-radius: 12px;
   padding: 20px;
   text-align: center;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .wallet-card.main {
