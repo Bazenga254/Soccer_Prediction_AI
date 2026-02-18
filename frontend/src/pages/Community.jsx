@@ -364,7 +364,9 @@ function PredictionCard({ pred, onRate, onPurchase }) {
   const [showPayChoice, setShowPayChoice] = useState(false)
   const [showFollowPrompt, setShowFollowPrompt] = useState(false)
   const [showStats, setShowStats] = useState(false)
+  const [showSlipPicks, setShowSlipPicks] = useState(false)
   const cardRef = useRef(null)
+  const isMultiPick = pred.slip_picks && pred.slip_picks.length > 1
 
   // Impression tracking via IntersectionObserver
   useEffect(() => {
@@ -492,27 +494,41 @@ function PredictionCard({ pred, onRate, onPurchase }) {
               </div>
             </div>
           </div>
-          <div className="community-match">
-            <span className="community-teams">{pred.team_a_name} vs {pred.team_b_name}</span>
-            <div className="community-match-meta">
-              {pred.competition && <span className="community-comp">{pred.competition}</span>}
-              {(() => {
-                const parts = (pred.fixture_id || '').split('-')
-                if (parts.length >= 3) {
-                  const ds = parts[parts.length - 1]
-                  if (ds.length === 8) {
-                    const d = new Date(ds.slice(0,4) + '-' + ds.slice(4,6) + '-' + ds.slice(6,8))
-                    if (!isNaN(d)) return <span className="community-match-date">{d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                  }
-                }
-                return null
-              })()}
-              <button className="analyze-btn-sm" onClick={(e) => { e.stopPropagation(); handleAnalyze() }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20h20"/><path d="M5 17V7l5 4 4-8 6 7"/></svg>
-                {t('community.analyze') || 'Analyze'}
-              </button>
+          {isMultiPick ? (
+            <div className="community-match">
+              <span className="community-teams slip-label">{pred.slip_picks.length} Picks - Combined Slip</span>
+              <div className="community-match-meta">
+                {pred.combined_odds && (
+                  <span className="slip-combined-odds">Total Odds: {pred.combined_odds.toFixed(2)}</span>
+                )}
+                <button className="slip-toggle-btn" onClick={(e) => { e.stopPropagation(); setShowSlipPicks(!showSlipPicks) }}>
+                  {showSlipPicks ? 'Hide Picks' : 'Show Picks'} {showSlipPicks ? '\u25B2' : '\u25BC'}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="community-match">
+              <span className="community-teams">{pred.team_a_name} vs {pred.team_b_name}</span>
+              <div className="community-match-meta">
+                {pred.competition && <span className="community-comp">{pred.competition}</span>}
+                {(() => {
+                  const parts = (pred.fixture_id || '').split('-')
+                  if (parts.length >= 3) {
+                    const ds = parts[parts.length - 1]
+                    if (ds.length === 8) {
+                      const d = new Date(ds.slice(0,4) + '-' + ds.slice(4,6) + '-' + ds.slice(6,8))
+                      if (!isNaN(d)) return <span className="community-match-date">{d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                    }
+                  }
+                  return null
+                })()}
+                <button className="analyze-btn-sm" onClick={(e) => { e.stopPropagation(); handleAnalyze() }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20h20"/><path d="M5 17V7l5 4 4-8 6 7"/></svg>
+                  {t('community.analyze') || 'Analyze'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="community-card-center">
@@ -528,13 +544,39 @@ function PredictionCard({ pred, onRate, onPurchase }) {
               {!isOwn && showPayChoice && (
                 <div className="pay-choice-row">
                   <button className="pay-choice-btn mpesa" onClick={() => { setShowPayChoice(false); setShowMpesa(true) }}>
-                    📱 M-Pesa
+                    M-Pesa
                   </button>
                   {!isKenyan && (
                     <button className="pay-choice-btn card" onClick={() => { setShowPayChoice(false); setShowWhop(true) }}>
-                      💳 {t('upgrade.cardPayment')}
+                      {t('upgrade.cardPayment')}
                     </button>
                   )}
+                </div>
+              )}
+            </div>
+          ) : isMultiPick ? (
+            <div className="community-picks slip-picks-summary">
+              <div className="pick-item main-pick">
+                <span className="pick-label">{t('community.prediction')}</span>
+                <span className="pick-value">{pred.slip_picks.length} selections</span>
+                {pred.combined_odds && (
+                  <span className="pick-prob slip-odds-badge">{pred.combined_odds.toFixed(2)}</span>
+                )}
+              </div>
+              {showSlipPicks && (
+                <div className="slip-picks-dropdown">
+                  {pred.slip_picks.map((pick, idx) => (
+                    <div key={pick.id || idx} className="slip-pick-item">
+                      <div className="slip-pick-match">{pick.team_a_name} vs {pick.team_b_name}</div>
+                      <div className="slip-pick-details">
+                        <span className="slip-pick-result">{pick.predicted_result}</span>
+                        {pick.odds && <span className="slip-pick-odds">{pick.odds.toFixed(2)}</span>}
+                        {pick.predicted_result_prob > 0 && (
+                          <span className="slip-pick-prob">{Math.round(pick.predicted_result_prob)}%</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -547,6 +589,12 @@ function PredictionCard({ pred, onRate, onPurchase }) {
                   <span className="pick-prob">{Math.round(pred.predicted_result_prob)}%</span>
                 )}
               </div>
+              {pred.odds && (
+                <div className="pick-item">
+                  <span className="pick-label">Odds</span>
+                  <span className="pick-value pick-odds-value">{pred.odds.toFixed(2)}</span>
+                </div>
+              )}
               {pred.predicted_over25 && (
                 <div className="pick-item">
                   <span className="pick-label">{t('community.overUnder')}</span>

@@ -442,6 +442,8 @@ def init_community_db():
         "ALTER TABLE community_predictions ADD COLUMN view_count INTEGER DEFAULT 0",
         "ALTER TABLE community_predictions ADD COLUMN click_count INTEGER DEFAULT 0",
         "ALTER TABLE community_predictions ADD COLUMN odds REAL",
+        "ALTER TABLE community_predictions ADD COLUMN slip_id TEXT",
+        "ALTER TABLE community_predictions ADD COLUMN combined_odds REAL",
     ]:
         try:
             conn.execute(col_sql)
@@ -799,6 +801,8 @@ def share_prediction(
     competition_code: str = "",
     is_live_bet: bool = False,
     odds: float = None,
+    slip_id: str = None,
+    combined_odds: float = None,
 ) -> Dict:
     """Share a prediction to the community."""
     if visibility not in ("public", "private"):
@@ -814,8 +818,9 @@ def share_prediction(
             predicted_result, predicted_result_prob,
             predicted_over25, predicted_btts,
             best_value_bet, best_value_prob,
-            analysis_summary, visibility, is_paid, price_usd, is_live_bet, odds, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            analysis_summary, visibility, is_paid, price_usd, is_live_bet, odds,
+            slip_id, combined_odds, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         user_id, username, display_name, avatar_color,
         fixture_id, team_a_name, team_b_name, competition, competition_code,
@@ -823,7 +828,7 @@ def share_prediction(
         predicted_over25, predicted_btts,
         best_value_bet, best_value_prob,
         analysis_summary, visibility, 1 if is_paid else 0, price_usd,
-        1 if is_live_bet else 0, odds, now,
+        1 if is_live_bet else 0, odds, slip_id, combined_odds, now,
     ))
     conn.commit()
     pred_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -1059,6 +1064,9 @@ def get_public_predictions(page: int = 1, per_page: int = 20, user_id: int = Non
             "followers_count": followers_map.get(r["user_id"], 0),
             "is_live_bet": bool(r["is_live_bet"]) if "is_live_bet" in r.keys() else False,
             "created_at": r["created_at"],
+            "slip_id": r["slip_id"] if "slip_id" in r.keys() else None,
+            "odds": r["odds"] if "odds" in r.keys() else None,
+            "combined_odds": r["combined_odds"] if "combined_odds" in r.keys() else None,
         }
 
         # Only include prediction details if free or unlocked
@@ -1075,8 +1083,46 @@ def get_public_predictions(page: int = 1, per_page: int = 20, user_id: int = Non
 
         predictions.append(pred)
 
+    # Group predictions by slip_id (multiple picks in one betslip)
+    grouped = []
+    seen_slips = {}
+    for pred in predictions:
+        sid = pred.get("slip_id")
+        if sid and sid in seen_slips:
+            # Add as a pick to the existing slip card
+            seen_slips[sid]["slip_picks"].append({
+                "id": pred["id"],
+                "team_a_name": pred.get("team_a_name", ""),
+                "team_b_name": pred.get("team_b_name", ""),
+                "fixture_id": pred.get("fixture_id", ""),
+                "competition": pred.get("competition", ""),
+                "competition_code": pred.get("competition_code", ""),
+                "predicted_result": pred.get("predicted_result", ""),
+                "predicted_result_prob": pred.get("predicted_result_prob", 0),
+                "odds": pred.get("odds"),
+                "match_finished": pred.get("match_finished", False),
+                "result_correct": pred.get("result_correct"),
+            })
+        else:
+            pred["slip_picks"] = [{
+                "id": pred["id"],
+                "team_a_name": pred.get("team_a_name", ""),
+                "team_b_name": pred.get("team_b_name", ""),
+                "fixture_id": pred.get("fixture_id", ""),
+                "competition": pred.get("competition", ""),
+                "competition_code": pred.get("competition_code", ""),
+                "predicted_result": pred.get("predicted_result", ""),
+                "predicted_result_prob": pred.get("predicted_result_prob", 0),
+                "odds": pred.get("odds"),
+                "match_finished": pred.get("match_finished", False),
+                "result_correct": pred.get("result_correct"),
+            }]
+            grouped.append(pred)
+            if sid:
+                seen_slips[sid] = pred
+
     return {
-        "predictions": predictions,
+        "predictions": grouped,
         "total": total,
         "page": page,
         "per_page": per_page,

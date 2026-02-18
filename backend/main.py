@@ -2462,6 +2462,16 @@ async def confirm_predictions(request: ConfirmPredictionsRequest, authorization:
 
     # Share to community if public
     if request.visibility == "public" and confirmed:
+        # Generate slip_id and combined odds for grouping
+        slip_id = str(uuid.uuid4())
+        odds_values = [p.odds for p in request.predictions if p.odds and p.odds > 0]
+        combined_odds = None
+        if odds_values:
+            combined_odds = 1.0
+            for o in odds_values:
+                combined_odds *= o
+            combined_odds = round(combined_odds, 2)
+
         for pred in request.predictions:
             parts = pred.matchName.split(" vs ")
             team_a_name = parts[0].strip() if len(parts) >= 2 else pred.matchName
@@ -2486,6 +2496,8 @@ async def confirm_predictions(request: ConfirmPredictionsRequest, authorization:
                     competition_code=pred.competitionId,
                     is_live_bet=request.is_live_bet,
                     odds=pred.odds,
+                    slip_id=slip_id,
+                    combined_odds=combined_odds,
                 )
             except Exception as e:
                 print(f"Failed to share prediction for {pred.matchId}: {e}")
