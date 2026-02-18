@@ -923,9 +923,12 @@ const styles = {
     padding: 4,
     marginTop: 12,
     marginBottom: 20,
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    scrollbarWidth: 'none',
   },
   tab: {
-    flex: 1,
+    flex: 'none',
     padding: '10px 14px',
     background: 'none',
     border: 'none',
@@ -936,6 +939,7 @@ const styles = {
     cursor: 'pointer',
     transition: 'all 0.15s',
     fontFamily: 'inherit',
+    whiteSpace: 'nowrap',
   },
   tabActive: {
     background: '#1e293b',

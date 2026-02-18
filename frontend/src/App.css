@@ -1,6 +1,7 @@
 /* ===== LAYOUT ===== */
-body {
+html, body {
   overflow-x: hidden;
+  width: 100%;
 }
 
 .app {
@@ -10844,19 +10845,42 @@ body {
 }
 
 @media (max-width: 768px) {
+  .profile-page {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
   .profile-container {
-    padding: 14px;
+    padding: 12px;
     border-radius: 10px;
+    overflow: hidden;
+  }
+  .profile-transactions {
+    padding: 12px;
+  }
+  .txn-filter-tabs {
+    gap: 4px;
   }
   .txn-filter-tab {
     flex-shrink: 0;
     white-space: nowrap;
+    padding: 5px 10px;
+    font-size: 11px;
   }
   .txn-item {
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 0;
+  }
+  .txn-icon-wrap {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
   }
   .txn-details {
+    flex: 1;
     min-width: 0;
+    overflow: hidden;
   }
   .txn-desc {
     font-size: 12px;
@@ -10868,31 +10892,23 @@ body {
     flex-wrap: wrap;
   }
   .txn-amount-col {
-    flex-shrink: 1;
-    min-width: 0;
-    text-align: right;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 34px;
+    text-align: left;
   }
   .txn-amount {
     font-size: 13px;
-    white-space: nowrap;
+  }
+  .txn-amount-secondary {
+    display: none;
   }
   .txn-status {
     font-size: 9px;
+    margin-top: 0;
   }
-  .txn-icon-wrap {
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-  }
-}
-@media (max-width: 480px) {
-  .profile-container {
-    padding: 10px;
-  }
-  .profile-transactions { padding: 10px; }
-  .txn-filter-tabs { gap: 4px; }
-  .txn-filter-tab { padding: 5px 10px; font-size: 11px; }
-  .txn-amount { font-size: 12px; }
 }
 
 /* Danger Zone */
@@ -14021,19 +14037,35 @@ body {
 
 @media (max-width: 768px) {
   .creator-page {
-    padding: 12px 10px;
+    padding: 12px 8px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
   }
 
   .creator-wallet {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .wallet-card {
-    padding: 16px 12px;
+    padding: 14px 12px;
+    overflow: hidden;
+    word-break: break-word;
   }
 
   .wallet-amount {
-    font-size: 1.4rem;
+    font-size: 1.3rem;
+  }
+
+  .wallet-label {
+    font-size: 0.75rem;
+  }
+
+  .withdraw-btn {
+    font-size: 0.75rem;
+    padding: 6px 14px;
   }
 
   .creator-pred-row {
@@ -14067,21 +14099,8 @@ body {
     gap: 4px;
   }
 
-  /* Creator tab bar: horizontal scroll on mobile */
-  .creator-tab-bar {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    flex-wrap: nowrap !important;
-  }
-  .creator-tab-bar::-webkit-scrollbar {
-    display: none;
-  }
-  .creator-tab-bar > button {
-    flex: none !important;
-    white-space: nowrap;
-    padding: 8px 12px !important;
-    font-size: 12px !important;
+  .creator-section {
+    overflow-x: hidden;
   }
 
   /* Creator predictions table: horizontal scroll on mobile */
@@ -14091,6 +14110,20 @@ body {
   }
   .creator-pred-table > div {
     min-width: 520px;
+  }
+
+  /* Withdrawal items on mobile */
+  .withdrawal-item {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .withdrawal-item-amount {
+    font-size: 14px;
+  }
+  .withdrawal-status-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+    flex-shrink: 0;
   }
 }
 
