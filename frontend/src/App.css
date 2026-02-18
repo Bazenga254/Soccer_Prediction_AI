@@ -20879,6 +20879,7 @@ body {
 
   .my-analysis-header {
     margin-bottom: 20px;
+    overflow: hidden;
   }
 
   .my-analysis-header h2 {
@@ -20891,10 +20892,21 @@ body {
     padding: 0 8px;
   }
 
+  .my-analysis-list {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .my-analysis-card {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
   .my-analysis-card-header {
     flex-direction: column;
     gap: 8px;
     padding: 12px;
+    position: relative;
   }
 
   .my-analysis-card-info {
@@ -20917,35 +20929,114 @@ body {
     right: 12px;
   }
 
-  .my-analysis-card-header {
-    position: relative;
-  }
-
+  /* Expanded card body */
   .my-analysis-card-body {
-    padding: 0 12px 12px;
+    padding: 0 10px 12px;
+    overflow-x: hidden;
+    max-width: 100%;
   }
 
+  .my-analysis-card-body h4 {
+    font-size: 0.88rem;
+  }
+
+  /* Combination cards */
   .my-analysis-combo-grid {
     grid-template-columns: 1fr;
+    max-width: 100%;
   }
 
   .my-analysis-combo-card {
     padding: 10px;
+    overflow: hidden;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .my-analysis-combo-name {
+    font-size: 0.8rem;
+  }
+
+  .my-analysis-combo-desc {
+    font-size: 0.7rem;
   }
 
   .my-analysis-combo-pick {
     font-size: 0.72rem;
+    gap: 4px;
   }
 
   .my-analysis-combo-pick .pick-match {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 55%;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .my-analysis-combo-pick .pick-value {
+    margin: 0 4px;
+    flex-shrink: 0;
+  }
+
+  .my-analysis-combo-pick .pick-prob {
+    min-width: 38px;
+    flex-shrink: 0;
+  }
+
+  .my-analysis-combo-total {
+    font-size: 0.72rem;
+  }
+
+  /* Match results in expanded view */
+  .my-analysis-match {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .my-analysis-match-header {
+    padding: 10px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
   }
 
   .my-analysis-match-teams {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .my-analysis-match-teams span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .my-analysis-match-pick {
+    gap: 4px;
+  }
+
+  .my-analysis-match-pick .pick-badge {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+  }
+
+  .my-analysis-match-pick .pick-conf {
+    font-size: 0.68rem;
+  }
+
+  .my-analysis-match-detail {
+    padding: 0 10px 12px;
+    overflow-x: hidden;
+  }
+
+  .my-analysis-section {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .my-analysis-section h5 {
+    font-size: 0.72rem;
   }
 
   .my-analysis-probs {
@@ -20954,8 +21045,9 @@ body {
   }
 
   .my-analysis-probs .prob-item {
-    min-width: 60px;
-    padding: 4px 8px;
+    min-width: 55px;
+    padding: 4px 6px;
+    font-size: 0.7rem;
   }
 
   .my-analysis-factors {
@@ -20963,7 +21055,17 @@ body {
   }
 
   .my-analysis-factors li {
+    font-size: 0.72rem;
+    word-wrap: break-word;
+  }
+
+  .my-analysis-verdict {
     font-size: 0.75rem;
+    word-wrap: break-word;
+  }
+
+  .my-analysis-data-source {
+    font-size: 0.68rem;
   }
 }
 
