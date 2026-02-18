@@ -116,12 +116,50 @@ def count_user_sessions(user_id: int) -> int:
     return count
 
 
-def get_jackpot_lock_status(user_id: int) -> dict:
-    """Check if user is locked out of jackpot analysis. Returns lock info."""
+def get_jackpot_lock_status(user_id: int, tier: str = "free") -> dict:
+    """Check if user is locked out of jackpot analysis. Returns lock info.
+
+    Limits:
+      - Free: 2 initial sessions, then 1 per 72h
+      - Pro/Trial: 3 sessions per 24h (resets 24h after last session)
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     now = datetime.utcnow()
 
+    if tier in ("pro", "trial"):
+        # Pro/Trial: 3 sessions per rolling 24h window
+        cutoff = (now - timedelta(hours=24)).isoformat()
+        c.execute(
+            "SELECT COUNT(*) FROM jackpot_sessions WHERE user_id = ? AND status = 'completed' AND completed_at > ?",
+            (user_id, cutoff)
+        )
+        recent = c.fetchone()[0]
+
+        if recent >= 3:
+            # Find the oldest session in the window to calculate when it expires
+            c.execute(
+                "SELECT completed_at FROM jackpot_sessions WHERE user_id = ? AND status = 'completed' AND completed_at > ? ORDER BY completed_at ASC LIMIT 1",
+                (user_id, cutoff)
+            )
+            oldest = c.fetchone()
+            locked_until_dt = datetime.fromisoformat(oldest[0]) + timedelta(hours=24) if oldest else None
+            conn.close()
+            return {
+                "locked": True,
+                "locked_until": locked_until_dt.isoformat() if locked_until_dt else None,
+                "sessions_used": recent,
+                "max_sessions": 3,
+            }
+        conn.close()
+        return {
+            "locked": False,
+            "locked_until": None,
+            "sessions_used": recent,
+            "max_sessions": 3,
+        }
+
+    # Free tier logic (unchanged)
     # Check if there's an active lock
     c.execute("SELECT locked_until, sessions_in_window FROM jackpot_session_locks WHERE user_id = ?", (user_id,))
     lock_row = c.fetchone()
@@ -129,7 +167,6 @@ def get_jackpot_lock_status(user_id: int) -> dict:
     if lock_row:
         locked_until = datetime.fromisoformat(lock_row[0])
         if now < locked_until:
-            # Still locked
             conn.close()
             return {
                 "locked": True,
@@ -138,15 +175,11 @@ def get_jackpot_lock_status(user_id: int) -> dict:
                 "max_sessions": 2 if lock_row[1] >= 2 else 1,
             }
         else:
-            # Lock expired — reset: user gets 1 analysis per 72h now
             c.execute("DELETE FROM jackpot_session_locks WHERE user_id = ?", (user_id,))
             conn.commit()
 
-    # No active lock — count sessions since last lock expired
-    # For first-time users, they get 2 free. After first lock, 1 per 72h.
     total_sessions = count_user_sessions(user_id)
     if total_sessions < 2:
-        # Still in initial 2-free window
         conn.close()
         return {
             "locked": False,
@@ -155,7 +188,6 @@ def get_jackpot_lock_status(user_id: int) -> dict:
             "max_sessions": 2,
         }
     else:
-        # Post-initial: count sessions in last 72h
         cutoff = (now - timedelta(hours=72)).isoformat()
         c.execute(
             "SELECT COUNT(*) FROM jackpot_sessions WHERE user_id = ? AND status = 'completed' AND completed_at > ?",
@@ -171,8 +203,16 @@ def get_jackpot_lock_status(user_id: int) -> dict:
         }
 
 
-def record_jackpot_session_lock(user_id: int):
-    """Called after a free-tier user completes a jackpot session. Sets 72h lock if limit reached."""
+def record_jackpot_session_lock(user_id: int, tier: str = "free"):
+    """Called after a user completes a jackpot session.
+
+    Pro/Trial: No lock row needed - uses rolling 24h window from jackpot_sessions table.
+    Free: Sets 72h lock after reaching session limit.
+    """
+    if tier in ("pro", "trial"):
+        # Pro users use rolling window from jackpot_sessions - no lock row needed
+        return
+
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     now = datetime.utcnow()
@@ -180,7 +220,6 @@ def record_jackpot_session_lock(user_id: int):
     locked_until = (now + timedelta(hours=72)).isoformat()
 
     if total_sessions <= 2:
-        # Initial 2-free window — lock after 2nd
         if total_sessions == 2:
             c.execute("""
                 INSERT INTO jackpot_session_locks (user_id, locked_until, sessions_in_window)
@@ -188,7 +227,6 @@ def record_jackpot_session_lock(user_id: int):
                 ON CONFLICT(user_id) DO UPDATE SET locked_until = ?, sessions_in_window = 2
             """, (user_id, locked_until, locked_until))
     else:
-        # Post-initial: lock after every session (1 per 72h)
         c.execute("""
             INSERT INTO jackpot_session_locks (user_id, locked_until, sessions_in_window)
             VALUES (?, ?, 1)

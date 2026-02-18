@@ -237,14 +237,18 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
         <div className="jackpot-header-icon">{'\u{1F3AF}'}</div>
         <h2>{t('jackpot.title')}</h2>
         <p>Select matches from different leagues for AI-powered multi-match analysis</p>
-        {tier === 'free' && (
-          <div className="jackpot-tier-notice">
-            <span>{'\u{1F512}'} Free tier: {maxMatches} matches max.</span>
-            <button className="jackpot-upgrade-link" onClick={() => navigate('/upgrade')}>
-              Upgrade to Pro for unlimited
-            </button>
-          </div>
-        )}
+        <div className="jackpot-tier-notice">
+          {tier === 'free' ? (
+            <>
+              <span>{'\u{1F512}'} Free tier: {maxMatches} matches per session</span>
+              <button className="jackpot-upgrade-link" onClick={() => navigate('/upgrade')}>
+                Upgrade to Pro for 3 sessions/day
+              </button>
+            </>
+          ) : (
+            <span>{'\u2B50'} {maxMatches} matches per session &bull; 3 sessions per day</span>
+          )}
+        </div>
       </div>
 
       <div className="jackpot-league-tabs">
@@ -908,19 +912,36 @@ export default function JackpotAnalyzer() {
       {phase === 'select' && isLocked && (
         <div className="jackpot-locked-overlay">
           <div className="jackpot-locked-icon">{'\u{1F512}'}</div>
-          <h2 className="jackpot-locked-title">Free Analyses Used Up</h2>
+          <h2 className="jackpot-locked-title">
+            {tier === 'free' ? 'Free Analyses Used Up' : 'Daily Sessions Used Up'}
+          </h2>
           <p className="jackpot-locked-text">
-            You've used your {sessionsUsed >= 2 && maxSessions === 2 ? '2 free' : 'free'} jackpot analyses.
-            {lockedUntil && (<>
-              {' '}Your next free analysis unlocks in{' '}
-              <JackpotCountdownTimer
-                resetAt={lockedUntil}
-                onExpire={() => { setIsLocked(false); window.location.reload() }}
-              />.
-            </>)}
-            {!lockedUntil && ' After the first 2, you get 1 free analysis every 72 hours.'}
+            {tier === 'free' ? (
+              <>
+                You've used your {sessionsUsed >= 2 && maxSessions === 2 ? '2 free' : 'free'} jackpot analyses.
+                {lockedUntil && (<>
+                  {' '}Your next free analysis unlocks in{' '}
+                  <JackpotCountdownTimer
+                    resetAt={lockedUntil}
+                    onExpire={() => { setIsLocked(false); window.location.reload() }}
+                  />.
+                </>)}
+                {!lockedUntil && ' After the first 2, you get 1 free analysis every 72 hours.'}
+              </>
+            ) : (
+              <>
+                You've used all {maxSessions} sessions for today ({maxSessions * 5} matches total).
+                {lockedUntil && (<>
+                  {' '}Your next session unlocks in{' '}
+                  <JackpotCountdownTimer
+                    resetAt={lockedUntil}
+                    onExpire={() => { setIsLocked(false); window.location.reload() }}
+                  />.
+                </>)}
+              </>
+            )}
           </p>
-          {balanceUsd >= 1.00 && (
+          {tier === 'free' && balanceUsd >= 1.00 && (
             <button
               className="balance-pay-btn"
               disabled={balanceLoading}
@@ -940,9 +961,11 @@ export default function JackpotAnalyzer() {
               {balanceLoading ? 'Processing...' : `Use Balance ($1.00) \u2014 $${balanceUsd.toFixed(2)} available`}
             </button>
           )}
-          <Link to="/upgrade" className="jackpot-locked-upgrade-btn">
-            {'\u{1F680}'} {balanceUsd < 1.00 ? 'Deposit $2 to Unlock' : 'Upgrade to Pro for Unlimited'}
-          </Link>
+          {tier === 'free' && (
+            <Link to="/upgrade" className="jackpot-locked-upgrade-btn">
+              {'\u{1F680}'} {balanceUsd < 1.00 ? 'Deposit $2 to Unlock' : 'Upgrade to Pro for More Sessions'}
+            </Link>
+          )}
           <Link to="/my-analysis" className="jackpot-locked-history-link">
             {'\u{1F4CA}'} View your past analyses
           </Link>

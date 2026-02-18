@@ -4337,25 +4337,28 @@ async def analyze_jackpot(request: JackpotAnalyzeRequest, authorization: str = H
     if len(request.matches) < 2:
         raise HTTPException(status_code=400, detail="Select at least 2 matches")
 
-    # Tier-based match limit: free = 5, pro/trial = 30
+    # All tiers: 5 matches per session
     tier = payload.get("tier", "free")
-    max_matches = 30 if tier in ("pro", "trial") else 5
+    max_matches = 5
     if len(request.matches) > max_matches:
         raise HTTPException(
             status_code=403,
-            detail=f"Free users can analyze up to {max_matches} matches. Upgrade to Pro for unlimited analysis."
+            detail=f"You can analyze up to {max_matches} matches per session."
         )
 
     user_id = payload["user_id"]
 
-    # Free users: check lock-based limit (unless paid via balance)
-    if tier not in ("pro", "trial") and not request.balance_paid:
-        lock_info = jackpot_analyzer.get_jackpot_lock_status(user_id)
-        if lock_info["locked"]:
-            raise HTTPException(
-                status_code=403,
-                detail="You've used your free analyses. Deposit $2 to unlock or wait for the timer to reset."
+    # Check lock-based session limit for all tiers
+    lock_info = jackpot_analyzer.get_jackpot_lock_status(user_id, tier)
+    if lock_info["locked"] and not (tier == "free" and getattr(request, "balance_paid", False)):
+        raise HTTPException(
+            status_code=403,
+            detail="You've used all your sessions. " + (
+                "Wait for the timer to reset or deposit $2 to unlock."
+                if tier == "free" else
+                "Your sessions reset 24 hours after your last analysis."
             )
+        )
     session_id = jackpot_analyzer.create_session(user_id, request.matches)
 
     try:
@@ -4380,9 +4383,8 @@ async def analyze_jackpot(request: JackpotAnalyzeRequest, authorization: str = H
         combinations = jackpot_analyzer.generate_winning_combinations(results)
         jackpot_analyzer.complete_session(session_id, results, combinations)
 
-        # Record lock for free users (sets 72h cooldown)
-        if tier not in ("pro", "trial") and not request.balance_paid:
-            jackpot_analyzer.record_jackpot_session_lock(user_id)
+        # Record session lock for all tiers
+        jackpot_analyzer.record_jackpot_session_lock(user_id, tier)
 
         return {
             "session_id": session_id,
@@ -4433,20 +4435,15 @@ async def get_jackpot_limits(authorization: str = Header(None)):
     """Get jackpot match limits for the current user's tier."""
     payload = _get_current_user(authorization)
     tier = payload.get("tier", "free") if payload else "free"
-    max_matches = 30 if tier in ("pro", "trial") else 5
+    max_matches = 5  # All tiers: 5 matches per session
     user_id = payload.get("user_id") if payload else None
     ai_chats_used = jackpot_analyzer.get_ai_chat_count(user_id) if user_id else 0
     max_ai_chats = -1 if tier in ("pro", "trial") else 10
     bal = community.get_user_balance(user_id) if user_id else {"balance_usd": 0}
 
-    # Lock-based session limits for free users
-    if tier in ("pro", "trial"):
-        sessions_used = 0
-        max_sessions = -1 if tier == "pro" else 3
-        locked = False
-        locked_until = None
-    elif user_id:
-        lock_info = jackpot_analyzer.get_jackpot_lock_status(user_id)
+    # Session limits: free = 2 then 1/72h, pro/trial = 3/24h
+    if user_id:
+        lock_info = jackpot_analyzer.get_jackpot_lock_status(user_id, tier)
         sessions_used = lock_info["sessions_used"]
         max_sessions = lock_info["max_sessions"]
         locked = lock_info["locked"]
