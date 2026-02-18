@@ -20133,10 +20133,15 @@ body {
 @media (max-width: 768px) {
   .jackpot-page {
     padding: 16px;
+    overflow-x: hidden;
+    max-width: 100vw;
+    box-sizing: border-box;
   }
 
   .jackpot-header {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
+    max-width: 100%;
+    overflow: hidden;
   }
 
   .jackpot-header h2 {
@@ -20145,16 +20150,19 @@ body {
 
   .jackpot-header p {
     font-size: 13px;
-    padding: 0 8px;
+    padding: 0;
+    word-wrap: break-word;
   }
 
   .jackpot-header-icon {
     font-size: 32px;
+    margin-bottom: 4px;
   }
 
   .jackpot-league-tabs {
     gap: 6px;
     padding: 4px 0 12px;
+    max-width: 100%;
   }
 
   .jackpot-league-chip {
@@ -20165,6 +20173,13 @@ body {
 
   .chip-flag {
     font-size: 14px;
+  }
+
+  .jackpot-tier-notice {
+    flex-wrap: wrap;
+    font-size: 12px;
+    padding: 8px 12px;
+    gap: 8px;
   }
 
   .jackpot-date-header {
@@ -20185,6 +20200,7 @@ body {
 
   .jackpot-fixture-team {
     font-size: 13px;
+    min-width: 0;
   }
 
   .jackpot-fixture-team span {
