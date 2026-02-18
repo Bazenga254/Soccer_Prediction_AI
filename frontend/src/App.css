@@ -20870,21 +20870,78 @@ body {
 
 /* My Analysis Mobile */
 @media (max-width: 768px) {
+  .my-analysis-page {
+    padding: 16px 12px;
+    overflow-x: hidden;
+    max-width: 100vw;
+    box-sizing: border-box;
+  }
+
+  .my-analysis-header {
+    margin-bottom: 20px;
+  }
+
+  .my-analysis-header h2 {
+    font-size: 1.25rem;
+  }
+
+  .my-analysis-subtitle {
+    font-size: 0.8rem;
+    word-wrap: break-word;
+    padding: 0 8px;
+  }
+
   .my-analysis-card-header {
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 8px;
+    padding: 12px;
   }
 
   .my-analysis-card-info {
     min-width: auto;
+    width: 100%;
   }
 
   .my-analysis-card-teams {
     width: 100%;
   }
 
+  .my-analysis-team-pill {
+    font-size: 0.68rem;
+    padding: 2px 8px;
+  }
+
+  .my-analysis-card-arrow {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+  }
+
+  .my-analysis-card-header {
+    position: relative;
+  }
+
+  .my-analysis-card-body {
+    padding: 0 12px 12px;
+  }
+
   .my-analysis-combo-grid {
     grid-template-columns: 1fr;
+  }
+
+  .my-analysis-combo-card {
+    padding: 10px;
+  }
+
+  .my-analysis-combo-pick {
+    font-size: 0.72rem;
+  }
+
+  .my-analysis-combo-pick .pick-match {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 55%;
   }
 
   .my-analysis-match-teams {
@@ -20893,11 +20950,20 @@ body {
 
   .my-analysis-probs {
     gap: 6px;
+    flex-wrap: wrap;
   }
 
   .my-analysis-probs .prob-item {
     min-width: 60px;
     padding: 4px 8px;
+  }
+
+  .my-analysis-factors {
+    padding-left: 16px;
+  }
+
+  .my-analysis-factors li {
+    font-size: 0.75rem;
   }
 }
 
