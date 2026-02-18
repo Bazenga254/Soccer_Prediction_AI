@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
+import { useCurrency } from '../context/CurrencyContext'
 import axios from 'axios'
 
 const TXN_PER_PAGE = 10
@@ -28,11 +29,13 @@ const formatTxnDate = (dateStr) => {
 export default function Transactions() {
   const { t } = useTranslation()
   const { user } = useAuth()
+  const { isKenyan } = useCurrency()
   const [txnList, setTxnList] = useState([])
   const [txnTotal, setTxnTotal] = useState(0)
   const [txnFilter, setTxnFilter] = useState('all')
   const [txnPage, setTxnPage] = useState(1)
   const [txnLoading, setTxnLoading] = useState(true)
+  const [kesRate, setKesRate] = useState(130)
 
   const totalPages = Math.max(1, Math.ceil(txnTotal / TXN_PER_PAGE))
 
@@ -48,6 +51,30 @@ export default function Transactions() {
   }
 
   useEffect(() => { fetchTransactions() }, [])
+
+  // Fetch KES exchange rate for Kenyan users
+  useEffect(() => {
+    if (!isKenyan) return
+    axios.post('/api/payment/quote', { amount_usd: 1 })
+      .then(res => { if (res.data.amount_kes) setKesRate(res.data.amount_kes) })
+      .catch(() => {})
+  }, [isKenyan])
+
+  // Convert amount to display currency
+  const displayAmount = (amount, txCurrency) => {
+    if (isKenyan && txCurrency === 'USD') {
+      return { amount: Math.round(amount * kesRate), currency: 'KES' }
+    }
+    if (!isKenyan && txCurrency === 'KES') {
+      return { amount: kesRate > 0 ? +(amount / kesRate).toFixed(2) : amount, currency: 'USD' }
+    }
+    return { amount, currency: txCurrency }
+  }
+
+  const formatAmount = (val, cur) => {
+    if (cur === 'KES') return `KES ${Math.abs(val).toLocaleString()}`
+    return `$${Math.abs(val).toFixed(2)}`
+  }
 
   const handleTxnFilterChange = (f) => {
     setTxnFilter(f)
@@ -124,18 +151,29 @@ export default function Transactions() {
                   </div>
                   {tx.fee > 0 && (
                     <div className="txn-fee">
-                      Fee: {tx.fee_currency === 'KES' ? 'KES ' : '$'}{tx.fee.toFixed(2)}
+                      Fee: {(() => {
+                        const d = displayAmount(tx.fee, tx.fee_currency || tx.currency)
+                        return formatAmount(d.amount, d.currency)
+                      })()}
                       {tx.fee_description && <span className="txn-fee-info" title={tx.fee_description}> (?)</span>}
                     </div>
                   )}
                 </div>
                 <div className="txn-amount-col">
-                  <span className={`txn-amount ${tx.amount >= 0 ? 'positive' : 'negative'}`}>
-                    {tx.amount >= 0 ? '+' : ''}{tx.currency === 'KES' ? 'KES ' : '$'}{Math.abs(tx.amount).toFixed(2)}
-                  </span>
+                  {(() => {
+                    const d = displayAmount(tx.amount, tx.currency)
+                    return (
+                      <span className={`txn-amount ${tx.amount >= 0 ? 'positive' : 'negative'}`}>
+                        {tx.amount >= 0 ? '+' : '-'}{formatAmount(d.amount, d.currency)}
+                      </span>
+                    )
+                  })()}
                   {tx.amount_secondary != null && tx.currency_secondary && (
                     <span className="txn-amount-secondary">
-                      {tx.currency_secondary === 'KES' ? 'KES ' : '$'}{Math.abs(tx.amount_secondary).toFixed(2)}
+                      {(() => {
+                        const d = displayAmount(tx.amount_secondary, tx.currency_secondary)
+                        return formatAmount(d.amount, d.currency)
+                      })()}
                     </span>
                   )}
                   <span className={`txn-status txn-status-${tx.status}`}>
