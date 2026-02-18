@@ -908,39 +908,55 @@ def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email:
         print("[WARN] Zoho Mail API not configured - skipping email send")
         return False
 
-    access_token = _get_zoho_access_token()
-    if not access_token:
-        return False
+    import time as _time_mod
 
-    try:
-        payload = _json.dumps({
-            "fromAddress": from_email,
-            "sender": sender_name,
-            "toAddress": to_email,
-            "subject": subject,
-            "content": html_content,
-            "askReceipt": "no",
-        }).encode()
+    for attempt in range(2):
+        access_token = _get_zoho_access_token()
+        if not access_token:
+            print(f"[ERROR] No Zoho access token (attempt {attempt + 1})")
+            if attempt == 0:
+                _time_mod.sleep(2)
+            continue
 
-        req = urllib.request.Request(
-            f"https://mail.zoho.com/api/accounts/{account_id}/messages",
-            data=payload,
-            method="POST",
-            headers={
-                "Authorization": f"Zoho-oauthtoken {access_token}",
-                "Content-Type": "application/json",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            result = _json.loads(resp.read().decode())
-            if result.get("status", {}).get("code") == 200:
-                print(f"[OK] Email sent to {to_email}: {subject}")
-                return True
-            print(f"[ERROR] Zoho API error: {result}")
-            return False
-    except Exception as e:
-        print(f"[ERROR] Failed to send email to {to_email}: {e}")
-        return False
+        try:
+            payload = _json.dumps({
+                "fromAddress": from_email,
+                "sender": sender_name,
+                "toAddress": to_email,
+                "subject": subject,
+                "content": html_content,
+                "askReceipt": "no",
+            }).encode()
+
+            req = urllib.request.Request(
+                f"https://mail.zoho.com/api/accounts/{account_id}/messages",
+                data=payload,
+                method="POST",
+                headers={
+                    "Authorization": f"Zoho-oauthtoken {access_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                result = _json.loads(resp.read().decode())
+                if result.get("status", {}).get("code") == 200:
+                    print(f"[OK] Email sent to {to_email}: {subject}")
+                    return True
+                print(f"[ERROR] Zoho API error (attempt {attempt + 1}): {result}")
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode()[:500]
+            except Exception:
+                pass
+            print(f"[ERROR] Zoho HTTP {e.code} sending to {to_email} (attempt {attempt + 1}): {body}")
+        except Exception as e:
+            print(f"[ERROR] Failed to send email to {to_email} (attempt {attempt + 1}): {e}")
+
+        if attempt == 0:
+            _time_mod.sleep(2)
+
+    return False
 
 
 def _send_verification_email(to_email: str, code: str, display_name: str = "") -> bool:
@@ -1356,7 +1372,7 @@ def send_invoice_email(
     """
 
     subject = f"Payment Receipt #{invoice_number} - Spark AI"
-    payment_email = os.environ.get("ZOHO_PAYMENT_EMAIL", "") or os.environ.get("ZOHO_FROM_EMAIL", "")
+    payment_email = os.environ.get("ZOHO_PAYMENT_EMAIL", "")
     return _send_zoho_email(to_email, subject, html_body, from_email=payment_email)
 
 
