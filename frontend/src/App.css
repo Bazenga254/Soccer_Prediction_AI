@@ -6756,6 +6756,15 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .predictions-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .predictions-table {
+    min-width: 520px;
+  }
+
   .pred-table-header,
   .pred-table-row {
     grid-template-columns: 50px 1fr 80px 70px 90px 60px;
