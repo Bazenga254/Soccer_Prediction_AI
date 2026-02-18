@@ -1558,18 +1558,21 @@ function SquadInfo({ matchStats, teamAName, teamBName }) {
         </div>
       )}
 
-      {injuries.length > 0 ? (
+      {injuries.length > 0 ? (() => {
+        const unique = injuries.filter((inj, idx, arr) => arr.findIndex(x => x.player === inj.player) === idx)
+        return (
         <div className="injuries-list">
-          <span className="injuries-header">Injuries/Suspensions ({injuries.length})</span>
-          {injuries.slice(0, 5).map((inj, i) => (
+          <span className="injuries-header">Injuries/Suspensions ({unique.length})</span>
+          {unique.slice(0, 5).map((inj, i) => (
             <div key={i} className="injury-item">
               <span className="injury-player">{inj.player}</span>
               <span className="injury-reason">{inj.reason}</span>
             </div>
           ))}
-          {injuries.length > 5 && <span className="injuries-more">+{injuries.length - 5} more</span>}
+          {unique.length > 5 && <span className="injuries-more">+{unique.length - 5} more</span>}
         </div>
-      ) : (
+        )
+      })() : (
         <div className="no-injuries">No reported injuries</div>
       )}
     </div>
