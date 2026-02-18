@@ -94,19 +94,20 @@ export default function Upgrade() {
     : (pricingInfo?.pay_per_use?.jackpot_analysis_price_usd ?? 1.00)
 
   const handleUpgrade = (planId, plan) => {
-    if (plan.currency === 'KES') {
+    if (plan.currency === 'KES' || isKenyan) {
+      // Kenyan IP users always pay via M-Pesa, no card allowed
       const periodLabel = plan.duration_days === 3 ? '3 days' : plan.duration_days === 7 ? 'week' : 'month'
       setMpesaModal({
         open: true,
         planId,
-        amountKes: plan.price,
-        amountUsd: 0,
+        amountKes: plan.currency === 'KES' ? plan.price : 0,
+        amountUsd: plan.currency === 'USD' ? plan.price : 0,
         title: `Subscribe to ${plan.name}`,
-        description: `KES ${plan.price.toLocaleString()} / ${periodLabel}`,
+        description: `${plan.currency === 'KES' ? 'KES' : '$'}${plan.currency === 'KES' ? ' ' + plan.price.toLocaleString() : plan.price} / ${periodLabel}`,
         txType: 'subscription',
       })
     } else {
-      // USD plans — open Whop checkout for card payment
+      // Non-Kenyan USD plans — open Whop checkout for card payment
       setWhopModal({
         open: true,
         transactionType: 'subscription',

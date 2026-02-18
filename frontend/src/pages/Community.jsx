@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import axios from 'axios'
+import { useCurrency } from '../context/CurrencyContext'
 import MpesaPaymentModal from '../components/MpesaPaymentModal'
 import WhopCheckoutModal from '../components/WhopCheckoutModal'
 
@@ -355,6 +356,7 @@ function UserStatsModal({ userId, displayName, avatarColor, onClose }) {
 function PredictionCard({ pred, onRate, onPurchase }) {
   const { user } = useAuth()
   const { t } = useTranslation()
+  const { isKenyan } = useCurrency()
   const navigate = useNavigate()
   const isOwn = user?.id === pred.user_id
   const [showMpesa, setShowMpesa] = useState(false)
@@ -528,9 +530,11 @@ function PredictionCard({ pred, onRate, onPurchase }) {
                   <button className="pay-choice-btn mpesa" onClick={() => { setShowPayChoice(false); setShowMpesa(true) }}>
                     📱 M-Pesa
                   </button>
-                  <button className="pay-choice-btn card" onClick={() => { setShowPayChoice(false); setShowWhop(true) }}>
-                    💳 {t('upgrade.cardPayment')}
-                  </button>
+                  {!isKenyan && (
+                    <button className="pay-choice-btn card" onClick={() => { setShowPayChoice(false); setShowWhop(true) }}>
+                      💳 {t('upgrade.cardPayment')}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1172,6 +1176,7 @@ function LiveBetsTab() {
 
 export default function Community() {
   const { t } = useTranslation()
+  const { isKenyan } = useCurrency()
   const [searchParams, setSearchParams] = useSearchParams()
   const filterUserId = searchParams.get('user_id')
   const [filterUserName, setFilterUserName] = useState('')
