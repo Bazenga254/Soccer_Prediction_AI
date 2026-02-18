@@ -12836,6 +12836,31 @@
   transform: translateY(-2px);
 }
 
+.plan-btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.plan-upgrade-btn.balance-btn {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #fff;
+  font-size: 13px;
+  padding: 10px 16px;
+}
+
+.plan-upgrade-btn.balance-btn:hover {
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+  transform: translateY(-2px);
+}
+
+.plan-upgrade-btn.balance-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Trial Banner */
 .active-sub-banner.trial-banner {
   background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(251, 191, 36, 0.08));

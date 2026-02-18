@@ -20,15 +20,18 @@ export default function Upgrade() {
   const [minDepositKes, setMinDepositKes] = useState(260)
   const [whopModal, setWhopModal] = useState({ open: false, transactionType: '', planId: '', amountUsd: 0, title: '' })
   const [pricingInfo, setPricingInfo] = useState(null)
+  const [creatorWallet, setCreatorWallet] = useState(null)
+  const [balancePayLoading, setBalancePayLoading] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [plansRes, statusRes, balRes, pricingRes] = await Promise.allSettled([
+        const [plansRes, statusRes, balRes, pricingRes, earningsRes] = await Promise.allSettled([
           axios.get('/api/subscription/plans'),
           axios.get('/api/subscription/status'),
           axios.get('/api/user/balance'),
           axios.get('/api/pricing'),
+          axios.get('/api/user/earnings'),
         ])
         if (plansRes.status === 'fulfilled') setPlans(plansRes.value.data.plans || {})
         if (statusRes.status === 'fulfilled') {
@@ -37,6 +40,10 @@ export default function Upgrade() {
         }
         if (balRes.status === 'fulfilled') setBalance(balRes.value.data.balance)
         if (pricingRes.status === 'fulfilled') setPricingInfo(pricingRes.value.data)
+        if (earningsRes.status === 'fulfilled') setCreatorWallet({
+          balance_usd: earningsRes.value.data.balance_usd || 0,
+          balance_kes: earningsRes.value.data.balance_kes || 0,
+        })
       } catch { /* ignore */ }
       setLoading(false)
     }
@@ -144,6 +151,29 @@ export default function Upgrade() {
     }
   }
 
+  const getTotalBalance = (plan) => {
+    const cur = plan?.currency || currency
+    const userBal = cur === 'KES' ? (balance?.balance_kes || 0) : (balance?.balance_usd || 0)
+    const creatorBal = cur === 'KES' ? (creatorWallet?.balance_kes || 0) : (creatorWallet?.balance_usd || 0)
+    return userBal + creatorBal
+  }
+
+  const handleBalancePay = async (planId, plan) => {
+    if (balancePayLoading) return
+    setBalancePayLoading(true)
+    try {
+      const res = await axios.post('/api/subscription/pay-with-balance', { plan_id: planId })
+      if (res.data.success) {
+        alert(`Subscription activated! Expires: ${res.data.expires_at?.slice(0, 10)}`)
+        window.location.reload()
+      }
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Payment failed')
+    } finally {
+      setBalancePayLoading(false)
+    }
+  }
+
   const handlePaymentSuccess = async () => {
     setMpesaModal({ open: false, planId: '', amountKes: 0, amountUsd: 0, title: '', description: '', txType: 'subscription' })
     setWhopModal({ open: false, transactionType: '', planId: '', amountUsd: 0, title: '' })
@@ -237,9 +267,16 @@ export default function Upgrade() {
                 <li key={i} className="feature-item included">{f}</li>
               ))}
             </ul>
-            <button className="plan-upgrade-btn trial-btn" onClick={() => handleUpgrade(currency === 'USD' ? 'trial_usd' : 'trial_kes', trialPlan)}>
-              {currency === 'KES' ? `Start Trial - KES ${trialPlan.price}` : `Start 3-Day Trial - $${trialPlan.price}`}
-            </button>
+            <div className="plan-btn-group">
+              <button className="plan-upgrade-btn trial-btn" onClick={() => handleUpgrade(currency === 'USD' ? 'trial_usd' : 'trial_kes', trialPlan)}>
+                {currency === 'KES' ? `Pay with M-Pesa` : `Start 3-Day Trial`}
+              </button>
+              {getTotalBalance(trialPlan) >= trialPlan.price && (
+                <button className="plan-upgrade-btn balance-btn" disabled={balancePayLoading} onClick={() => handleBalancePay(currency === 'USD' ? 'trial_usd' : 'trial_kes', trialPlan)}>
+                  {balancePayLoading ? 'Processing...' : `Pay with Balance`}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -264,9 +301,16 @@ export default function Upgrade() {
             {isPro ? (
               <div className="plan-current-badge pro">{t('common.active')}</div>
             ) : (
-              <button className="plan-upgrade-btn" onClick={() => handleUpgrade(currency === 'USD' ? 'weekly_usd' : 'weekly_kes', weeklyPlan)}>
-                {currency === 'KES' ? t('upgrade.payWithMpesa') : t('upgrade.upgradeNow')}
-              </button>
+              <div className="plan-btn-group">
+                <button className="plan-upgrade-btn" onClick={() => handleUpgrade(currency === 'USD' ? 'weekly_usd' : 'weekly_kes', weeklyPlan)}>
+                  {currency === 'KES' ? t('upgrade.payWithMpesa') : t('upgrade.upgradeNow')}
+                </button>
+                {getTotalBalance(weeklyPlan) >= weeklyPlan.price && (
+                  <button className="plan-upgrade-btn balance-btn" disabled={balancePayLoading} onClick={() => handleBalancePay(currency === 'USD' ? 'weekly_usd' : 'weekly_kes', weeklyPlan)}>
+                    {balancePayLoading ? 'Processing...' : 'Pay with Balance'}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -292,9 +336,16 @@ export default function Upgrade() {
             {isPro ? (
               <div className="plan-current-badge pro">{t('common.active')}</div>
             ) : (
-              <button className="plan-upgrade-btn monthly" onClick={() => handleUpgrade(currency === 'USD' ? 'monthly_usd' : 'monthly_kes', monthlyPlan)}>
-                {currency === 'KES' ? t('upgrade.payWithMpesa') : t('upgrade.upgradeNow')}
-              </button>
+              <div className="plan-btn-group">
+                <button className="plan-upgrade-btn monthly" onClick={() => handleUpgrade(currency === 'USD' ? 'monthly_usd' : 'monthly_kes', monthlyPlan)}>
+                  {currency === 'KES' ? t('upgrade.payWithMpesa') : t('upgrade.upgradeNow')}
+                </button>
+                {getTotalBalance(monthlyPlan) >= monthlyPlan.price && (
+                  <button className="plan-upgrade-btn balance-btn" disabled={balancePayLoading} onClick={() => handleBalancePay(currency === 'USD' ? 'monthly_usd' : 'monthly_kes', monthlyPlan)}>
+                    {balancePayLoading ? 'Processing...' : 'Pay with Balance'}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -321,9 +372,16 @@ export default function Upgrade() {
             {isPro ? (
               <div className="plan-current-badge pro">{t('common.active')}</div>
             ) : (
-              <button className="plan-upgrade-btn" onClick={() => handleUpgrade(planId, plan)}>
-                {plan.currency === 'KES' ? t('upgrade.payWithMpesa') : t('upgrade.upgradeNow')}
-              </button>
+              <div className="plan-btn-group">
+                <button className="plan-upgrade-btn" onClick={() => handleUpgrade(planId, plan)}>
+                  {plan.currency === 'KES' ? t('upgrade.payWithMpesa') : t('upgrade.upgradeNow')}
+                </button>
+                {getTotalBalance(plan) >= plan.price && (
+                  <button className="plan-upgrade-btn balance-btn" disabled={balancePayLoading} onClick={() => handleBalancePay(planId, plan)}>
+                    {balancePayLoading ? 'Processing...' : 'Pay with Balance'}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         ))}

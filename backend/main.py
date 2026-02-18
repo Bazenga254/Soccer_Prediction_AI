@@ -1504,6 +1504,128 @@ async def subscribe(request: SubscribeRequest, authorization: str = Header(None)
     return result
 
 
+class BalancePayRequest(BaseModel):
+    plan_id: str
+
+
+@app.post("/api/subscription/pay-with-balance")
+async def pay_with_balance(request: BalancePayRequest, authorization: str = Header(None)):
+    """Pay for a subscription using account balance (user_balances + creator_wallets)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_id = payload["user_id"]
+
+    # Get the plan details
+    plans = subscriptions.get_plans()
+    if request.plan_id not in plans:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+
+    plan = plans[request.plan_id]
+    plan_price = plan["price"]
+    plan_currency = plan["currency"]
+
+    # Get user's balances
+    user_balance = community.get_user_balance(user_id)
+    creator_wallet = community.get_creator_wallet(user_id)
+
+    # Calculate total available balance in the plan's currency
+    if plan_currency == "KES":
+        available_user = user_balance.get("balance_kes", 0)
+        available_creator = creator_wallet.get("balance_kes", 0)
+    else:
+        available_user = user_balance.get("balance_usd", 0)
+        available_creator = creator_wallet.get("balance_usd", 0)
+
+    total_available = available_user + available_creator
+    if total_available < plan_price:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient balance. You have {plan_currency} {total_available:,.2f} but need {plan_currency} {plan_price:,.2f}"
+        )
+
+    # Deduct from user balance first, then creator wallet for remainder
+    remaining = plan_price
+    deducted_user = 0
+    deducted_creator = 0
+
+    if available_user > 0:
+        deducted_user = min(available_user, remaining)
+        if plan_currency == "KES":
+            community.adjust_user_balance(user_id, 0, -deducted_user, f"Subscription: {plan['name']}", "subscription_payment", user_id, "self")
+        else:
+            community.adjust_user_balance(user_id, -deducted_user, 0, f"Subscription: {plan['name']}", "subscription_payment", user_id, "self")
+        remaining -= deducted_user
+
+    if remaining > 0 and available_creator > 0:
+        deducted_creator = min(available_creator, remaining)
+        if plan_currency == "KES":
+            community.adjust_creator_wallet(user_id, 0, -deducted_creator, f"Subscription: {plan['name']}")
+        else:
+            community.adjust_creator_wallet(user_id, -deducted_creator, 0, f"Subscription: {plan['name']}")
+        remaining -= deducted_creator
+
+    # Create the subscription
+    ref = f"BAL-{user_id}-{int(datetime.now().timestamp())}"
+    result = subscriptions.create_subscription(
+        user_id=user_id,
+        plan_id=request.plan_id,
+        payment_method="balance",
+        payment_ref=ref,
+    )
+
+    if not result["success"]:
+        # Refund if subscription creation fails
+        if deducted_user > 0:
+            if plan_currency == "KES":
+                community.adjust_user_balance(user_id, 0, deducted_user, "Refund: subscription failed", "refund", user_id, "system")
+            else:
+                community.adjust_user_balance(user_id, deducted_user, 0, "Refund: subscription failed", "refund", user_id, "system")
+        if deducted_creator > 0:
+            if plan_currency == "KES":
+                community.adjust_creator_wallet(user_id, 0, deducted_creator, "Refund: subscription failed")
+            else:
+                community.adjust_creator_wallet(user_id, deducted_creator, 0, "Refund: subscription failed")
+        raise HTTPException(status_code=400, detail=result.get("error", "Subscription failed"))
+
+    # Create notification
+    amount_str = f"KES {plan_price:,.0f}" if plan_currency == "KES" else f"${plan_price:,.2f}"
+    community.create_notification(
+        user_id=user_id,
+        notif_type="subscription_balance",
+        title="Subscription Activated!",
+        message=f"You subscribed to {plan['name']} using your account balance ({amount_str}). Expires: {result.get('expires_at', '')[:10]}",
+        metadata={"plan_id": request.plan_id, "amount": plan_price, "currency": plan_currency, "payment_ref": ref},
+    )
+
+    # Send invoice email in background
+    import threading
+    user_info = user_auth.get_user_email_by_id(user_id)
+    if user_info and user_info.get("email"):
+        threading.Thread(target=user_auth.send_invoice_email, kwargs={
+            "to_email": user_info["email"],
+            "display_name": user_info.get("display_name", ""),
+            "invoice_number": ref,
+            "transaction_type": "subscription",
+            "amount_kes": plan_price if plan_currency == "KES" else 0,
+            "amount_usd": plan_price if plan_currency == "USD" else 0,
+            "payment_method": "Account Balance",
+            "receipt_number": ref,
+            "reference_id": request.plan_id,
+            "completed_at": datetime.now().isoformat(),
+        }, daemon=True).start()
+
+    return {
+        "success": True,
+        "expires_at": result.get("expires_at"),
+        "plan": request.plan_id,
+        "deducted_user_balance": deducted_user,
+        "deducted_creator_wallet": deducted_creator,
+        "payment_ref": ref,
+    }
+
+
 @app.post("/api/subscription/cancel")
 async def cancel_subscription(authorization: str = Header(None)):
     """Cancel current subscription."""

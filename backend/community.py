@@ -522,7 +522,23 @@ def create_withdrawal_notification(user_id: int, amount: float, currency: str = 
 
 # ==================== CREATOR WALLET ====================
 
-def adjust_creator_wallet(user_id: int, amount_usd: float, reason: str = "") -> Dict:
+def get_creator_wallet(user_id: int) -> Dict:
+    """Get a creator's wallet balance."""
+    conn = _get_db()
+    row = conn.execute("SELECT * FROM creator_wallets WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+    if row:
+        return {
+            "balance_usd": row["balance_usd"],
+            "balance_kes": row["balance_kes"],
+            "total_earned_usd": row["total_earned_usd"],
+            "total_earned_kes": row["total_earned_kes"],
+            "total_sales": row["total_sales"],
+        }
+    return {"balance_usd": 0, "balance_kes": 0, "total_earned_usd": 0, "total_earned_kes": 0, "total_sales": 0}
+
+
+def adjust_creator_wallet(user_id: int, amount_usd: float, amount_kes: float = 0, reason: str = "") -> Dict:
     """Credit or debit a creator's wallet balance.
 
     Used for referral commissions and any manual adjustments.
@@ -538,14 +554,16 @@ def adjust_creator_wallet(user_id: int, amount_usd: float, reason: str = "") -> 
         ON CONFLICT(user_id) DO NOTHING
     """, (user_id, now))
 
-    # Update balance
+    # Update balance (USD and KES)
     conn.execute("""
         UPDATE creator_wallets SET
             balance_usd = balance_usd + ?,
+            balance_kes = balance_kes + ?,
             total_earned_usd = CASE WHEN ? > 0 THEN total_earned_usd + ? ELSE total_earned_usd END,
+            total_earned_kes = CASE WHEN ? > 0 THEN total_earned_kes + ? ELSE total_earned_kes END,
             updated_at = ?
         WHERE user_id = ?
-    """, (amount_usd, amount_usd, amount_usd, now, user_id))
+    """, (amount_usd, amount_kes, amount_usd, amount_usd, amount_kes, amount_kes, now, user_id))
     conn.commit()
 
     row = conn.execute("SELECT * FROM creator_wallets WHERE user_id = ?", (user_id,)).fetchone()
@@ -553,7 +571,9 @@ def adjust_creator_wallet(user_id: int, amount_usd: float, reason: str = "") -> 
 
     return {
         "balance_usd": row["balance_usd"] if row else 0,
+        "balance_kes": row["balance_kes"] if row else 0,
         "total_earned_usd": row["total_earned_usd"] if row else 0,
+        "total_earned_kes": row["total_earned_kes"] if row else 0,
     }
 
 
