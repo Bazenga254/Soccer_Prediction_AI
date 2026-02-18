@@ -1440,7 +1440,7 @@ function FormationDisplay({ lineups }) {
     const sortedRowKeys = Object.keys(gridRows).sort((a, b) => {
       const aNum = parseInt(a)
       const bNum = parseInt(b)
-      return isHome ? aNum - bNum : bNum - aNum
+      return isHome ? bNum - aNum : aNum - bNum
     })
 
     // Team primary color
