@@ -1081,7 +1081,6 @@ function LiveBetsTab() {
               onClick={() => {
                 const newMatch = selectedMatch?.id === match.id ? null : match
                 setSelectedMatch(newMatch)
-                if (newMatch) setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
               }}
             >
               <div className="live-bet-card-left">
