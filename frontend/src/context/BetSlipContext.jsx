@@ -39,6 +39,14 @@ export function BetSlipProvider({ children }) {
     setConfirmResult(null)
   }, [])
 
+  const updateOdds = useCallback((matchId, odds) => {
+    setSelectedBets(prev => prev.map(bet =>
+      bet.matchId === matchId
+        ? { ...bet, odds: odds === '' ? null : parseFloat(odds) || null }
+        : bet
+    ))
+  }, [])
+
   const clearAllBets = useCallback(() => {
     setSelectedBets([])
     setConfirmResult(null)
@@ -95,10 +103,17 @@ export function BetSlipProvider({ children }) {
     ? Math.round((1 / (combinedProbability / 100)) * 10) / 10
     : 0
 
+  // Calculate combined/accumulator odds (multiply all individual odds)
+  const hasSomeOdds = selectedBets.some(bet => bet.odds && bet.odds > 0)
+  const combinedOdds = hasSomeOdds
+    ? selectedBets.reduce((acc, bet) => bet.odds && bet.odds > 0 ? acc * bet.odds : acc, 1)
+    : null
+
   const value = {
     selectedBets,
     addBet,
     removeBet,
+    updateOdds,
     clearAllBets,
     isBetSelected,
     hasMatchSelection,
@@ -109,6 +124,7 @@ export function BetSlipProvider({ children }) {
     combinedProbability: Math.round(combinedProbability * 100) / 100,
     riskScore,
     betCount: selectedBets.length,
+    combinedOdds: combinedOdds !== null ? Math.round(combinedOdds * 100) / 100 : null,
   }
 
   return (

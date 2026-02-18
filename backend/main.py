@@ -2392,6 +2392,7 @@ class PredictionItem(BaseModel):
     outcome: str
     probability: float
     competitionId: str = ""
+    odds: float = None
 
 class ConfirmPredictionsRequest(BaseModel):
     predictions: List[PredictionItem]
@@ -2453,6 +2454,7 @@ async def confirm_predictions(request: ConfirmPredictionsRequest, authorization:
                 competition="",
                 outcome=outcome,
                 top_predictions=[],
+                odds=pred.odds,
             )
             confirmed.append(pred.matchId)
         except Exception as e:
@@ -2483,6 +2485,7 @@ async def confirm_predictions(request: ConfirmPredictionsRequest, authorization:
                     price_usd=request.price_usd if request.is_paid else 0,
                     competition_code=pred.competitionId,
                     is_live_bet=request.is_live_bet,
+                    odds=pred.odds,
                 )
             except Exception as e:
                 print(f"Failed to share prediction for {pred.matchId}: {e}")

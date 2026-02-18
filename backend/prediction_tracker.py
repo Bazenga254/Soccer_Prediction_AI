@@ -51,6 +51,11 @@ def init_predictions_db():
         c.execute("ALTER TABLE predictions ADD COLUMN match_date TEXT")
     except sqlite3.OperationalError:
         pass  # Column already exists
+    # Add odds column if missing (migration)
+    try:
+        c.execute("ALTER TABLE predictions ADD COLUMN odds REAL")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     conn.commit()
     conn.close()
     print("[OK] Prediction tracker initialized")
@@ -64,6 +69,7 @@ def store_prediction(
     competition: str,
     outcome: Dict,
     top_predictions: List[Dict],
+    odds: float = None,
 ) -> Dict:
     """Store a prediction when /api/predict is called."""
     fixture_id = f"{team_a_id}-{team_b_id}-{datetime.now().strftime('%Y%m%d')}"
@@ -120,7 +126,7 @@ def store_prediction(
                 predicted_over25 = ?, predicted_over25_prob = ?,
                 predicted_btts = ?, predicted_btts_prob = ?,
                 best_value_bet = ?, best_value_prob = ?, best_value_score = ?,
-                all_predictions = ?
+                all_predictions = ?, odds = ?
             WHERE fixture_id = ?
         """, (
             predicted_result, result_prob,
@@ -128,6 +134,7 @@ def store_prediction(
             btts, btts_prob,
             best_value.get('bet'), best_value.get('probability'), best_value.get('valueScore'),
             json.dumps(top_predictions[:10]),
+            odds,
             fixture_id,
         ))
     else:
@@ -138,8 +145,8 @@ def store_prediction(
                 predicted_over25, predicted_over25_prob,
                 predicted_btts, predicted_btts_prob,
                 best_value_bet, best_value_prob, best_value_score,
-                all_predictions, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                all_predictions, odds, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             fixture_id, team_a_name, team_b_name, team_a_id, team_b_id,
             competition, predicted_result, result_prob,
@@ -147,6 +154,7 @@ def store_prediction(
             btts, btts_prob,
             best_value.get('bet'), best_value.get('probability'), best_value.get('valueScore'),
             json.dumps(top_predictions[:10]),
+            odds,
             datetime.now().isoformat(),
         ))
 

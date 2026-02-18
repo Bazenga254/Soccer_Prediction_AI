@@ -4512,6 +4512,52 @@ body {
   background: rgba(239, 68, 68, 0.4);
 }
 
+/* Odds input row within each bet item */
+.bet-odds-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.bet-odds-label {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.bet-odds-input {
+  width: 80px;
+  padding: 4px 8px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid #475569;
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+
+.bet-odds-input:focus {
+  outline: none;
+  border-color: #6c5ce7;
+  box-shadow: 0 0 0 2px rgba(108, 92, 231, 0.2);
+}
+
+.bet-odds-input::placeholder {
+  color: #475569;
+  font-weight: 400;
+  font-size: 12px;
+}
+
+/* Combined odds in summary */
+.summary-value.odds-value {
+  color: #fbbf24;
+  font-size: 18px;
+  font-weight: 700;
+}
+
 .bet-slip-summary {
   padding: 16px;
   background: rgba(51, 65, 85, 0.3);

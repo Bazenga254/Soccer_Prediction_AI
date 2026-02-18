@@ -441,6 +441,7 @@ def init_community_db():
         "ALTER TABLE community_predictions ADD COLUMN is_live_bet INTEGER DEFAULT 0",
         "ALTER TABLE community_predictions ADD COLUMN view_count INTEGER DEFAULT 0",
         "ALTER TABLE community_predictions ADD COLUMN click_count INTEGER DEFAULT 0",
+        "ALTER TABLE community_predictions ADD COLUMN odds REAL",
     ]:
         try:
             conn.execute(col_sql)
@@ -797,6 +798,7 @@ def share_prediction(
     price_usd: float = 0,
     competition_code: str = "",
     is_live_bet: bool = False,
+    odds: float = None,
 ) -> Dict:
     """Share a prediction to the community."""
     if visibility not in ("public", "private"):
@@ -812,8 +814,8 @@ def share_prediction(
             predicted_result, predicted_result_prob,
             predicted_over25, predicted_btts,
             best_value_bet, best_value_prob,
-            analysis_summary, visibility, is_paid, price_usd, is_live_bet, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            analysis_summary, visibility, is_paid, price_usd, is_live_bet, odds, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         user_id, username, display_name, avatar_color,
         fixture_id, team_a_name, team_b_name, competition, competition_code,
@@ -821,7 +823,7 @@ def share_prediction(
         predicted_over25, predicted_btts,
         best_value_bet, best_value_prob,
         analysis_summary, visibility, 1 if is_paid else 0, price_usd,
-        1 if is_live_bet else 0, now,
+        1 if is_live_bet else 0, odds, now,
     ))
     conn.commit()
     pred_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]

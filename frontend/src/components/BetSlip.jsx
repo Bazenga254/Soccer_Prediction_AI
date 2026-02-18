@@ -6,8 +6,10 @@ export default function BetSlip() {
   const {
     selectedBets,
     removeBet,
+    updateOdds,
     clearAllBets,
     combinedProbability,
+    combinedOdds,
     riskScore,
     betCount,
     confirmPredictions,
@@ -100,6 +102,19 @@ export default function BetSlip() {
                         <span className="bet-category">{bet.category}:</span>
                         <span className="bet-outcome">{bet.outcome}</span>
                       </div>
+                      <div className="bet-odds-input-row">
+                        <label className="bet-odds-label">Odds:</label>
+                        <input
+                          type="number"
+                          className="bet-odds-input"
+                          placeholder="e.g. 1.50"
+                          value={bet.odds ?? ''}
+                          onChange={(e) => updateOdds(bet.matchId, e.target.value)}
+                          min="1.01"
+                          step="0.01"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
                     </div>
                     <div className="bet-item-right">
                       <span className="bet-probability">{bet.probability}%</span>
@@ -131,6 +146,14 @@ export default function BetSlip() {
                     {riskScore.toFixed(1)}x
                   </span>
                 </div>
+                {combinedOdds !== null && (
+                  <div className="summary-row highlight">
+                    <span className="summary-label">Total Odds</span>
+                    <span className="summary-value odds-value">
+                      {combinedOdds.toFixed(2)}
+                    </span>
+                  </div>
+                )}
 
                 <div className="probability-bar">
                   <div
