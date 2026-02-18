@@ -273,7 +273,7 @@ export default function CreatorDashboard() {
       </div>
 
       {/* Tab Navigation */}
-      <div style={styles.tabBar}>
+      <div className="creator-tab-bar" style={styles.tabBar}>
         <button style={{...styles.tab, ...(activeTab === 'analytics' ? styles.tabActive : {})}} onClick={() => setActiveTab('analytics')}>
           {t('creator.predictionAnalytics')} ({preds.length})
         </button>
@@ -351,6 +351,7 @@ export default function CreatorDashboard() {
               </p>
             ) : (
               <>
+                <div className="creator-pred-table">
                 <div style={styles.tableHeader}>
                   <span style={{...styles.col, flex: 2}}>{t('creator.teams')}</span>
                   <span style={{...styles.col, flex: 1}}>{t('creator.pickResult')}</span>
@@ -390,6 +391,7 @@ export default function CreatorDashboard() {
                     <span style={styles.colNum}>{p.is_paid ? (hidden ? '***' : `$${p.total_revenue.toFixed(2)}`) : '-'}</span>
                   </div>
                 ))}
+                </div>
               </>
             )}
           </div>
