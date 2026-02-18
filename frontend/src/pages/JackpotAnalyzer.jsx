@@ -319,6 +319,22 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
         </div>
       )}
 
+      {/* Floating analyze bar - shows when 2+ matches selected */}
+      {selectedMatches.length >= 2 && (
+        <div className="jackpot-floating-bar">
+          <div className="jackpot-floating-info">
+            <span className="jackpot-floating-count">{selectedMatches.length}/{maxMatches}</span>
+            <span className="jackpot-floating-label">matches selected</span>
+          </div>
+          <button
+            className="jackpot-floating-analyze-btn"
+            onClick={onStartAnalysis}
+          >
+            {'\u{1F52E}'} Analyze {selectedMatches.length} Matches
+          </button>
+        </div>
+      )}
+
       {/* Selected matches panel */}
       {selectedMatches.length > 0 && (
         <div className="jackpot-selected-panel">
