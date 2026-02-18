@@ -38,7 +38,7 @@ ALL_MODULES = [
     "dashboard", "users", "employees", "sales", "predictions",
     "support", "activity_logs", "security", "settings",
     "community", "referrals", "access_codes", "withdrawals", "subscriptions",
-    "online_users", "finance", "technical",
+    "online_users", "finance", "technical", "bots",
 ]
 
 # Default permission matrix: role_name -> {module: {perms}}
@@ -63,6 +63,7 @@ DEFAULT_PERMISSIONS = {
         "online_users":  {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
         "finance":       {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 1, "approve": 1, "scope": "company"},
         "technical":     {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 1, "approve": 1, "scope": "company"},
+        "bots":          {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 0, "approve": 0, "scope": "company"},
     },
     "general_manager": {
         "dashboard":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 1, "approve": 0, "scope": "company"},
@@ -139,7 +140,7 @@ DEFAULT_PERMISSIONS = {
     },
     "technical_hod": {
         "dashboard":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 1, "approve": 0, "scope": "department"},
-        "users":         {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
+        "users":         {"read": 1, "write": 0, "edit": 1, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
         "employees":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "department"},
         "technical":     {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 1, "approve": 1, "scope": "department"},
         "support":       {"read": 1, "write": 1, "edit": 1, "delete": 0, "export": 0, "approve": 0, "scope": "department"},

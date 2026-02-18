@@ -20,6 +20,8 @@ const EMPLOYEE_PAGES = [
   { id: 'finance', icon: '\u{1F4B0}', label: 'Finance', requiredModule: 'finance' },
   { id: 'technical', icon: '\u{1F527}', label: 'Technical', requiredModule: 'technical' },
   { id: 'manager', icon: '\u{1F454}', label: 'Management', requiredLevel: 1 },
+  { id: 'bots', icon: '\u{1F916}', label: 'Bots', requiredModule: null },
+  { id: 'docs', icon: '\u{1F4DA}', label: 'Documentation', requiredModule: null },
 ]
 
 export default function EmployeeSidebar({ activePage, setActivePage }) {

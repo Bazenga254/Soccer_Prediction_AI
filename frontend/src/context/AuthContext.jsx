@@ -108,6 +108,14 @@ export function AuthProvider({ children }) {
         setPendingVerification({ email: err.response.data.email })
         return { success: false, requires_verification: true, error: err.response.data.detail }
       }
+      // Handle 401 with suspended flag
+      if (err.response?.status === 401 && err.response?.data?.suspended) {
+        return {
+          success: false,
+          suspended: true,
+          error: err.response.data.detail,
+        }
+      }
       // Handle 401 with attempts_remaining
       if (err.response?.status === 401 && err.response?.data?.attempts_remaining !== undefined) {
         return {
@@ -133,6 +141,8 @@ export function AuthProvider({ children }) {
         date_of_birth: personalInfo.date_of_birth || '',
         security_question: personalInfo.security_question || '',
         security_answer: personalInfo.security_answer || '',
+        country: personalInfo.country || '',
+        terms_accepted: personalInfo.terms_accepted || false,
       })
       if (response.data.success) {
         if (response.data.requires_verification) {
@@ -153,12 +163,13 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const googleLogin = useCallback(async (googleToken, referralCode = '', captchaToken = '') => {
+  const googleLogin = useCallback(async (googleToken, referralCode = '', captchaToken = '', termsAccepted = false) => {
     try {
       const response = await axios.post('/api/user/google-login', {
         token: googleToken,
         referral_code: referralCode,
         captcha_token: captchaToken,
+        terms_accepted: termsAccepted,
       })
       if (response.data.success) {
         const { token, user: userData } = response.data

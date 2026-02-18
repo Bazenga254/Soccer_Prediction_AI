@@ -8,17 +8,22 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 import uuid
 import os
+import sqlite3
 
 import user_auth
 import access_codes
 import community
 import subscriptions
 import prediction_tracker
-import swypt_payment
+import bot_manager
+import daraja_payment
+import whop_payment
 import admin_rbac
 import activity_logger
+import pricing_config
 
 admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -47,6 +52,8 @@ class SetTierRequest(BaseModel):
 
 class SetActiveRequest(BaseModel):
     is_active: bool
+    reason: Optional[str] = None
+    custom_note: Optional[str] = None
 
 class SetRoleRequest(BaseModel):
     role: Optional[str] = None
@@ -96,6 +103,45 @@ class RejectBroadcastRequest(BaseModel):
     reason: str = ""
     approve: int = 0
     scope: str = "own"
+
+class CreateBotsRequest(BaseModel):
+    count: int
+    name_prefix: str = ""
+
+class BotIdsRequest(BaseModel):
+    bot_ids: List[int]
+
+class AssignBotsRequest(BaseModel):
+    bot_ids: List[int]
+    employee_user_id: int
+
+class BotActionRequest(BaseModel):
+    bot_id: int
+    action: str
+    target_id: str = ""
+    message: str = ""
+    reaction: str = ""
+
+class UpdatePricingConfigRequest(BaseModel):
+    updates: dict
+
+class CreatePlanRequest(BaseModel):
+    plan_id: str
+    name: str
+    price: float
+    currency: str = "USD"
+    duration_days: int
+    features: list = []
+
+class DeletePlanRequest(BaseModel):
+    plan_id: str
+
+class BotBatchActionRequest(BaseModel):
+    bot_ids: List[int]
+    action: str
+    target_id: str = ""
+    message: str = ""
+    reaction: str = ""
 
 
 # ─── Auth Helpers ───
@@ -527,6 +573,108 @@ async def admin_dashboard_stats(x_admin_password: str = Header(None), authorizat
     }
 
 
+@admin_router.get("/transaction-analytics")
+async def admin_transaction_analytics(
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+    currency: str = Query("kes"),
+    start_date: str = Query(None),
+    end_date: str = Query(None),
+):
+    """Get transaction analytics for a specific currency with optional date range."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'accounting'}, required_module="dashboard", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    cur = currency.lower()
+    if cur not in ("kes", "usd"):
+        cur = "kes"
+
+    # Kenyan time = UTC+3
+    EAT = timezone(timedelta(hours=3))
+    now_eat = datetime.now(EAT)
+    now_str = now_eat.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Chart date range
+    if start_date and end_date:
+        range_start = f"{start_date} 00:00:00"
+        range_end = f"{end_date} 23:59:59"
+        d_start = datetime.strptime(start_date, "%Y-%m-%d")
+        d_end = datetime.strptime(end_date, "%Y-%m-%d")
+    else:
+        d_start = (now_eat - timedelta(days=29)).replace(hour=0, minute=0, second=0, microsecond=0)
+        d_end = now_eat
+        range_start = d_start.strftime("%Y-%m-%d %H:%M:%S")
+        range_end = now_str
+
+    # Standard period boundaries
+    today_start = now_eat.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    days_since_monday = now_eat.weekday()
+    week_start = (now_eat - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    month_start = now_eat.replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = sqlite3.connect("community.db", timeout=10)
+    conn.row_factory = sqlite3.Row
+
+    def _q(sql, params=()):
+        try:
+            return conn.execute(sql, params).fetchone()
+        except Exception:
+            return None
+
+    def _qa(sql, params=()):
+        try:
+            return conn.execute(sql, params).fetchall()
+        except Exception:
+            return []
+
+    if cur == "kes":
+        tbl, amt_col = "payment_transactions", "amount_kes"
+        status_cond = "payment_status IN ('completed', 'confirmed')"
+    else:
+        tbl, amt_col = "whop_transactions", "amount_usd"
+        status_cond = "payment_status = 'completed'"
+
+    # Summary cards: today / this week / this month
+    daily = _q(f"SELECT COALESCE(SUM({amt_col}), 0) as total, COUNT(*) as count FROM {tbl} WHERE {status_cond} AND datetime(completed_at) >= datetime(?) AND datetime(completed_at) <= datetime(?)", (today_start, now_str))
+    weekly = _q(f"SELECT COALESCE(SUM({amt_col}), 0) as total, COUNT(*) as count FROM {tbl} WHERE {status_cond} AND datetime(completed_at) >= datetime(?) AND datetime(completed_at) <= datetime(?)", (week_start, now_str))
+    monthly = _q(f"SELECT COALESCE(SUM({amt_col}), 0) as total, COUNT(*) as count FROM {tbl} WHERE {status_cond} AND datetime(completed_at) >= datetime(?) AND datetime(completed_at) <= datetime(?)", (month_start, now_str))
+
+    # Range total
+    range_total = _q(f"SELECT COALESCE(SUM({amt_col}), 0) as total, COUNT(*) as count FROM {tbl} WHERE {status_cond} AND datetime(completed_at) >= datetime(?) AND datetime(completed_at) <= datetime(?)", (range_start, range_end))
+
+    # Chart data (day-by-day)
+    chart_rows = _qa(f"SELECT date(completed_at) as day, COALESCE(SUM({amt_col}), 0) as total FROM {tbl} WHERE {status_cond} AND datetime(completed_at) >= datetime(?) AND datetime(completed_at) <= datetime(?) GROUP BY date(completed_at) ORDER BY day", (range_start, range_end))
+
+    conn.close()
+
+    by_day = {r["day"]: r["total"] for r in chart_rows}
+    chart_labels = []
+    chart_data = []
+    num_days = min((d_end - d_start).days + 1, 366)
+    for i in range(num_days):
+        d = (d_start + timedelta(days=i)).strftime("%Y-%m-%d")
+        chart_labels.append(d)
+        chart_data.append(round(by_day.get(d, 0), 2))
+
+    return {
+        "timezone": "EAT (UTC+3)",
+        "current_time": now_str,
+        "currency": cur,
+        "daily": {"total": round(daily["total"], 2) if daily else 0, "count": daily["count"] if daily else 0},
+        "weekly": {"total": round(weekly["total"], 2) if weekly else 0, "count": weekly["count"] if weekly else 0},
+        "monthly": {"total": round(monthly["total"], 2) if monthly else 0, "count": monthly["count"] if monthly else 0},
+        "range": {
+            "start": start_date or d_start.strftime("%Y-%m-%d"),
+            "end": end_date or d_end.strftime("%Y-%m-%d"),
+            "total": round(range_total["total"], 2) if range_total else 0,
+            "count": range_total["count"] if range_total else 0,
+        },
+        "chart_labels": chart_labels,
+        "chart": chart_data,
+    }
+
+
 @admin_router.get("/referral-stats")
 async def admin_referral_stats(x_admin_password: str = Header(None), authorization: str = Header(None)):
     """Get referral leaderboard."""
@@ -547,6 +695,18 @@ async def admin_list_users(x_admin_password: str = Header(None), authorization: 
     if not auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
     users = user_auth.list_all_users()
+    try:
+        tracking = user_auth.get_all_users_tracking_summary()
+        for u in users:
+            t = tracking.get(u["id"], {})
+            u["country_ip"] = t.get("country_ip", "")
+            u["ip_address"] = t.get("ip_address", "")
+            u["browser"] = t.get("browser", "")
+            u["os"] = t.get("os", "")
+            u["device_type"] = t.get("device_type", "")
+            u["source"] = t.get("source", "Direct")
+    except Exception:
+        pass
     return {"users": users}
 
 
@@ -598,14 +758,19 @@ async def admin_get_user(user_id: int, x_admin_password: str = Header(None), aut
         profile["balance_adjustments"] = []
 
     try:
-        profile["transactions"] = swypt_payment.get_user_transactions(user_id, limit=10)
+        profile["transactions"] = daraja_payment.get_user_transactions(user_id, limit=10)
     except Exception:
         profile["transactions"] = []
 
     try:
-        profile["withdrawals"] = swypt_payment.get_user_withdrawals(user_id)
+        profile["withdrawals"] = daraja_payment.get_user_withdrawals(user_id)
     except Exception:
         profile["withdrawals"] = []
+
+    try:
+        profile["tracking"] = user_auth.get_user_tracking_summary(user_id)
+    except Exception:
+        profile["tracking"] = None
 
     return profile
 
@@ -627,17 +792,28 @@ async def admin_set_tier(user_id: int, request: Request, body: SetTierRequest,
 @admin_router.post("/users/{user_id}/toggle-active")
 async def admin_toggle_active(user_id: int, request: Request, body: SetActiveRequest,
                                x_admin_password: str = Header(None), authorization: str = Header(None)):
-    """Suspend or unsuspend a user. When suspending: hides predictions, refunds purchases, notifies buyers."""
-    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="users", required_action="edit")
+    """Suspend or unsuspend a user. When suspending: hides predictions, refunds purchases, notifies buyers, sends email."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'technical_hod'}, required_module="users", required_action="edit")
     if not auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    result = user_auth.toggle_user_active(user_id, 1 if body.is_active else 0)
-    _log_action(auth, "toggle_active", "users", request, "user", user_id, {"is_active": body.is_active})
+    result = user_auth.toggle_user_active(user_id, 1 if body.is_active else 0, reason=body.reason)
+    _log_action(auth, "toggle_active", "users", request, "user", user_id,
+                {"is_active": body.is_active, "reason": body.reason, "custom_note": body.custom_note})
 
-    # When suspending: hide predictions, refund purchases, notify buyers
+    # When suspending: hide predictions, refund purchases, notify buyers, send suspension email
     suspension_result = None
     if not body.is_active:
         suspension_result = community.handle_user_suspension(user_id)
+
+        # Send suspension email to user in background
+        import threading
+        user_info = user_auth.get_user_email_by_id(user_id)
+        if user_info and user_info.get("email"):
+            threading.Thread(
+                target=user_auth.send_suspension_email,
+                args=(user_info["email"], user_info.get("display_name", ""), body.reason or "other", body.custom_note or ""),
+                daemon=True,
+            ).start()
 
     return {
         "success": True,
@@ -661,6 +837,18 @@ async def admin_reset_password(user_id: int, request: Request, body: AdminResetP
 
 
 # ═══════════════════════════════════════════════════════════
+#  CREATOR ANALYTICS
+# ═══════════════════════════════════════════════════════════
+
+@admin_router.get("/creator-analytics")
+async def admin_creator_analytics(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get creator analytics with abnormal activity detection."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="community", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return community.get_creator_analytics_admin()
+
+
 #  COMMUNITY MODERATION
 # ═══════════════════════════════════════════════════════════
 
@@ -947,7 +1135,7 @@ async def get_pending_withdrawals(x_admin_password: str = Header(None), authoriz
                              required_module="withdrawals", required_action="read")
     if not auth:
         raise HTTPException(status_code=403, detail="Admin access required")
-    return {"withdrawals": swypt_payment.get_all_pending_withdrawals()}
+    return {"withdrawals": daraja_payment.get_all_pending_withdrawals()}
 
 
 @admin_router.post("/withdrawals/{request_id}/approve")
@@ -959,7 +1147,7 @@ async def approve_withdrawal(request_id: int, request: Request,
                              required_module="withdrawals", required_action="approve")
     if not auth:
         raise HTTPException(status_code=403, detail="Admin access required")
-    result = swypt_payment.approve_withdrawal(request_id, body.admin_notes)
+    result = daraja_payment.approve_withdrawal(request_id, body.admin_notes)
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Approval failed"))
     _log_action(auth, "approve_withdrawal", "withdrawals", request, "withdrawal", request_id, {"notes": body.admin_notes})
@@ -975,7 +1163,7 @@ async def reject_withdrawal(request_id: int, request: Request,
                              required_module="withdrawals", required_action="approve")
     if not auth:
         raise HTTPException(status_code=403, detail="Admin access required")
-    result = swypt_payment.reject_withdrawal(request_id, body.admin_notes)
+    result = daraja_payment.reject_withdrawal(request_id, body.admin_notes)
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Rejection failed"))
     _log_action(auth, "reject_withdrawal", "withdrawals", request, "withdrawal", request_id, {"notes": body.admin_notes})
@@ -990,11 +1178,140 @@ async def complete_withdrawal_admin(request_id: int, request: Request,
                              required_module="withdrawals", required_action="approve")
     if not auth:
         raise HTTPException(status_code=403, detail="Admin access required")
-    result = swypt_payment.complete_withdrawal(request_id)
+    result = daraja_payment.complete_withdrawal(request_id)
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Completion failed"))
     _log_action(auth, "complete_withdrawal", "withdrawals", request, "withdrawal", request_id)
     return result
+
+
+@admin_router.post("/withdrawals/{request_id}/retry-whop")
+async def retry_whop_transfer(request_id: int, request: Request,
+                               x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Retry a failed Whop transfer for a withdrawal."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'admin'},
+                             required_module="withdrawals", required_action="approve")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = daraja_payment.retry_whop_transfer(request_id)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Retry failed"))
+    _log_action(auth, "retry_whop_transfer", "withdrawals", request, "withdrawal", request_id)
+    return result
+
+
+@admin_router.get("/withdrawal-options")
+async def get_all_withdrawal_options(x_admin_password: str = Header(None),
+                                      authorization: str = Header(None)):
+    """Get all users' withdrawal methods with verification status."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'admin'},
+                             required_module="withdrawals", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return {"options": daraja_payment.get_all_withdrawal_options()}
+
+
+# ═══════════════════════════════════════════════════════════
+#  B2C DISBURSEMENTS (M-PESA PAYOUTS)
+# ═══════════════════════════════════════════════════════════
+
+class ApproveBatchRequest(BaseModel):
+    admin_notes: str = ""
+
+
+@admin_router.post("/disbursements/generate")
+async def generate_disbursement_batch(request: Request,
+                                       x_admin_password: str = Header(None),
+                                       authorization: str = Header(None)):
+    """Generate disbursement batch for eligible users (mpesa_phone + balance >= KES 1000)."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'admin'},
+                             required_module="withdrawals", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = await daraja_payment.generate_disbursement_batch()
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Generation failed"))
+    _log_action(auth, "generate_disbursement_batch", "withdrawals", request,
+                "disbursement_batch", result.get("batch_id"),
+                {"total_users": result.get("total_users")})
+    return result
+
+
+@admin_router.get("/disbursements/pending")
+async def get_pending_disbursement(x_admin_password: str = Header(None),
+                                    authorization: str = Header(None)):
+    """Get the current pending/processing disbursement batch with items."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'admin'},
+                             required_module="withdrawals", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return daraja_payment.get_pending_disbursement_batch()
+
+
+@admin_router.post("/disbursements/{batch_id}/approve")
+async def approve_disbursement_batch(batch_id: int, request: Request,
+                                      body: ApproveBatchRequest = ApproveBatchRequest(),
+                                      x_admin_password: str = Header(None),
+                                      authorization: str = Header(None)):
+    """Approve and trigger B2C M-Pesa payments for a disbursement batch."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'},
+                             required_module="withdrawals", required_action="approve")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Super admin access required")
+    result = await daraja_payment.approve_and_execute_batch(
+        batch_id, auth.get("user_id", 0), body.admin_notes)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Approval failed"))
+    _log_action(auth, "approve_disbursement_batch", "withdrawals", request,
+                "disbursement_batch", batch_id,
+                {"sent": result.get("sent"), "failed": result.get("failed")})
+    return result
+
+
+@admin_router.post("/disbursements/{batch_id}/cancel")
+async def cancel_disbursement_batch(batch_id: int, request: Request,
+                                     x_admin_password: str = Header(None),
+                                     authorization: str = Header(None)):
+    """Cancel a pending batch (before approval)."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'admin'},
+                             required_module="withdrawals", required_action="approve")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = daraja_payment.cancel_disbursement_batch(batch_id)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Cancel failed"))
+    _log_action(auth, "cancel_disbursement_batch", "withdrawals", request,
+                "disbursement_batch", batch_id)
+    return result
+
+
+@admin_router.post("/disbursements/items/{item_id}/retry")
+async def retry_disbursement_item(item_id: int, request: Request,
+                                   x_admin_password: str = Header(None),
+                                   authorization: str = Header(None)):
+    """Retry a failed B2C disbursement for a single item."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'},
+                             required_module="withdrawals", required_action="approve")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Super admin access required")
+    result = await daraja_payment.retry_disbursement_item(item_id)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Retry failed"))
+    _log_action(auth, "retry_disbursement_item", "withdrawals", request,
+                "disbursement_item", item_id)
+    return result
+
+
+@admin_router.get("/disbursements/history")
+async def get_disbursement_history(limit: int = Query(20, ge=1, le=100),
+                                    x_admin_password: str = Header(None),
+                                    authorization: str = Header(None)):
+    """Get past disbursement batches."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'admin'},
+                             required_module="withdrawals", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return daraja_payment.get_disbursement_history(limit)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1216,3 +1533,305 @@ async def admin_respond_keepalive(conversation_id: int, request: Request,
     _log_action(auth, "keepalive_response", "support", request, "conversation", conversation_id,
                 {"keep_open": keep_open})
     return result
+
+
+# ═══════════════════════════════════════════════════════════
+#  BOT ACCOUNTS
+# ═══════════════════════════════════════════════════════════
+
+@admin_router.get("/bots")
+async def admin_list_bots(page: int = 1, assigned_to: int = None, is_active: int = None,
+                          search: str = None,
+                          x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """List all bot accounts."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return bot_manager.get_all_bots(page=page, assigned_to=assigned_to, is_active=is_active, search=search)
+
+
+@admin_router.get("/bots/stats")
+async def admin_bot_stats(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get bot summary stats."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return bot_manager.get_bot_stats()
+
+
+@admin_router.post("/bots/create")
+async def admin_create_bots(request: Request, body: CreateBotsRequest,
+                            x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Create bot accounts in bulk."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.create_bots(body.count, body.name_prefix)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    _log_action(auth, "create_bots", "bots", request, details={"count": body.count})
+    return result
+
+
+@admin_router.post("/bots/activate")
+async def admin_activate_bots(request: Request, body: BotIdsRequest,
+                              x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Activate specific bots."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.activate_bots(body.bot_ids)
+    _log_action(auth, "activate_bots", "bots", request, details={"count": len(body.bot_ids)})
+    return result
+
+
+@admin_router.post("/bots/deactivate")
+async def admin_deactivate_bots(request: Request, body: BotIdsRequest,
+                                x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Deactivate specific bots."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.deactivate_bots(body.bot_ids)
+    _log_action(auth, "deactivate_bots", "bots", request, details={"count": len(body.bot_ids)})
+    return result
+
+
+@admin_router.post("/bots/activate-all")
+async def admin_activate_all_bots(request: Request,
+                                  x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Activate all bots."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.activate_bots(all_bots=True)
+    _log_action(auth, "activate_all_bots", "bots", request)
+    return result
+
+
+@admin_router.post("/bots/deactivate-all")
+async def admin_deactivate_all_bots(request: Request,
+                                    x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Deactivate all bots."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.deactivate_bots(all_bots=True)
+    _log_action(auth, "deactivate_all_bots", "bots", request)
+    return result
+
+
+@admin_router.post("/bots/assign")
+async def admin_assign_bots(request: Request, body: AssignBotsRequest,
+                            x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Assign bots to an employee."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.assign_bots_to_employee(body.bot_ids, body.employee_user_id)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    _log_action(auth, "assign_bots", "bots", request, "user", body.employee_user_id,
+                {"count": len(body.bot_ids)})
+    return result
+
+
+@admin_router.post("/bots/unassign")
+async def admin_unassign_bots(request: Request, body: BotIdsRequest,
+                              x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Remove employee assignment from bots."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.unassign_bots(body.bot_ids)
+    _log_action(auth, "unassign_bots", "bots", request, details={"count": len(body.bot_ids)})
+    return result
+
+
+@admin_router.post("/bots/delete")
+async def admin_delete_bots(request: Request, body: BotIdsRequest,
+                            x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Permanently delete bot accounts."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="delete")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.delete_bots(body.bot_ids)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    _log_action(auth, "delete_bots", "bots", request, details={"count": len(body.bot_ids)})
+    return result
+
+
+@admin_router.post("/bots/action")
+async def admin_bot_action(request: Request, body: BotActionRequest,
+                           x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Make a bot perform an action (admin can control any bot)."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.execute_bot_action(body.bot_id, body.action, body.target_id, body.message, body.reaction)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Bot action failed"))
+    return result
+
+
+@admin_router.post("/bots/batch-action")
+async def admin_bot_batch_action(request: Request, body: BotBatchActionRequest,
+                                  x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Make multiple bots perform the same action."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.execute_batch_action(body.bot_ids, body.action, body.target_id, body.message, body.reaction)
+    _log_action(auth, "bot_batch_action", "bots", request, details={"action": body.action, "count": len(body.bot_ids)})
+    return result
+
+
+@admin_router.get("/bots/users-search")
+async def admin_bots_user_search(search: str = "", limit: int = 20,
+                                  x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Search real users for bot targeting."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"users": bot_manager.get_real_users(search, limit)}
+
+
+@admin_router.get("/bots/live-matches")
+async def admin_bots_live_matches(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get live matches for bot chat targeting."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    import football_api
+    live_matches = await football_api.fetch_live_matches() or []
+    todays = await football_api.fetch_todays_fixtures() or []
+    # Merge in today's matches not already in live
+    live_ids = {m["id"] for m in live_matches}
+    for match in todays:
+        if match["id"] not in live_ids:
+            live_matches.append(match)
+    # Return simplified match data
+    matches = []
+    for m in live_matches:
+        home = m.get("home_team", {})
+        away = m.get("away_team", {})
+        matches.append({
+            "id": m.get("id"),
+            "match_key": str(m.get("id")),
+            "home_team": home.get("name", "Unknown"),
+            "away_team": away.get("name", "Unknown"),
+            "home_logo": home.get("logo", ""),
+            "away_logo": away.get("logo", ""),
+            "score": f"{m.get('home_score', 0)}-{m.get('away_score', 0)}",
+            "status": m.get("status", "NS"),
+            "minute": m.get("minute", ""),
+            "league": m.get("league", {}).get("name", ""),
+        })
+    # Sort: live first, then scheduled
+    live_statuses = {"1H", "2H", "HT", "ET", "LIVE"}
+    matches.sort(key=lambda x: (0 if x["status"] in live_statuses else 1, x["league"]))
+    return {"matches": matches, "count": len(matches)}
+
+
+@admin_router.get("/bots/predictions")
+async def admin_bots_predictions(page: int = 1, search: str = "",
+                                  x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get community predictions for bot interaction."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return bot_manager.get_predictions_for_bots(page=page, search=search)
+
+
+# ═══════════════════════════════════════════════════════════
+#  PRICING CONFIGURATION
+# ═══════════════════════════════════════════════════════════
+
+@admin_router.get("/pricing")
+async def admin_get_pricing(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get all pricing configuration (super_admin only)."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'},
+                             required_module="settings", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {
+        "configs": pricing_config.get_all_raw(),
+        "categories": ["subscription_plans", "commissions", "pay_per_use", "free_tier"],
+    }
+
+
+@admin_router.put("/pricing")
+async def admin_update_pricing(request: Request, body: UpdatePricingConfigRequest,
+                                x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Update pricing configuration values (super_admin only)."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'},
+                             required_module="settings", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = pricing_config.bulk_update(body.updates, updated_by=auth.get("display_name", "Admin"))
+    _log_action(auth, "update_pricing", "settings", request,
+                details={"keys": list(body.updates.keys())})
+    return result
+
+
+@admin_router.post("/pricing/plans")
+async def admin_create_plan(request: Request, body: CreatePlanRequest,
+                             x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Create a new subscription plan (super_admin only)."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'},
+                             required_module="settings", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    by = auth.get("display_name", "Admin")
+    plan_id = body.plan_id.strip().lower().replace(" ", "_")
+
+    # Create config entries for the new plan
+    for key, val, vtype in [
+        (f"plan_{plan_id}_price", body.price, "number"),
+        (f"plan_{plan_id}_duration", body.duration_days, "number"),
+        (f"plan_{plan_id}_name", body.name, "string"),
+        (f"plan_{plan_id}_currency", body.currency, "string"),
+        (f"plan_{plan_id}_features", body.features, "json"),
+    ]:
+        res = pricing_config.create_config(key, val, "subscription_plans",
+                                            label=f"{body.name} - {key.split('_')[-1].title()}",
+                                            value_type=vtype, updated_by=by)
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("error", "Failed to create plan config"))
+
+    # Add to plans_list
+    plans_list = pricing_config.get("plans_list", [])
+    if plan_id not in plans_list:
+        plans_list.append(plan_id)
+        pricing_config.update("plans_list", plans_list, by)
+
+    _log_action(auth, "create_plan", "settings", request,
+                details={"plan_id": plan_id, "name": body.name, "price": body.price, "currency": body.currency})
+    return {"success": True, "plan_id": plan_id}
+
+
+@admin_router.delete("/pricing/plans/{plan_id}")
+async def admin_delete_plan(plan_id: str, request: Request,
+                             x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Remove a subscription plan (super_admin only)."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'},
+                             required_module="settings", required_action="delete")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    by = auth.get("display_name", "Admin")
+
+    # Remove from plans_list
+    plans_list = pricing_config.get("plans_list", [])
+    if plan_id in plans_list:
+        plans_list.remove(plan_id)
+        pricing_config.update("plans_list", plans_list, by)
+
+    # Delete config entries
+    for suffix in ["_price", "_duration", "_name", "_currency", "_features"]:
+        pricing_config.delete_config(f"plan_{plan_id}{suffix}")
+
+    _log_action(auth, "delete_plan", "settings", request, details={"plan_id": plan_id})
+    return {"success": True}

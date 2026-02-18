@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 export default function ResetPassword() {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const token = searchParams.get('token') || ''
@@ -17,14 +19,14 @@ export default function ResetPassword() {
   const [success, setSuccess] = useState(false)
 
   const getPasswordRequirements = (pwd) => [
-    { label: 'At least 8 characters', met: pwd.length >= 8 },
-    { label: 'At least 2 uppercase letters', met: (pwd.match(/[A-Z]/g) || []).length >= 2 },
-    { label: 'At least 2 lowercase letters', met: (pwd.match(/[a-z]/g) || []).length >= 2 },
-    { label: 'At least 2 numbers', met: (pwd.match(/[0-9]/g) || []).length >= 2 },
-    { label: 'At least 2 special characters', met: (pwd.match(/[^A-Za-z0-9]/g) || []).length >= 2 },
+    { label: t('auth.pwdReq1'), met: pwd.length >= 8 },
+    { label: t('auth.pwdReq2'), met: (pwd.match(/[A-Z]/g) || []).length >= 2 },
+    { label: t('auth.pwdReq3'), met: (pwd.match(/[a-z]/g) || []).length >= 2 },
+    { label: t('auth.pwdReq4'), met: (pwd.match(/[0-9]/g) || []).length >= 2 },
+    { label: t('auth.pwdReq5'), met: (pwd.match(/[^A-Za-z0-9]/g) || []).length >= 2 },
   ]
 
-  const passwordReqs = useMemo(() => getPasswordRequirements(password), [password])
+  const passwordReqs = useMemo(() => getPasswordRequirements(password), [password, t])
   const metCount = passwordReqs.filter(r => r.met).length
   const strengthPercent = (metCount / passwordReqs.length) * 100
   const strengthColor = strengthPercent <= 40 ? '#ef4444' : strengthPercent <= 80 ? '#f59e0b' : '#22c55e'
@@ -34,22 +36,22 @@ export default function ResetPassword() {
     setError('')
 
     if (!token || !email) {
-      setError('Invalid reset link. Please request a new one.')
+      setError(t('resetPassword.invalidResetRequest'))
       return
     }
 
     if (!password.trim()) {
-      setError('Please enter a new password')
+      setError(t('resetPassword.enterNewPassword'))
       return
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
+      setError(t('resetPassword.passwordsNoMatch'))
       return
     }
 
     if (!passwordReqs.every(r => r.met)) {
-      setError('Please meet all password requirements')
+      setError(t('resetPassword.meetRequirements'))
       return
     }
 
@@ -63,10 +65,10 @@ export default function ResetPassword() {
       if (response.data.success) {
         setSuccess(true)
       } else {
-        setError(response.data.error || 'Something went wrong')
+        setError(response.data.error || t('auth.somethingWrong'))
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to reset password. The link may have expired.')
+      setError(err.response?.data?.detail || t('resetPassword.failedReset'))
     }
     setLoading(false)
   }
@@ -77,10 +79,10 @@ export default function ResetPassword() {
         <div className="reset-password-card">
           <div className="gate-brand">
             <span className="gate-logo">&#9917;</span>
-            <h1 className="gate-title">Spark AI Prediction</h1>
+            <h1 className="gate-title">{t('auth.sparkAIPrediction')}</h1>
           </div>
-          <div className="gate-error">Invalid reset link. Please request a new password reset from the login page.</div>
-          <button className="gate-submit-btn" onClick={() => navigate('/')}>Go to Login</button>
+          <div className="gate-error">{t('resetPassword.invalidResetLinkFull')}</div>
+          <button className="gate-submit-btn" onClick={() => navigate('/')}>{t('resetPassword.goToLogin')}</button>
         </div>
       </div>
     )
@@ -92,7 +94,7 @@ export default function ResetPassword() {
         <div className="reset-password-card">
           <div className="gate-brand">
             <span className="gate-logo">&#9917;</span>
-            <h1 className="gate-title">Spark AI Prediction</h1>
+            <h1 className="gate-title">{t('auth.sparkAIPrediction')}</h1>
           </div>
           <div className="reset-success">
             <div className="reset-success-icon">
@@ -101,12 +103,11 @@ export default function ResetPassword() {
                 <polyline points="22 4 12 14.01 9 11.01"/>
               </svg>
             </div>
-            <h2 className="reset-success-title">Password Reset Successfully!</h2>
+            <h2 className="reset-success-title">{t('resetPassword.passwordResetSuccessTitle')}</h2>
             <p className="reset-success-message">
-              Your password has been changed. You can now log in with your new password.
-              A confirmation email has been sent to your inbox.
+              {t('resetPassword.passwordResetSuccessMessage')}
             </p>
-            <button className="gate-submit-btn" onClick={() => navigate('/')}>Go to Login</button>
+            <button className="gate-submit-btn" onClick={() => navigate('/')}>{t('resetPassword.goToLogin')}</button>
           </div>
         </div>
       </div>
@@ -118,22 +119,22 @@ export default function ResetPassword() {
       <div className="reset-password-card">
         <div className="gate-brand">
           <span className="gate-logo">&#9917;</span>
-          <h1 className="gate-title">Spark AI Prediction</h1>
+          <h1 className="gate-title">{t('auth.sparkAIPrediction')}</h1>
         </div>
 
-        <h2 className="reset-heading">Create New Password</h2>
-        <p className="reset-subtitle">Enter a new password for <strong>{email}</strong></p>
+        <h2 className="reset-heading">{t('resetPassword.createNewPassword')}</h2>
+        <p className="reset-subtitle" dangerouslySetInnerHTML={{ __html: t('resetPassword.newPasswordFor', { email }) }} />
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="new-password">New Password</label>
+            <label htmlFor="new-password">{t('resetPassword.newPassword')}</label>
             <div className="password-input-wrapper">
               <input
                 id="new-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Create a strong password"
+                placeholder={t('resetPassword.createStrongPassword')}
                 disabled={loading}
                 autoFocus
               />
@@ -169,14 +170,14 @@ export default function ResetPassword() {
           )}
 
           <div className="form-group">
-            <label htmlFor="confirm-password">Confirm Password</label>
+            <label htmlFor="confirm-password">{t('resetPassword.confirmNewPassword')}</label>
             <div className="password-input-wrapper">
               <input
                 id="confirm-password"
                 type={showConfirmPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm your password"
+                placeholder={t('resetPassword.confirmYourPassword')}
                 disabled={loading}
               />
               <button
@@ -197,12 +198,12 @@ export default function ResetPassword() {
           {error && <div className="gate-error">{error}</div>}
 
           <button type="submit" className="gate-submit-btn" disabled={loading || !passwordReqs.every(r => r.met)}>
-            {loading ? 'Resetting Password...' : 'Reset Password'}
+            {loading ? t('resetPassword.resettingPassword') : t('resetPassword.resetBtn')}
           </button>
         </form>
 
         <div className="gate-footer">
-          <p>Remember your password? <button className="link-btn" onClick={() => navigate('/')}>Back to login</button></p>
+          <p>{t('resetPassword.rememberPassword')} <button className="link-btn" onClick={() => navigate('/')}>{t('resetPassword.backToLoginLink')}</button></p>
         </div>
       </div>
     </div>

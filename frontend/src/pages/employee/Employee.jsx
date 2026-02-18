@@ -6,6 +6,8 @@ import FinancePage from './pages/FinancePage'
 import TechnicalPage from './pages/TechnicalPage'
 import CustomerCarePage from './pages/CustomerCarePage'
 import ManagerPanel from './pages/ManagerPanel'
+import BotsPage from './pages/BotsPage'
+import EmployeeDocsPage from './pages/EmployeeDocsPage'
 import './styles/employee.css'
 
 class EmployeeErrorBoundary extends Component {
@@ -64,6 +66,8 @@ const PAGE_COMPONENTS = {
   technical: TechnicalPage,
   support: CustomerCarePage,
   manager: ManagerPanel,
+  bots: BotsPage,
+  docs: EmployeeDocsPage,
 }
 
 function EmployeeShell() {

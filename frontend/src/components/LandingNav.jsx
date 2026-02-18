@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
+import LanguageSelector from './LanguageSelector'
 import sparkLogo from '../assets/spark-ai-logo.png'
 
 export default function LandingNav({ onSignIn, onGetStarted }) {
+  const { t } = useTranslation()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -28,18 +31,20 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
         </div>
 
         <div className={`landing-nav-links ${mobileOpen ? 'open' : ''}`}>
-          <button className="landing-nav-link" onClick={() => handleNavClick('features')}>Features</button>
-          <button className="landing-nav-link" onClick={() => handleNavClick('pricing')}>Pricing</button>
-          <button className="landing-nav-link" onClick={() => handleNavClick('how-it-works')}>How It Works</button>
+          <button className="landing-nav-link" onClick={() => handleNavClick('features')}>{t('nav.features')}</button>
+          <button className="landing-nav-link" onClick={() => handleNavClick('pricing')}>{t('nav.pricing')}</button>
+          <button className="landing-nav-link" onClick={() => handleNavClick('how-it-works')}>{t('nav.howItWorks')}</button>
+          <a className="landing-nav-link" href="/docs" style={{ textDecoration: 'none' }}>{t('nav.docs')}</a>
           <div className="landing-nav-mobile-actions">
-            <button className="landing-signin-btn" onClick={() => { setMobileOpen(false); onSignIn() }}>Sign In</button>
-            <button className="landing-cta-btn" onClick={() => { setMobileOpen(false); onGetStarted() }}>Get Started</button>
+            <button className="landing-signin-btn" onClick={() => { setMobileOpen(false); onSignIn() }}>{t('nav.signIn')}</button>
+            <button className="landing-cta-btn" onClick={() => { setMobileOpen(false); onGetStarted() }}>{t('nav.getStarted')}</button>
           </div>
         </div>
 
         <div className="landing-nav-actions">
-          <button className="landing-signin-btn" onClick={onSignIn}>Sign In</button>
-          <button className="landing-cta-btn" onClick={onGetStarted}>Get Started</button>
+          <LanguageSelector variant="landing" />
+          <button className="landing-signin-btn" onClick={onSignIn}>{t('nav.signIn')}</button>
+          <button className="landing-cta-btn" onClick={onGetStarted}>{t('nav.getStarted')}</button>
         </div>
 
         <button

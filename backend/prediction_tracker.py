@@ -46,6 +46,11 @@ def init_predictions_db():
             checked_at TEXT
         )
     """)
+    # Add match_date column if missing (migration)
+    try:
+        c.execute("ALTER TABLE predictions ADD COLUMN match_date TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     conn.commit()
     conn.close()
     print("[OK] Prediction tracker initialized")
@@ -244,6 +249,153 @@ def get_all_predictions(limit: int = 50) -> List[Dict]:
     conn.close()
 
     return [dict(row) for row in rows]
+
+
+def get_unfinished_prediction_info() -> Dict:
+    """Get info about unfinished predictions for the background checker."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("""
+        SELECT fixture_id, team_a_id, team_b_id, created_at
+        FROM predictions WHERE match_finished = 0
+    """)
+    rows = c.fetchall()
+    conn.close()
+
+    dates = set()
+    team_keys = set()
+    for r in rows:
+        # fixture_id format: {team_a_id}-{team_b_id}-{YYYYMMDD}
+        parts = r["fixture_id"].rsplit("-", 1)
+        if len(parts) == 2:
+            dates.add(parts[1])
+        team_keys.add(f"{r['team_a_id']}-{r['team_b_id']}")
+
+    return {"dates": sorted(dates), "team_keys": team_keys}
+
+
+def check_and_update_from_fixtures(finished_fixtures: list) -> Dict:
+    """Auto-resolve predictions from finished fixture data (from API-Football)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    c.execute("SELECT * FROM predictions WHERE match_finished = 0")
+    unfinished = c.fetchall()
+    if not unfinished:
+        conn.close()
+        return {"updated": 0, "correct": 0, "incorrect": 0}
+
+    # Build lookup: "home_id-away_id" -> fixture data
+    fixture_map = {}
+    for f in finished_fixtures:
+        home_id = f.get("home_team", {}).get("id")
+        away_id = f.get("away_team", {}).get("id")
+        if home_id and away_id:
+            key = f"{home_id}-{away_id}"
+            fixture_map[key] = f
+
+    updated = 0
+    correct = 0
+    incorrect = 0
+
+    for pred in unfinished:
+        team_key = f"{pred['team_a_id']}-{pred['team_b_id']}"
+        fixture = fixture_map.get(team_key)
+        if not fixture:
+            continue
+
+        goals = fixture.get("goals", {})
+        home_goals = goals.get("home")
+        away_goals = goals.get("away")
+        if home_goals is None or away_goals is None:
+            continue
+
+        # Extract match date from fixture
+        match_date = fixture.get("date")
+
+        # Determine actual result
+        if home_goals > away_goals:
+            actual_result = "Home Win"
+        elif away_goals > home_goals:
+            actual_result = "Away Win"
+        else:
+            actual_result = "Draw"
+
+        total_goals = home_goals + away_goals
+        btts_actual = home_goals > 0 and away_goals > 0
+
+        # Check correctness
+        result_correct = 1 if pred["predicted_result"] == actual_result else 0
+        over25_correct = None
+        if pred["predicted_over25"]:
+            if pred["predicted_over25"] == "Over":
+                over25_correct = 1 if total_goals > 2.5 else 0
+            else:
+                over25_correct = 1 if total_goals < 2.5 else 0
+        btts_correct = None
+        if pred["predicted_btts"]:
+            if pred["predicted_btts"] == "Yes":
+                btts_correct = 1 if btts_actual else 0
+            else:
+                btts_correct = 1 if not btts_actual else 0
+
+        c.execute("""
+            UPDATE predictions SET
+                actual_home_goals = ?, actual_away_goals = ?,
+                actual_result = ?, match_finished = 1,
+                result_correct = ?, over25_correct = ?, btts_correct = ?,
+                checked_at = ?, match_date = ?
+            WHERE id = ?
+        """, (
+            home_goals, away_goals, actual_result,
+            result_correct, over25_correct, btts_correct,
+            datetime.now().isoformat(), match_date,
+            pred["id"],
+        ))
+
+        updated += 1
+        if result_correct:
+            correct += 1
+        else:
+            incorrect += 1
+
+    conn.commit()
+    conn.close()
+    return {"updated": updated, "correct": correct, "incorrect": incorrect}
+
+
+def update_match_dates(all_fixtures: list) -> int:
+    """Update match_date for predictions that don't have one yet, using any fixture (finished or not)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    c.execute("SELECT id, team_a_id, team_b_id FROM predictions WHERE match_date IS NULL")
+    missing = c.fetchall()
+    if not missing:
+        conn.close()
+        return 0
+
+    fixture_map = {}
+    for f in all_fixtures:
+        home_id = f.get("home_team", {}).get("id")
+        away_id = f.get("away_team", {}).get("id")
+        if home_id and away_id:
+            fixture_map[f"{home_id}-{away_id}"] = f.get("date")
+
+    count = 0
+    for pred in missing:
+        team_key = f"{pred['team_a_id']}-{pred['team_b_id']}"
+        match_date = fixture_map.get(team_key)
+        if match_date:
+            c.execute("UPDATE predictions SET match_date = ? WHERE id = ?", (match_date, pred["id"]))
+            count += 1
+
+    conn.commit()
+    conn.close()
+    return count
 
 
 def get_accuracy_stats() -> Dict:

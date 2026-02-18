@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 export default function MessagesDropdown() {
@@ -12,6 +13,7 @@ export default function MessagesDropdown() {
   const [sending, setSending] = useState(false)
   const dropdownRef = useRef(null)
   const messagesEndRef = useRef(null)
+  const { t } = useTranslation()
 
   useEffect(() => {
     fetchUnreadCount()
@@ -116,7 +118,7 @@ export default function MessagesDropdown() {
 
   return (
     <div className="messages-dropdown-wrapper" ref={dropdownRef}>
-      <button className="messages-bell-btn" onClick={handleOpen} title="Messages">
+      <button className="messages-bell-btn" onClick={handleOpen} title={t('messages.title')}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
@@ -130,14 +132,14 @@ export default function MessagesDropdown() {
           {!activeChat ? (
             <>
               <div className="messages-dropdown-header">
-                <span className="messages-dropdown-title">Messages</span>
+                <span className="messages-dropdown-title">{t('messages.title')}</span>
               </div>
               <div className="messages-dropdown-body">
                 {loading ? (
                   <div className="messages-loading">Loading...</div>
                 ) : conversations.length === 0 ? (
                   <div className="messages-empty">
-                    <p>No messages yet</p>
+                    <p>{t('messages.noMessages')}</p>
                     <p className="messages-empty-sub">Messages from other users will appear here</p>
                   </div>
                 ) : (

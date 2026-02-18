@@ -1,8 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 import { playSwoosh } from '../sounds'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+
+function linkifyContent(text) {
+  // Match URLs in text and convert to clickable links
+  const urlRegex = /(https?:\/\/[^\s<]+)/g
+  const parts = text.split(urlRegex)
+  if (parts.length === 1) return text
+  return parts.map((part, i) => {
+    if (urlRegex.test(part)) {
+      // Reset regex lastIndex since we're reusing it
+      urlRegex.lastIndex = 0
+      return (
+        <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: '#6c5ce7', textDecoration: 'underline', wordBreak: 'break-all' }}>
+          {part}
+        </a>
+      )
+    }
+    return part
+  })
+}
 
 function parseFileMessage(content) {
   const match = content.match(/^\[FILE:(.+?)\]\((.+?)\)$/)
@@ -49,6 +69,8 @@ export default function SupportChat() {
   const reconnectRef = useRef(null)
   const aiTypingTimeoutRef = useRef(null)
   const fileInputRef = useRef(null)
+
+  const { t } = useTranslation()
 
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
@@ -328,7 +350,7 @@ export default function SupportChat() {
   return (
     <>
       {/* Floating Action Button */}
-      <button className={`support-chat-fab ${unreadCount > 0 ? 'has-unread' : ''}`} onClick={handleOpen} title="Support Chat">
+      <button className={`support-chat-fab ${unreadCount > 0 ? 'has-unread' : ''}`} onClick={handleOpen} title={t('support.chatTitle')}>
         {isOpen ? (
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -357,7 +379,7 @@ export default function SupportChat() {
                 </svg>
               </span>
               <div>
-                <strong>Support Chat</strong>
+                <strong>{t('support.chatTitle')}</strong>
                 <span className="support-chat-status">
                   {conversationClosed ? 'Conversation ended' : isEscalated ? (agentName ? `Agent: ${agentName}` : 'Connected to agent') : 'Powered by Spark AI'}
                 </span>
@@ -432,7 +454,7 @@ export default function SupportChat() {
                           </a>
                         )
                       }
-                      return <p>{msg.content}</p>
+                      return <p>{linkifyContent(msg.content)}</p>
                     })()}
                     <span className="support-bubble-time">{timeAgo(msg.created_at)}</span>
                   </div>
@@ -540,7 +562,7 @@ export default function SupportChat() {
                       if (newMessage.trim() && !sending) handleSend(e)
                     }
                   }}
-                  placeholder="Type your message..."
+                  placeholder={t('support.placeholder')}
                   maxLength={2000}
                   autoFocus
                   rows={1}

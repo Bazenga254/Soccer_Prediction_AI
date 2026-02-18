@@ -1,21 +1,16 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
+import CountryPicker from './CountryPicker'
 import axios from 'axios'
 
-const SECURITY_QUESTIONS = [
-  "What is your mother's maiden name?",
-  "What was your first pet's name?",
-  "What city were you born in?",
-  "What is your favorite movie?",
-  "What was the name of your first school?",
-  "What is your childhood nickname?",
-]
-
 export default function AccountSetup() {
+  const { t } = useTranslation()
   const { user, refreshProfile } = useAuth()
   const [securityQuestion, setSecurityQuestion] = useState('')
   const [securityAnswer, setSecurityAnswer] = useState('')
   const [dateOfBirth, setDateOfBirth] = useState(user?.date_of_birth || '')
+  const [country, setCountry] = useState(user?.country || '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -32,6 +27,7 @@ export default function AccountSetup() {
         security_question: securityQuestion,
         security_answer: securityAnswer.trim(),
         date_of_birth: dateOfBirth,
+        country: country || undefined,
       }
       // Also save full_name if empty
       if (!user?.full_name) {
@@ -61,15 +57,15 @@ export default function AccountSetup() {
           </svg>
         </div>
 
-        <h2 className="account-setup-title">Finish Setting Up Your Account</h2>
+        <h2 className="account-setup-title">{t('accountSetup.title')}</h2>
         <p className="account-setup-subtitle">
-          Complete your profile to continue using the service. This helps us keep your account secure.
+          {t('accountSetup.subtitle')}
         </p>
 
         <form onSubmit={handleSubmit} className="account-setup-form">
           {/* Date of Birth */}
           <div className="account-setup-field">
-            <label>Date of Birth</label>
+            <label>{t('accountSetup.dateOfBirth')}</label>
             <input
               type="date"
               value={dateOfBirth}
@@ -79,34 +75,48 @@ export default function AccountSetup() {
             />
           </div>
 
+          {/* Country */}
+          <div className="account-setup-field">
+            <label>Country</label>
+            <CountryPicker
+              value={country}
+              onChange={setCountry}
+              disabled={saving}
+              placeholder="Search for your country"
+            />
+          </div>
+
           {/* Security Question */}
           <div className="account-setup-field">
-            <label>Security Question</label>
+            <label>{t('accountSetup.securityQuestion')}</label>
             <select
               value={securityQuestion}
               onChange={e => setSecurityQuestion(e.target.value)}
               required
             >
-              <option value="">Select a security question...</option>
-              {SECURITY_QUESTIONS.map(q => (
-                <option key={q} value={q}>{q}</option>
-              ))}
+              <option value="">{t('accountSetup.selectQuestion')}</option>
+              <option value={t('auth.secQ1')}>{t('auth.secQ1')}</option>
+              <option value={t('auth.secQ2')}>{t('auth.secQ2')}</option>
+              <option value={t('auth.secQ3')}>{t('auth.secQ3')}</option>
+              <option value={t('auth.secQ4')}>{t('auth.secQ4')}</option>
+              <option value={t('auth.secQ5')}>{t('auth.secQ5')}</option>
+              <option value={t('auth.secQ6')}>{t('auth.secQ6')}</option>
             </select>
           </div>
 
           {/* Security Answer */}
           <div className="account-setup-field">
-            <label>Security Answer</label>
+            <label>{t('accountSetup.securityAnswer')}</label>
             <input
               type="text"
               value={securityAnswer}
               onChange={e => setSecurityAnswer(e.target.value)}
-              placeholder="Your answer (minimum 2 characters)"
+              placeholder={t('accountSetup.answerPlaceholder')}
               required
               minLength={2}
             />
             <span className="account-setup-hint">
-              This answer will be used to verify your identity. Remember it carefully.
+              {t('accountSetup.answerHint')}
             </span>
           </div>
 
@@ -117,7 +127,7 @@ export default function AccountSetup() {
             className="account-setup-btn"
             disabled={!canSubmit || saving}
           >
-            {saving ? 'Saving...' : 'Save & Continue'}
+            {saving ? t('common.saving') : t('accountSetup.saveContinue')}
           </button>
         </form>
       </div>

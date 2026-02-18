@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 function normalizePhone(input) {
@@ -33,6 +34,7 @@ export default function MpesaPaymentModal({
   const [quoteLoading, setQuoteLoading] = useState(false)
   const pollRef = useRef(null)
   const pollCount = useRef(0)
+  const { t } = useTranslation()
 
   // Fetch KES quote if only USD amount provided
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function MpesaPaymentModal({
   const handleInitiate = async () => {
     const normalized = normalizePhone(phone)
     if (!isValidPhone(normalized)) {
-      setError('Enter a valid M-Pesa number (e.g. 0712345678)')
+      setError(t('payment.invalidPhone'))
       return
     }
 
@@ -117,7 +119,7 @@ export default function MpesaPaymentModal({
           }, 2000)
         } else if (status === 'failed') {
           clearInterval(pollRef.current)
-          setError(res.data.message || 'Payment failed')
+          setError(res.data.message || t('payment.paymentFailed'))
           setStep('failed')
         } else if (status === 'expired') {
           clearInterval(pollRef.current)
@@ -169,11 +171,11 @@ export default function MpesaPaymentModal({
               )}
             </div>
 
-            <label className="mpesa-label">M-Pesa Phone Number</label>
+            <label className="mpesa-label">{t('payment.phoneNumber')}</label>
             <input
               type="tel"
               className="mpesa-phone-input"
-              placeholder="0712345678"
+              placeholder={t('payment.phonePlaceholder')}
               value={phone}
               onChange={(e) => { setPhone(e.target.value); setError('') }}
               maxLength={13}
@@ -187,7 +189,7 @@ export default function MpesaPaymentModal({
               onClick={handleInitiate}
               disabled={!phone.trim() || quoteLoading || kesAmount <= 0}
             >
-              Pay with M-Pesa
+              {t('payment.pay')}
             </button>
           </div>
         )}
@@ -201,14 +203,14 @@ export default function MpesaPaymentModal({
                 <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
               </svg>
             </div>
-            <h4 className="mpesa-status-title">Check Your Phone</h4>
+            <h4 className="mpesa-status-title">{t('payment.checkPhone')}</h4>
             <p className="mpesa-status-msg">
               An M-Pesa payment prompt has been sent to your phone.
               Please enter your M-Pesa PIN to confirm the payment.
             </p>
             <div className="mpesa-spinner-row">
               <div className="spinner" style={{ width: 18, height: 18 }}></div>
-              <span>Waiting for confirmation...</span>
+              <span>{t('payment.waitingConfirmation')}</span>
             </div>
           </div>
         )}
@@ -222,7 +224,7 @@ export default function MpesaPaymentModal({
                 <polyline points="22 4 12 14.01 9 11.01" />
               </svg>
             </div>
-            <h4 className="mpesa-status-title mpesa-success-text">Payment Successful!</h4>
+            <h4 className="mpesa-status-title mpesa-success-text">{t('payment.paymentSuccess')}</h4>
             <p className="mpesa-status-msg">Your payment has been confirmed.</p>
           </div>
         )}
@@ -237,7 +239,7 @@ export default function MpesaPaymentModal({
                 <line x1="9" y1="9" x2="15" y2="15" />
               </svg>
             </div>
-            <h4 className="mpesa-status-title mpesa-failed-text">Payment Failed</h4>
+            <h4 className="mpesa-status-title mpesa-failed-text">{t('payment.paymentFailed')}</h4>
             <p className="mpesa-status-msg">{error || 'The payment could not be completed.'}</p>
             <button className="mpesa-retry-btn" onClick={handleRetry}>Try Again</button>
           </div>

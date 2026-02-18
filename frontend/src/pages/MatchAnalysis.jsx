@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 import PlayerImpact from '../components/PlayerImpact'
 import LiveChatPopup from '../components/LiveChatPopup'
@@ -162,10 +163,11 @@ function AwayFormSection({ awayForm, teamName }) {
 
 // Part 3: Direct H2H Analysis
 function H2HSection({ h2hData, teamAName, teamBName }) {
+  const { t } = useTranslation()
   if (!h2hData || h2hData.total_matches === 0) {
     return (
       <div className="analysis-section">
-        <h3 className="section-title">H2H Part 3: Direct Head-to-Head</h3>
+        <h3 className="section-title">{t('match.headToHead')}</h3>
         <div className="no-data-message">
           No head-to-head history between these teams
         </div>
@@ -299,6 +301,7 @@ function H2HSection({ h2hData, teamAName, teamBName }) {
 
 // Collapsible H2H Section (combines Home Form, Away Form, Direct H2H)
 function CollapsibleH2H({ h2hData, teamAName, teamBName, homeId, awayId }) {
+  const { t } = useTranslation()
   const [isExpanded, setIsExpanded] = useState(true)
   const [activeTab, setActiveTab] = useState('direct') // 'direct', 'home', 'away'
 
@@ -310,7 +313,7 @@ function CollapsibleH2H({ h2hData, teamAName, teamBName, homeId, awayId }) {
     <div className="h2h-collapsible">
       <div className="h2h-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="h2h-header-left">
-          <h3>Head-to-Head Analysis</h3>
+          <h3>{t('match.headToHead')}</h3>
           <span className="h2h-badge">{totalMatches} matches</span>
         </div>
         <span className={`h2h-toggle ${isExpanded ? 'expanded' : ''}`}>▼</span>
@@ -1263,13 +1266,14 @@ function LiveNeutralBar({ label, homeVal, awayVal, suffix = '%', colorClass = 'n
 
 // Live Match Analysis Section with real-time polling
 function LiveAnalysisSection({ analysis, teamAName, teamBName }) {
+  const { t } = useTranslation()
   if (!analysis) return null
 
   return (
     <div className="lma-container">
       <div className="lma-header">
         <span className="lma-live-dot"></span>
-        <h3 className="lma-title">Live Match Analysis</h3>
+        <h3 className="lma-title">{t('match.aiAnalysis')}</h3>
       </div>
       <p className="lma-subtitle">Real-time match insights — updates every 30 seconds</p>
 
@@ -1584,6 +1588,7 @@ function SquadInfo({ matchStats, teamAName, teamBName }) {
 
 // Final Prediction Section - Analyzes ALL outcomes
 function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, teamBName }) {
+  const { t } = useTranslation()
   if (!prediction) return null
 
   const outcome = prediction.outcome || {}
@@ -1935,7 +1940,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
 
   return (
     <div className="analysis-section final-prediction">
-      <h3 className="section-title">Final Analysis & Best Predictions</h3>
+      <h3 className="section-title">{t('match.aiAnalysis')}</h3>
       <p className="section-subtitle">AI-ranked predictions balancing probability with betting value</p>
 
       {/* Best Value Prediction */}
@@ -2112,6 +2117,7 @@ function CountdownTimer({ resetAt, onExpire }) {
 }
 
 export default function MatchAnalysis() {
+  const { t } = useTranslation()
   const { competitionId, homeId, awayId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -2148,7 +2154,7 @@ export default function MatchAnalysis() {
       setError(null)
 
       // Check & record analysis view for free users
-      if (user && user.tier !== 'pro') {
+      if (user && user.tier !== 'pro' && user.tier !== 'trial') {
         try {
           const viewRes = await axios.post('/api/analysis-views/record', { match_key: matchKey })
           if (!viewRes.data.allowed) {
@@ -2306,7 +2312,7 @@ export default function MatchAnalysis() {
   return (
     <div className="match-analysis-page">
       <button className="back-btn" onClick={() => navigate(-1)}>
-        ← Back to {location.state?.from === 'predictions' ? 'Predictions' : `${competitionName} Fixtures`}
+        ← Back to {location.state?.from === 'predictions' ? 'Predictions' : location.state?.from === 'upcoming' ? 'Upcoming Matches' : `${competitionName} Fixtures`}
       </button>
 
       <div className="header-disclaimer" style={{ margin: '0 auto 16px', maxWidth: 520 }}>
@@ -2331,7 +2337,7 @@ export default function MatchAnalysis() {
           <div className="match-header-vs">
             {currentGoals && (currentStatus && currentStatus !== 'NS') ? (
               <div className="header-live-score">
-                {matchIsLive && <span className="header-live-badge">LIVE</span>}
+                {matchIsLive && <span className="header-live-badge">{t('liveScores.liveNow')}</span>}
                 <div className="header-score-display">
                   <span className="header-score-num">{currentGoals.home ?? 0}</span>
                   <span className="header-score-sep">-</span>
@@ -2372,7 +2378,7 @@ export default function MatchAnalysis() {
       {loading && (
         <div className="loading-container">
           <div className="spinner"></div>
-          <p>Analyzing match with AI...</p>
+          <p>{t('match.analyzing')}</p>
           <p className="loading-hint">Fetching H2H, corners, cards, and odds data</p>
         </div>
       )}

@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { useCurrency } from '../context/CurrencyContext'
 import axios from 'axios'
 
 export default function EarningsDropdown() {
@@ -7,13 +9,22 @@ export default function EarningsDropdown() {
   const [earnings, setEarnings] = useState(null)
   const [loading, setLoading] = useState(false)
   const [hidden, setHidden] = useState(() => localStorage.getItem('earnings_hidden') === 'true')
+  const [kesRate, setKesRate] = useState(130) // KES per 1 USD, updated from API
   const dropdownRef = useRef(null)
   const navigate = useNavigate()
+  const { t } = useTranslation()
+  const { isKenyan } = useCurrency()
 
   // Fetch balance on mount so it always shows
   useEffect(() => {
     fetchEarnings()
-  }, [])
+    // Fetch exchange rate for KES conversion
+    if (isKenyan) {
+      axios.post('/api/payment/quote', { amount_usd: 1 })
+        .then(res => { if (res.data.amount_kes) setKesRate(res.data.amount_kes) })
+        .catch(() => {})
+    }
+  }, [isKenyan])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -57,23 +68,37 @@ export default function EarningsDropdown() {
     setTimeout(() => navigate('/creator'), 50)
   }
 
+  // Helper: format amount in user's currency
+  const fmt = (usdAmount) => {
+    if (isKenyan) return `KES ${Math.round(usdAmount * kesRate).toLocaleString()}`
+    return `$${usdAmount.toFixed(2)}`
+  }
+
   const balance = earnings ? earnings.balance_usd : 0
-  const accountBalance = earnings ? (earnings.account_balance_usd || 0) : 0
+  const kesBal = earnings ? (earnings.account_balance_kes || 0) : 0
+  const usdBal = earnings ? (earnings.account_balance_usd || 0) : 0
+  const hasAnyBalance = kesBal > 0 || usdBal > 0
+
+  // Account balance: combine USD (converted) + KES for Kenyan users
+  const totalAcctKes = Math.round(usdBal * kesRate) + Math.round(kesBal)
+  const fmtAcct = isKenyan
+    ? `KES ${totalAcctKes.toLocaleString()}`
+    : `$${usdBal.toFixed(2)}`
 
   return (
     <div className="earnings-dropdown-wrapper" ref={dropdownRef}>
-      <button className="earnings-btn" onClick={handleOpen} title="Earnings">
+      <button className="earnings-btn" onClick={handleOpen} title={t('earnings.title')}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="12" y1="1" x2="12" y2="23" />
           <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
         </svg>
-        <span className="earnings-inline-amount">{hidden ? '***' : `$${balance.toFixed(2)}`}</span>
+        <span className="earnings-inline-amount">{hidden ? '***' : fmtAcct}</span>
       </button>
 
       {isOpen && (
         <div className="earnings-dropdown">
           <div className="earnings-dropdown-header">
-            <span className="earnings-dropdown-title">Earnings</span>
+            <span className="earnings-dropdown-title">{t('earnings.title')}</span>
             <button className="earnings-privacy-toggle" onClick={toggleHidden} title={hidden ? 'Show amounts' : 'Hide amounts'}>
               {hidden ? (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -98,11 +123,11 @@ export default function EarningsDropdown() {
             ) : (
               <>
                 {/* Account Balance (top-up) */}
-                {(accountBalance > 0 || (earnings.account_balance_kes || 0) > 0) && (
+                {hasAnyBalance && (
                   <div className="earnings-account-balance">
                     <div className="earnings-account-label">Account Balance</div>
                     <div className="earnings-account-amount">
-                      {hidden ? '****' : `$${accountBalance.toFixed(2)}`}
+                      {hidden ? '****' : fmtAcct}
                     </div>
                   </div>
                 )}
@@ -110,13 +135,13 @@ export default function EarningsDropdown() {
                 {/* Creator Earnings */}
                 <div className="earnings-balance-card">
                   <div className="earnings-balance-label">Creator Earnings</div>
-                  <div className="earnings-balance-amount">{hidden ? '****' : `$${earnings.balance_usd.toFixed(2)}`}</div>
+                  <div className="earnings-balance-amount">{hidden ? '****' : fmt(earnings.balance_usd)}</div>
                 </div>
 
                 <div className="earnings-stats-row">
                   <div className="earnings-stat">
-                    <span className="earnings-stat-value">{hidden ? '***' : `$${earnings.total_earned_usd.toFixed(2)}`}</span>
-                    <span className="earnings-stat-label">Total Earned</span>
+                    <span className="earnings-stat-value">{hidden ? '***' : fmt(earnings.total_earned_usd)}</span>
+                    <span className="earnings-stat-label">{t('earnings.totalEarned')}</span>
                   </div>
                   <div className="earnings-stat">
                     <span className="earnings-stat-value">{earnings.total_sales}</span>
@@ -134,7 +159,7 @@ export default function EarningsDropdown() {
                     {earnings.recent_sales.map((sale, i) => (
                       <div key={i} className="earnings-sale-item">
                         <span className="sale-match">{sale.match}</span>
-                        <span className="sale-amount">{hidden ? '***' : `+$${sale.amount.toFixed(2)}`}</span>
+                        <span className="sale-amount">{hidden ? '***' : `+${fmt(sale.amount)}`}</span>
                       </div>
                     ))}
                   </div>
@@ -145,7 +170,7 @@ export default function EarningsDropdown() {
           </div>
 
           <div className="earnings-dropdown-footer" onMouseDown={(e) => { e.stopPropagation(); goToDashboard() }}>
-            View Full Dashboard
+            {t('earnings.viewDashboard')}
           </div>
         </div>
       )}

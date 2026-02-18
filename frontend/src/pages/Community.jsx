@@ -1,15 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 import MpesaPaymentModal from '../components/MpesaPaymentModal'
+import WhopCheckoutModal from '../components/WhopCheckoutModal'
+
+// Module-level set to prevent duplicate impression tracking across re-mounts
+const _trackedImpressions = new Set()
 import { COMPETITIONS } from '../components/Header'
 
 const SORT_OPTIONS = [
-  { value: 'best', label: 'Best', icon: '\u{1F3C6}' },
-  { value: 'new', label: 'New', icon: '\u{1F195}' },
-  { value: 'top_rated', label: 'Top Rated', icon: '\u2B50' },
-  { value: 'hot', label: 'Hot', icon: '\u{1F525}' },
+  { value: 'best', labelKey: 'community.best', icon: '\u{1F3C6}' },
+  { value: 'new', labelKey: 'community.new', icon: '\u{1F195}' },
+  { value: 'top_rated', labelKey: 'community.topRated', icon: '\u2B50' },
+  { value: 'hot', labelKey: 'community.hot', icon: '\u{1F525}' },
 ]
 
 function StarRating({ rating, onRate, interactive = false }) {
@@ -53,6 +58,7 @@ function EmojiPicker({ onSelect }) {
 
 function LiveChat({ predictionId }) {
   const { user } = useAuth()
+  const { t } = useTranslation()
   const [messages, setMessages] = useState([])
   const [newMsg, setNewMsg] = useState('')
   const [sending, setSending] = useState(false)
@@ -138,7 +144,7 @@ function LiveChat({ predictionId }) {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
-        <span>{expanded ? 'Hide Chat' : 'Live Chat'}</span>
+        <span>{expanded ? t('community.hideChat') : t('community.liveChat')}</span>
         {chatCount > 0 && !expanded && <span className="chat-count-badge">{chatCount}</span>}
         {expanded && <span className="live-dot"></span>}
       </button>
@@ -147,7 +153,7 @@ function LiveChat({ predictionId }) {
         <div className="live-chat-panel">
           <div className="live-chat-messages">
             {messages.length === 0 && (
-              <p className="chat-empty">No messages yet. Start the conversation!</p>
+              <p className="chat-empty">{t('community.noChatMessages')}</p>
             )}
             {messages.map(m => (
               <div key={m.id} className={`chat-bubble ${m.user_id === user?.id ? 'own' : ''}`}>
@@ -175,7 +181,7 @@ function LiveChat({ predictionId }) {
               type="text"
               value={newMsg}
               onChange={e => setNewMsg(e.target.value)}
-              placeholder="Type a message..."
+              placeholder={t('community.typeMessage')}
               maxLength={500}
               onKeyDown={e => e.key === 'Enter' && handleSend()}
               disabled={sending}
@@ -239,6 +245,7 @@ function ReactionButtons({ predictionId, initialLikes = 0, initialDislikes = 0, 
 }
 
 function FollowPromptModal({ userId, displayName, avatarColor, onClose, onFollowed }) {
+  const { t } = useTranslation()
   const handleFollow = async () => {
     try {
       const res = await axios.post(`/api/community/follow/${userId}`)
@@ -252,12 +259,94 @@ function FollowPromptModal({ userId, displayName, avatarColor, onClose, onFollow
         <div className="follow-prompt-avatar" style={{ background: avatarColor }}>
           {(displayName || '?')[0].toUpperCase()}
         </div>
-        <h3>Like their predictions?</h3>
-        <p>Follow <strong>{displayName}</strong> to get notified when they post new predictions.</p>
+        <h3>{t('community.likePredictions')}</h3>
+        <p dangerouslySetInnerHTML={{ __html: t('community.followNotify', { name: displayName }) }} />
         <div className="follow-prompt-actions">
-          <button className="follow-prompt-btn primary" onClick={handleFollow}>Follow</button>
-          <button className="follow-prompt-btn secondary" onClick={onClose}>Not now</button>
+          <button className="follow-prompt-btn primary" onClick={handleFollow}>{t('community.follow')}</button>
+          <button className="follow-prompt-btn secondary" onClick={onClose}>{t('community.notNow')}</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function UserStatsModal({ userId, displayName, avatarColor, onClose }) {
+  const { t } = useTranslation()
+  const [stats, setStats] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await axios.get(`/api/community/user-stats/${userId}`)
+        setStats(res.data)
+      } catch { /* ignore */ }
+      setLoading(false)
+    }
+    fetchStats()
+  }, [userId])
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="user-stats-modal" onClick={e => e.stopPropagation()}>
+        <button className="modal-close-btn" onClick={onClose}>&times;</button>
+        <div className="user-stats-header">
+          <span className="predictor-avatar" style={{ background: avatarColor, width: 48, height: 48, fontSize: 20 }}>
+            {(displayName || '?')[0].toUpperCase()}
+          </span>
+          <h3 style={{ margin: 0, color: '#f1f5f9' }}>{displayName}</h3>
+        </div>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8' }}>Loading...</div>
+        ) : !stats ? (
+          <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8' }}>No data available</div>
+        ) : (
+          <>
+            <div className="stats-summary">
+              <div className="stat-item wins">
+                <span className="stat-number">{stats.wins}</span>
+                <span className="stat-label">Wins</span>
+              </div>
+              <div className="stat-item losses">
+                <span className="stat-number">{stats.losses}</span>
+                <span className="stat-label">Losses</span>
+              </div>
+              <div className="stat-item percentage">
+                <span className="stat-number">{stats.win_percentage}%</span>
+                <span className="stat-label">Win Rate</span>
+              </div>
+              <div className="stat-item pending">
+                <span className="stat-number">{stats.pending}</span>
+                <span className="stat-label">Pending</span>
+              </div>
+            </div>
+            {stats.recent_history.length > 0 && (
+              <div className="stats-history">
+                <h4 style={{ color: '#94a3b8', margin: '0 0 12px', fontSize: 13 }}>Recent Results</h4>
+                <table className="history-table">
+                  <thead>
+                    <tr>
+                      <th>Match</th>
+                      <th>Predicted</th>
+                      <th>Actual</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.recent_history.map((h, i) => (
+                      <tr key={i} className={h.correct ? 'row-correct' : 'row-incorrect'}>
+                        <td>{h.match}</td>
+                        <td>{h.predicted}</td>
+                        <td>{h.actual}</td>
+                        <td style={{ textAlign: 'center' }}>{h.correct ? '\u2705' : '\u274C'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   )
@@ -265,10 +354,33 @@ function FollowPromptModal({ userId, displayName, avatarColor, onClose, onFollow
 
 function PredictionCard({ pred, onRate, onPurchase }) {
   const { user } = useAuth()
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const isOwn = user?.id === pred.user_id
   const [showMpesa, setShowMpesa] = useState(false)
+  const [showWhop, setShowWhop] = useState(false)
+  const [showPayChoice, setShowPayChoice] = useState(false)
   const [showFollowPrompt, setShowFollowPrompt] = useState(false)
+  const [showStats, setShowStats] = useState(false)
+  const cardRef = useRef(null)
+
+  // Impression tracking via IntersectionObserver
+  useEffect(() => {
+    if (!cardRef.current || _trackedImpressions.has(pred.id)) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !_trackedImpressions.has(pred.id)) {
+          _trackedImpressions.add(pred.id)
+          axios.post('/api/community/track-views', { prediction_ids: [pred.id] }).catch(() => {})
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.5 }
+    )
+    observer.observe(cardRef.current)
+    return () => observer.disconnect()
+  }, [pred.id])
+
   const [followState, setFollowState] = useState({
     isFollowing: false,
     followersCount: pred.followers_count || 0,
@@ -312,12 +424,8 @@ function PredictionCard({ pred, onRate, onPurchase }) {
     } catch { /* ignore */ }
   }
 
-  const handleCardClick = (e) => {
-    // Don't navigate if clicking on interactive elements
-    if (e.target.closest('button, a, .live-chat-section, .reaction-buttons, .star-rating, input')) return
-    // Block navigation for locked paid predictions
-    if (isPaidLocked) return
-    // Parse fixture_id: "homeId-awayId-YYYYMMDD"
+  const handleAnalyze = () => {
+    axios.post(`/api/community/${pred.id}/track-click`).catch(() => {})
     const parts = (pred.fixture_id || '').split('-')
     if (parts.length >= 2) {
       const homeId = parts[0]
@@ -338,6 +446,7 @@ function PredictionCard({ pred, onRate, onPurchase }) {
 
   const handlePaymentSuccess = () => {
     setShowMpesa(false)
+    setShowWhop(false)
     if (onPurchase) onPurchase(pred.id)
     if (!isOwn && !followState.isFollowing && followState.loaded) {
       setTimeout(() => setShowFollowPrompt(true), 500)
@@ -347,7 +456,7 @@ function PredictionCard({ pred, onRate, onPurchase }) {
   const isPaidLocked = pred.is_paid && !pred.unlocked
 
   return (
-    <div className={`community-card ${pred.is_paid ? 'paid-card' : ''}`} onClick={handleCardClick} style={{ cursor: isPaidLocked ? 'default' : 'pointer' }}>
+    <div ref={cardRef} className={`community-card ${pred.is_paid ? 'paid-card' : ''}`}>
       <div className="community-card-top">
         {pred.rank && (
           <div className="prediction-rank-number">
@@ -356,7 +465,7 @@ function PredictionCard({ pred, onRate, onPurchase }) {
         )}
 
         <div className="community-card-left">
-          <div className="predictor-info">
+          <div className="predictor-info" onClick={(e) => { e.stopPropagation(); setShowStats(true) }} style={{ cursor: 'pointer' }}>
             <span className="predictor-avatar" style={{ background: pred.avatar_color }}>
               {(pred.display_name || pred.username || '?')[0].toUpperCase()}
             </span>
@@ -368,6 +477,13 @@ function PredictionCard({ pred, onRate, onPurchase }) {
                     {pred.predictor_accuracy}%
                   </span>
                 )}
+                {(pred.predictor_wins > 0 || pred.predictor_losses > 0) && (
+                  <span className="predictor-record">
+                    <span className="record-wins">{pred.predictor_wins}W</span>
+                    <span className="record-sep">-</span>
+                    <span className="record-losses">{pred.predictor_losses}L</span>
+                  </span>
+                )}
               </div>
               <div className="predictor-follow-row">
                 <span className="predictor-username">@{pred.username}</span>
@@ -376,7 +492,24 @@ function PredictionCard({ pred, onRate, onPurchase }) {
           </div>
           <div className="community-match">
             <span className="community-teams">{pred.team_a_name} vs {pred.team_b_name}</span>
-            {pred.competition && <span className="community-comp">{pred.competition}</span>}
+            <div className="community-match-meta">
+              {pred.competition && <span className="community-comp">{pred.competition}</span>}
+              {(() => {
+                const parts = (pred.fixture_id || '').split('-')
+                if (parts.length >= 3) {
+                  const ds = parts[parts.length - 1]
+                  if (ds.length === 8) {
+                    const d = new Date(ds.slice(0,4) + '-' + ds.slice(4,6) + '-' + ds.slice(6,8))
+                    if (!isNaN(d)) return <span className="community-match-date">{d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                  }
+                }
+                return null
+              })()}
+              <button className="analyze-btn-sm" onClick={(e) => { e.stopPropagation(); handleAnalyze() }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20h20"/><path d="M5 17V7l5 4 4-8 6 7"/></svg>
+                {t('community.analyze') || 'Analyze'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -384,17 +517,27 @@ function PredictionCard({ pred, onRate, onPurchase }) {
           {isPaidLocked ? (
             <div className="locked-prediction-inline">
               <span className="locked-icon-sm">{'\u{1F512}'}</span>
-              <span className="locked-text-sm">Premium</span>
-              {!isOwn && (
-                <button className="unlock-btn-sm" onClick={() => setShowMpesa(true)}>
-                  Unlock ${pred.price_usd}
+              <span className="locked-text-sm">{t('community.premium')}</span>
+              {!isOwn && !showPayChoice && (
+                <button className="unlock-btn-sm" onClick={() => setShowPayChoice(true)}>
+                  {t('community.unlock')} ${pred.price_usd}
                 </button>
+              )}
+              {!isOwn && showPayChoice && (
+                <div className="pay-choice-row">
+                  <button className="pay-choice-btn mpesa" onClick={() => { setShowPayChoice(false); setShowMpesa(true) }}>
+                    📱 M-Pesa
+                  </button>
+                  <button className="pay-choice-btn card" onClick={() => { setShowPayChoice(false); setShowWhop(true) }}>
+                    💳 {t('upgrade.cardPayment')}
+                  </button>
+                </div>
               )}
             </div>
           ) : (
             <div className="community-picks">
               <div className="pick-item main-pick">
-                <span className="pick-label">Prediction</span>
+                <span className="pick-label">{t('community.prediction')}</span>
                 <span className="pick-value">{pred.predicted_result}</span>
                 {pred.predicted_result_prob > 0 && (
                   <span className="pick-prob">{Math.round(pred.predicted_result_prob)}%</span>
@@ -402,19 +545,19 @@ function PredictionCard({ pred, onRate, onPurchase }) {
               </div>
               {pred.predicted_over25 && (
                 <div className="pick-item">
-                  <span className="pick-label">O/U 2.5</span>
+                  <span className="pick-label">{t('community.overUnder')}</span>
                   <span className="pick-value">{pred.predicted_over25}</span>
                 </div>
               )}
               {pred.predicted_btts && (
                 <div className="pick-item">
-                  <span className="pick-label">BTTS</span>
+                  <span className="pick-label">{t('community.btts')}</span>
                   <span className="pick-value">{pred.predicted_btts}</span>
                 </div>
               )}
               {pred.best_value_bet && (
                 <div className="pick-item value-pick">
-                  <span className="pick-label">Best Value</span>
+                  <span className="pick-label">{t('community.bestValue')}</span>
                   <span className="pick-value">{pred.best_value_bet}</span>
                 </div>
               )}
@@ -426,12 +569,12 @@ function PredictionCard({ pred, onRate, onPurchase }) {
           <span className="community-time">{new Date(pred.created_at).toLocaleDateString()}</span>
           {pred.is_paid && (
             <span className={`paid-badge ${pred.unlocked ? 'unlocked' : ''}`}>
-              {pred.unlocked ? 'UNLOCKED' : `$${pred.price_usd}`}
+              {pred.unlocked ? t('community.unlocked') : `$${pred.price_usd}`}
             </span>
           )}
           {pred.match_finished && (
             <div className={`community-result ${pred.result_correct ? 'correct' : 'incorrect'}`}>
-              {pred.result_correct ? 'Correct' : 'Incorrect'}
+              {pred.result_correct ? '\u2705 ' : '\u274C '}{pred.result_correct ? t('community.correct') : t('community.incorrect')}
             </div>
           )}
           <div className="rating-section">
@@ -458,13 +601,13 @@ function PredictionCard({ pred, onRate, onPurchase }) {
             onClick={handleFollow}
           >
             {followState.isFollowing ? (
-              <><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg> Following</>
+              <><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg> {t('community.followingBtn')}</>
             ) : (
-              <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Follow {pred.display_name?.split(' ')[0]}</>
+              <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> {t('community.follow')} {pred.display_name?.split(' ')[0]}</>
             )}
           </button>
           {followState.followersCount > 0 && (
-            <span className="follow-bar-count">{followState.followersCount} follower{followState.followersCount !== 1 ? 's' : ''}</span>
+            <span className="follow-bar-count">{followState.followersCount} {followState.followersCount !== 1 ? t('community.followers') : t('community.follower')}</span>
           )}
         </div>
       )}
@@ -491,8 +634,20 @@ function PredictionCard({ pred, onRate, onPurchase }) {
           amountUsd={pred.price_usd}
           transactionType="prediction_purchase"
           referenceId={String(pred.id)}
-          title="Unlock Prediction"
+          title={t('community.unlockPrediction')}
           description={`${pred.team_a_name} vs ${pred.team_b_name}`}
+        />
+      )}
+
+      {showWhop && (
+        <WhopCheckoutModal
+          isOpen={showWhop}
+          onClose={() => setShowWhop(false)}
+          onSuccess={handlePaymentSuccess}
+          transactionType="prediction_purchase"
+          predictionId={pred.id}
+          amountUsd={pred.price_usd}
+          title={`${t('community.unlock')}: ${pred.team_a_name} vs ${pred.team_b_name}`}
         />
       )}
 
@@ -503,6 +658,15 @@ function PredictionCard({ pred, onRate, onPurchase }) {
           avatarColor={pred.avatar_color}
           onClose={() => setShowFollowPrompt(false)}
           onFollowed={() => setFollowState(s => ({ ...s, isFollowing: true, followersCount: s.followersCount + 1 }))}
+        />
+      )}
+
+      {showStats && (
+        <UserStatsModal
+          userId={pred.user_id}
+          displayName={pred.display_name}
+          avatarColor={pred.avatar_color}
+          onClose={() => setShowStats(false)}
         />
       )}
     </div>
@@ -531,14 +695,15 @@ function groupFixturesByDate(fixtures) {
 
 function UpcomingMatchesTab() {
   const { user } = useAuth()
+  const { t } = useTranslation()
   const navigate = useNavigate()
-  const [selectedLeague, setSelectedLeague] = useState('PL')
+  const [selectedLeague, setSelectedLeague] = useState('ALL')
   const [fixtures, setFixtures] = useState([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const MATCHES_PER_PAGE = 20
+  const MATCHES_PER_PAGE = 15
   const isPro = user?.tier === 'pro'
 
   useEffect(() => {
@@ -546,7 +711,10 @@ function UpcomingMatchesTab() {
       setLoading(true)
       setMessage('')
       try {
-        const res = await axios.get(`/api/fixtures?competition=${selectedLeague}&days=14`)
+        const url = selectedLeague === 'ALL'
+          ? '/api/fixtures/upcoming-all?days=7'
+          : `/api/fixtures?competition=${selectedLeague}&days=14`
+        const res = await axios.get(url)
         setFixtures(res.data.fixtures || [])
         if (res.data.message) setMessage(res.data.message)
       } catch { setFixtures([]) }
@@ -584,6 +752,13 @@ function UpcomingMatchesTab() {
   return (
     <div className="upcoming-matches-section">
       <div className="league-selector">
+        <button
+          className={`league-chip ${selectedLeague === 'ALL' ? 'active' : ''}`}
+          onClick={() => { setSelectedLeague('ALL'); setCurrentPage(1) }}
+        >
+          <span className="league-chip-flag">{'\u26BD'}</span>
+          <span className="league-chip-name">All</span>
+        </button>
         {COMPETITIONS.map(comp => (
           <button
             key={comp.id}
@@ -600,7 +775,7 @@ function UpcomingMatchesTab() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input
           type="text"
-          placeholder="Search by team name..."
+          placeholder={t('community.searchTeamName')}
           value={searchQuery}
           onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1) }}
           className="upcoming-search-input"
@@ -615,30 +790,30 @@ function UpcomingMatchesTab() {
       {loading ? (
         <div className="loading-container">
           <div className="spinner"></div>
-          <p>Loading fixtures...</p>
+          <p>{t('community.loadingFixtures')}</p>
         </div>
       ) : filteredFixtures.length === 0 ? (
         <div className="empty-community">
           {searchQuery ? (
-            <p>No matches found for "{searchQuery}"</p>
+            <p>{t('community.noMatchesFor', { query: searchQuery })}</p>
           ) : (
             <>
-              <p>No upcoming matches found for {COMPETITIONS.find(c => c.id === selectedLeague)?.name || selectedLeague}.</p>
-              <p className="empty-hint">Try another league or check back later.</p>
+              <p>{selectedLeague === 'ALL' ? 'No upcoming matches found' : t('community.noUpcomingMatches', { league: COMPETITIONS.find(c => c.id === selectedLeague)?.name || selectedLeague })}</p>
+              <p className="empty-hint">{t('community.tryAnotherLeague')}</p>
             </>
           )}
         </div>
       ) : (
         <>
           <div className="upcoming-match-count">
-            Showing {(currentPage - 1) * MATCHES_PER_PAGE + 1}-{Math.min(currentPage * MATCHES_PER_PAGE, filteredFixtures.length)} of {filteredFixtures.length} matches
+            {t('community.showingMatches', { start: (currentPage - 1) * MATCHES_PER_PAGE + 1, end: Math.min(currentPage * MATCHES_PER_PAGE, filteredFixtures.length), total: filteredFixtures.length })}
           </div>
           <div className="upcoming-fixtures-list">
             {sortedDates.map(date => (
               <div key={date} className="upcoming-date-group">
                 <div className="upcoming-date-header">
                   <span>{formatFixtureDate(date + 'T00:00:00')}</span>
-                  <span className="upcoming-date-count">{grouped[date].length} match{grouped[date].length !== 1 ? 'es' : ''}</span>
+                  <span className="upcoming-date-count">{grouped[date].length} {grouped[date].length !== 1 ? t('community.matches') : t('community.match')}</span>
                 </div>
                 <div className="upcoming-fixtures-grid">
                   {grouped[date].map(fixture => {
@@ -650,14 +825,18 @@ function UpcomingMatchesTab() {
                         onClick={() => {
                           if (matchStarted) return
                           if (!isPro) {
-                            navigate('/upgrade', { state: { from: 'predictions' } })
+                            navigate('/upgrade', { state: { from: 'upcoming' } })
                             return
                           }
-                          navigate(`/match/${selectedLeague}/${fixture.home_team.id}/${fixture.away_team.id}`, { state: { from: 'predictions' } })
+                          const compCode = fixture.competition?.code || selectedLeague
+                          navigate(`/match/${compCode}/${fixture.home_team.id}/${fixture.away_team.id}`, { state: { from: 'upcoming' } })
                         }}
                       >
                         <div className="upcoming-fixture-time">
-                          {matchStarted ? <span className="match-started-badge">Started</span> : formatFixtureTime(fixture.date)}
+                          {matchStarted ? <span className="match-started-badge">{t('community.started')}</span> : formatFixtureTime(fixture.date)}
+                          {selectedLeague === 'ALL' && fixture.competition?.name && (
+                            <span className="upcoming-fixture-league">{fixture.competition.name}</span>
+                          )}
                         </div>
                         <div className="upcoming-fixture-teams">
                           <div className="upcoming-team home">
@@ -671,7 +850,7 @@ function UpcomingMatchesTab() {
                           </div>
                         </div>
                         <div className={`upcoming-analyze-btn ${!isPro && !matchStarted ? 'pro-only' : ''}`}>
-                          {matchStarted ? 'Started' : isPro ? 'Analyze' : 'Pro Only'}
+                          {matchStarted ? t('community.started') : isPro ? t('community.analyze') : t('community.proOnly')}
                         </div>
                       </div>
                     )
@@ -681,33 +860,41 @@ function UpcomingMatchesTab() {
             ))}
           </div>
 
-          {totalPages > 1 && (
-            <div className="upcoming-pagination">
-              <button
-                className="upcoming-page-btn"
-                disabled={currentPage <= 1}
-                onClick={() => handlePageChange(currentPage - 1)}
-              >
-                Prev
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                <button
-                  key={p}
-                  className={`upcoming-page-btn ${p === currentPage ? 'active' : ''}`}
-                  onClick={() => handlePageChange(p)}
-                >
-                  {p}
+          {totalPages > 1 && (() => {
+            const maxVisible = 5
+            let start = Math.max(1, currentPage - Math.floor(maxVisible / 2))
+            let end = Math.min(totalPages, start + maxVisible - 1)
+            if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1)
+            const pages = []
+            for (let i = start; i <= end; i++) pages.push(i)
+            return (
+              <div className="upcoming-pagination">
+                <button className="upcoming-page-btn" disabled={currentPage <= 1} onClick={() => handlePageChange(currentPage - 1)}>
+                  {t('community.prev')}
                 </button>
-              ))}
-              <button
-                className="upcoming-page-btn"
-                disabled={currentPage >= totalPages}
-                onClick={() => handlePageChange(currentPage + 1)}
-              >
-                Next
-              </button>
-            </div>
-          )}
+                {start > 1 && (
+                  <>
+                    <button className="upcoming-page-btn" onClick={() => handlePageChange(1)}>1</button>
+                    {start > 2 && <span className="pagination-dots">...</span>}
+                  </>
+                )}
+                {pages.map(p => (
+                  <button key={p} className={`upcoming-page-btn ${p === currentPage ? 'active' : ''}`} onClick={() => handlePageChange(p)}>
+                    {p}
+                  </button>
+                ))}
+                {end < totalPages && (
+                  <>
+                    {end < totalPages - 1 && <span className="pagination-dots">...</span>}
+                    <button className="upcoming-page-btn" onClick={() => handlePageChange(totalPages)}>{totalPages}</button>
+                  </>
+                )}
+                <button className="upcoming-page-btn" disabled={currentPage >= totalPages} onClick={() => handlePageChange(currentPage + 1)}>
+                  {t('community.next')}
+                </button>
+              </div>
+            )
+          })()}
         </>
       )}
     </div>
@@ -715,14 +902,15 @@ function UpcomingMatchesTab() {
 }
 
 const LIVE_PREDICTION_TYPES = [
-  { value: 'match_winner', label: 'Match Winner', options: ['Home Win', 'Draw', 'Away Win'] },
-  { value: 'next_goal', label: 'Next Goal', options: ['Home Team', 'Away Team', 'No More Goals'] },
-  { value: 'total_goals', label: 'Total Goals', options: ['Over 0.5', 'Over 1.5', 'Over 2.5', 'Over 3.5', 'Under 1.5', 'Under 2.5', 'Under 3.5'] },
-  { value: 'btts', label: 'Both Teams Score', options: ['Yes', 'No'] },
+  { value: 'match_winner', labelKey: 'community.matchWinner', optionKeys: ['community.homeWin', 'community.draw', 'community.awayWin'] },
+  { value: 'next_goal', labelKey: 'community.nextGoal', optionKeys: ['community.homeTeam', 'community.awayTeam', 'community.noMoreGoals'] },
+  { value: 'total_goals', labelKey: 'community.totalGoals', options: ['Over 0.5', 'Over 1.5', 'Over 2.5', 'Over 3.5', 'Under 1.5', 'Under 2.5', 'Under 3.5'] },
+  { value: 'btts', labelKey: 'community.bothTeamsScore', optionKeys: ['common.yes', 'common.no'] },
 ]
 
 function LiveBetsTab() {
   const { user } = useAuth()
+  const { t } = useTranslation()
   const [liveMatches, setLiveMatches] = useState([])
   const [livePredictions, setLivePredictions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -765,7 +953,7 @@ function LiveBetsTab() {
         predictions: [{
           fixture_id: selectedMatch.id,
           match_name: `${selectedMatch.home_team.name} vs ${selectedMatch.away_team.name}`,
-          prediction_type: LIVE_PREDICTION_TYPES.find(t => t.value === predictionType)?.label || predictionType,
+          prediction_type: LIVE_PREDICTION_TYPES.find(t => t.value === predictionType)?.labelKey || predictionType,
           prediction_value: predictionValue,
           confidence,
           analysis_notes: analysisNotes,
@@ -773,7 +961,7 @@ function LiveBetsTab() {
         visibility: 'public',
       })
       if (res.data.success) {
-        setSubmitMsg('Live prediction submitted!')
+        setSubmitMsg(t('community.livePredictionSubmitted'))
         setSelectedMatch(null)
         setPredictionValue('')
         setConfidence(50)
@@ -781,7 +969,7 @@ function LiveBetsTab() {
         fetchLive()
         setTimeout(() => setSubmitMsg(''), 3000)
       }
-    } catch { setSubmitMsg('Failed to submit. Try again.') }
+    } catch { setSubmitMsg(t('community.failedSubmit')) }
     setSubmitting(false)
   }
 
@@ -789,7 +977,7 @@ function LiveBetsTab() {
     return (
       <div className="loading-container">
         <div className="spinner"></div>
-        <p>Loading live matches...</p>
+        <p>{t('common.loading')}</p>
       </div>
     )
   }
@@ -798,7 +986,7 @@ function LiveBetsTab() {
     <div className="live-bets-section">
       <div className="live-bets-strip-header">
         <span className="live-pulse-dot"></span>
-        <span>Live Matches ({liveMatches.length})</span>
+        <span>{t('community.liveMatchesCount', { count: liveMatches.length })}</span>
       </div>
 
       {liveMatches.length > 0 && (
@@ -806,7 +994,7 @@ function LiveBetsTab() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input
             type="text"
-            placeholder="Search live matches by team or league..."
+            placeholder={t('community.searchLiveMatches')}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="live-search-input"
@@ -819,8 +1007,8 @@ function LiveBetsTab() {
 
       {liveMatches.length === 0 ? (
         <div className="empty-community">
-          <p>No live matches right now.</p>
-          <p className="empty-hint">Live matches will appear here when games are being played.</p>
+          <p>{t('community.noLiveMatches')}</p>
+          <p className="empty-hint">{t('community.liveMatchesHint')}</p>
         </div>
       ) : (
         <div className="live-bets-match-grid">
@@ -868,7 +1056,7 @@ function LiveBetsTab() {
               </div>
               <div className="live-bet-card-right">
                 <button className="live-bet-predict-btn">
-                  {selectedMatch?.id === match.id ? 'Selected' : 'Predict'}
+                  {selectedMatch?.id === match.id ? t('community.selected') : t('community.predict')}
                 </button>
               </div>
             </div>
@@ -879,7 +1067,7 @@ function LiveBetsTab() {
             return (m.home_team?.name || '').toLowerCase().includes(q) || (m.away_team?.name || '').toLowerCase().includes(q) || (m.competition?.name || '').toLowerCase().includes(q)
           }).length === 0 && (
             <div className="empty-community">
-              <p>No matches found for "{searchQuery}"</p>
+              <p>{t('community.noMatchesFor', { query: searchQuery })}</p>
             </div>
           )}
         </div>
@@ -889,7 +1077,7 @@ function LiveBetsTab() {
         <div className="live-bet-form" ref={formRef}>
           <div className="live-bet-form-header">
             <span className="live-pulse-dot"></span>
-            <strong>Predict: {selectedMatch.home_team?.name} vs {selectedMatch.away_team?.name}</strong>
+            <strong>{t('community.predictMatch', { match: `${selectedMatch.home_team?.name} vs ${selectedMatch.away_team?.name}` })}</strong>
             <span className="live-bet-minute">{selectedMatch.elapsed || selectedMatch.status}'</span>
           </div>
 
@@ -900,25 +1088,32 @@ function LiveBetsTab() {
                 className={`live-bet-type-btn ${predictionType === type.value ? 'active' : ''}`}
                 onClick={() => { setPredictionType(type.value); setPredictionValue('') }}
               >
-                {type.label}
+                {t(type.labelKey)}
               </button>
             ))}
           </div>
 
           <div className="live-bet-options">
-            {LIVE_PREDICTION_TYPES.find(t => t.value === predictionType)?.options.map(opt => (
-              <button
-                key={opt}
-                className={`live-bet-option ${predictionValue === opt ? 'selected' : ''}`}
-                onClick={() => setPredictionValue(opt)}
-              >
-                {opt}
-              </button>
-            ))}
+            {(() => {
+              const currentType = LIVE_PREDICTION_TYPES.find(tp => tp.value === predictionType)
+              if (!currentType) return null
+              const optionsList = currentType.optionKeys
+                ? currentType.optionKeys.map(key => ({ display: t(key), value: t(key) }))
+                : (currentType.options || []).map(opt => ({ display: opt, value: opt }))
+              return optionsList.map(opt => (
+                <button
+                  key={opt.value}
+                  className={`live-bet-option ${predictionValue === opt.value ? 'selected' : ''}`}
+                  onClick={() => setPredictionValue(opt.value)}
+                >
+                  {opt.display}
+                </button>
+              ))
+            })()}
           </div>
 
           <div className="live-bet-confidence">
-            <label>Confidence: <strong>{confidence}%</strong></label>
+            <label>{t('community.confidence')}: <strong>{confidence}%</strong></label>
             <input
               type="range"
               min="10"
@@ -928,15 +1123,15 @@ function LiveBetsTab() {
               className="confidence-slider"
             />
             <div className="confidence-labels">
-              <span>Low</span>
-              <span>Medium</span>
-              <span>High</span>
+              <span>{t('community.low')}</span>
+              <span>{t('community.medium')}</span>
+              <span>{t('community.high')}</span>
             </div>
           </div>
 
           <textarea
             className="live-bet-notes"
-            placeholder="Quick analysis (optional)..."
+            placeholder={t('community.quickAnalysis')}
             value={analysisNotes}
             onChange={e => setAnalysisNotes(e.target.value)}
             maxLength={300}
@@ -948,7 +1143,7 @@ function LiveBetsTab() {
             disabled={!predictionValue || submitting}
             onClick={handleSubmitLiveBet}
           >
-            {submitting ? 'Submitting...' : 'Submit Live Prediction'}
+            {submitting ? t('community.submitting') : t('community.submitLivePrediction')}
           </button>
 
           {submitMsg && <p className="live-bet-msg">{submitMsg}</p>}
@@ -957,13 +1152,13 @@ function LiveBetsTab() {
 
       {selectedMatch && !user && (
         <div className="live-bet-form" ref={formRef}>
-          <p style={{ color: '#94a3b8', textAlign: 'center', padding: '16px' }}>Log in to submit live predictions.</p>
+          <p style={{ color: '#94a3b8', textAlign: 'center', padding: '16px' }}>{t('community.loginToPredict')}</p>
         </div>
       )}
 
       {livePredictions.length > 0 && (
         <div className="live-predictions-feed">
-          <h3 className="live-predictions-title">Recent Live Predictions</h3>
+          <h3 className="live-predictions-title">{t('community.recentLivePredictions')}</h3>
           <div className="community-grid">
             {livePredictions.map(pred => (
               <PredictionCard key={pred.id} pred={pred} onRate={() => {}} onPurchase={() => {}} />
@@ -976,6 +1171,7 @@ function LiveBetsTab() {
 }
 
 export default function Community() {
+  const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const filterUserId = searchParams.get('user_id')
   const [filterUserName, setFilterUserName] = useState('')
@@ -1074,35 +1270,35 @@ export default function Community() {
   return (
     <div className="community-page">
       <div className="community-header-section">
-        <h2>Predictions</h2>
-        <p className="community-subtitle">See what other predictors are picking</p>
+        <h2>{t('community.title')}</h2>
+        <p className="community-subtitle">{t('community.subtitle')}</p>
       </div>
 
       <div className="disclaimer-banner">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span>These predictions can be risky. Bet at your own risk. Company will not be liable for any damages.</span>
+        <span>{t('community.disclaimer')}</span>
       </div>
 
       {filterUserId && (
         <div className="community-filter-banner">
-          <span>Showing predictions by <strong>{filterUserName || `User #${filterUserId}`}</strong></span>
-          <button onClick={clearUserFilter}>Show All</button>
+          <span>{t('community.showingPredictionsBy')} <strong>{filterUserName || `User #${filterUserId}`}</strong></span>
+          <button onClick={clearUserFilter}>{t('community.showAll')}</button>
         </div>
       )}
 
       <div className="community-tabs">
         <button className={`community-tab ${tab === 'all' ? 'active' : ''}`} onClick={() => handleTabChange('all')}>
-          All Predictions
+          {t('community.allPredictions')}
         </button>
         <button className={`community-tab ${tab === 'paid' ? 'active' : ''}`} onClick={() => handleTabChange('paid')}>
-          Premium Picks
+          {t('community.premiumPicks')}
         </button>
         <button className={`community-tab live-tab ${tab === 'live' ? 'active' : ''}`} onClick={() => handleTabChange('live')}>
           <span className="live-tab-dot"></span>
-          Live Bets
+          {t('community.liveBets')}
         </button>
         <button className={`community-tab ${tab === 'upcoming' ? 'active' : ''}`} onClick={() => handleTabChange('upcoming')}>
-          Upcoming Matches
+          {t('community.upcomingMatches')}
         </button>
       </div>
 
@@ -1119,21 +1315,21 @@ export default function Community() {
                 onClick={() => handleSortChange(opt.value)}
               >
                 <span className="sort-icon">{opt.icon}</span>
-                <span>{opt.label}</span>
+                <span>{t(opt.labelKey)}</span>
               </button>
             ))}
-            {totalCount > 0 && <span className="sort-total">{totalCount} predictions</span>}
+            {totalCount > 0 && <span className="sort-total">{totalCount} {t('community.predictionsCount')}</span>}
           </div>
 
           {loading ? (
             <div className="loading-container">
               <div className="spinner"></div>
-              <p>Loading predictions...</p>
+              <p>{t('community.loadingPredictions')}</p>
             </div>
           ) : predictions.length === 0 ? (
             <div className="empty-community">
-              <p>{tab === 'paid' ? 'No premium predictions yet.' : 'No community predictions yet. Be the first to share yours!'}</p>
-              <p className="empty-hint">After making a prediction on any match, you can share it with the community.</p>
+              <p>{tab === 'paid' ? t('community.noPremium') : t('community.noCommunity')}</p>
+              <p className="empty-hint">{t('community.shareHint')}</p>
             </div>
           ) : (
             <>
@@ -1148,7 +1344,7 @@ export default function Community() {
               {totalPages > 1 && (
                 <div className="pagination-numbered">
                   <button className="pagination-btn" disabled={page <= 1} onClick={() => fetchPredictions(page - 1, tab, false, filterUserId, sortBy)}>
-                    Prev
+                    {t('community.prev')}
                   </button>
                   {getPageNumbers()[0] > 1 && (
                     <>
@@ -1174,7 +1370,7 @@ export default function Community() {
                     </>
                   )}
                   <button className="pagination-btn" disabled={page >= totalPages} onClick={() => fetchPredictions(page + 1, tab, false, filterUserId, sortBy)}>
-                    Next
+                    {t('community.next')}
                   </button>
                 </div>
               )}

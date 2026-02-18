@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import HCaptcha from '@hcaptcha/react-hcaptcha'
 import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
+import CountryPicker from './CountryPicker'
 
 const GOOGLE_CLIENT_ID = '905871526482-4i8pfv8435p4eq10226j0agks7j007ag.apps.googleusercontent.com'
 const HCAPTCHA_SITE_KEY = '93726ad0-1700-48aa-8aa6-77825d4cfbee'
@@ -17,6 +19,8 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   const [dateOfBirth, setDateOfBirth] = useState('')
   const [securityQuestion, setSecurityQuestion] = useState('')
   const [securityAnswer, setSecurityAnswer] = useState('')
+  const [country, setCountry] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [referralCode] = useState(() => {
     const match = document.cookie.match(/spark_ref=([^;]+)/)
     return match ? match[1] : ''
@@ -51,6 +55,8 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [resendMessage, setResendMessage] = useState('')
 
+  const { t } = useTranslation()
+
   useEffect(() => { referralRef.current = referralCode }, [referralCode])
 
   // Reset CAPTCHA and forgot password when mode changes
@@ -65,7 +71,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
 
   const handleCaptchaVerify = (token) => setCaptchaToken(token)
   const handleCaptchaExpire = () => setCaptchaToken('')
-  const handleCaptchaError = () => { setCaptchaToken(''); setError('CAPTCHA failed to load. Please try again.') }
+  const handleCaptchaError = () => { setCaptchaToken(''); setError(t('auth.captchaFailed')) }
 
   // Cooldown timer
   useEffect(() => {
@@ -94,29 +100,40 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
 
   const handleGoogleResponse = useCallback(async (response) => {
     if (!response.credential) return
+    // For signup mode, require terms acceptance before Google auth
+    if (mode === 'signup' && !termsAccepted) {
+      setError(t('auth.termsRequired'))
+      return
+    }
     setLoading(true)
     setError('')
     // Try Google login directly - backend only requires CAPTCHA for new users
-    const result = await googleLogin(response.credential, referralRef.current, captchaToken)
+    const result = await googleLogin(response.credential, referralRef.current, captchaToken, termsAccepted)
     if (result.success) {
       setLoading(false)
       setCaptchaToken('')
       if (captchaRef.current) captchaRef.current.resetCaptcha()
       return
     }
+    // If terms required (new user via Google without accepting terms)
+    if (result.error && result.error.toLowerCase().includes('terms')) {
+      setError(t('auth.termsRequired'))
+      setLoading(false)
+      return
+    }
     // If CAPTCHA needed (new user) - show CAPTCHA and store token for retry
     if (result.error && result.error.toLowerCase().includes('captcha')) {
       setGooglePendingToken(response.credential)
       setShowCaptcha(true)
-      setError('New account detected. Please complete the CAPTCHA to continue.')
+      setError(t('auth.newAccountCaptcha'))
       setLoading(false)
       return
     }
-    setError(result.error || 'Google login failed')
+    setError(result.error || t('auth.googleLoginFailed'))
     setLoading(false)
     setCaptchaToken('')
     if (captchaRef.current) captchaRef.current.resetCaptcha()
-  }, [googleLogin, captchaToken])
+  }, [googleLogin, captchaToken, t, mode, termsAccepted])
 
   // Proceed with Google login once CAPTCHA is completed
   useEffect(() => {
@@ -124,9 +141,9 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
       (async () => {
         setLoading(true)
         setError('')
-        const result = await googleLogin(googlePendingToken, referralRef.current, captchaToken)
+        const result = await googleLogin(googlePendingToken, referralRef.current, captchaToken, termsAccepted)
         if (!result.success) {
-          setError(result.error || 'Google login failed')
+          setError(result.error || t('auth.googleLoginFailed'))
         }
         setLoading(false)
         setGooglePendingToken(null)
@@ -134,7 +151,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
         if (captchaRef.current) captchaRef.current.resetCaptcha()
       })()
     }
-  }, [googlePendingToken, captchaToken, googleLogin])
+  }, [googlePendingToken, captchaToken, googleLogin, t])
 
   useEffect(() => {
     const initGoogle = () => {
@@ -171,27 +188,31 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     setError('')
 
     if (!email.trim() || !password.trim()) {
-      setError('Email and password are required')
+      setError(t('auth.emailRequired'))
       return
     }
 
     if (mode === 'signup' && !captchaToken) {
-      setError('Please complete the CAPTCHA verification')
+      setError(t('auth.captchaRequired'))
       return
     }
     if (mode === 'login' && showCaptcha && !captchaToken) {
-      setError('Please complete the CAPTCHA verification')
+      setError(t('auth.captchaRequired'))
       return
     }
 
     if (mode === 'signup') {
+      if (!termsAccepted) {
+        setError(t('auth.termsRequired'))
+        return
+      }
       if (password !== confirmPassword) {
-        setError('Passwords do not match')
+        setError(t('auth.passwordsNoMatch'))
         return
       }
       const reqs = getPasswordRequirements(password)
       if (!reqs.every(r => r.met)) {
-        setError('Please meet all password requirements')
+        setError(t('auth.meetRequirements'))
         return
       }
     }
@@ -213,7 +234,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
 
         if (result.captcha_required) {
           setShowCaptcha(true)
-          setError('Please prove that you are a human')
+          setError(t('auth.proveHuman'))
           if (result.attempts_remaining !== undefined) {
             setAttemptsRemaining(result.attempts_remaining)
           }
@@ -236,6 +257,8 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           date_of_birth: dateOfBirth || undefined,
           security_question: securityQuestion || undefined,
           security_answer: securityAnswer.trim() || undefined,
+          country: country || undefined,
+          terms_accepted: true,
         })
         if (result.requires_verification) {
           setResendCooldown(60)
@@ -245,7 +268,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
       }
 
       if (!result.success) {
-        setError(result.error || 'Something went wrong')
+        setError(result.error || t('auth.somethingWrong'))
         setCaptchaToken('')
         if (captchaRef.current) captchaRef.current.resetCaptcha()
       } else {
@@ -253,7 +276,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
         setLockoutSeconds(0)
       }
     } catch (err) {
-      setError(err.message || 'Connection error. Please try again.')
+      setError(err.message || t('auth.connectionError'))
     }
 
     setLoading(false)
@@ -282,13 +305,13 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     try {
       const response = await axios.post('/api/user/forgot-password', { email: targetEmail })
       if (response.data.success) {
-        setForgotMessage(`If an account exists with ${targetEmail}, a reset link has been sent. Check your inbox.`)
+        setForgotMessage(t('auth.resetLinkSent', { email: targetEmail }))
       }
     } catch (err) {
       if (err.response?.status === 423) {
-        setForgotError('Account is temporarily locked. Please try again after the lockout period.')
+        setForgotError(t('auth.accountLocked423'))
       } else {
-        setForgotError(err.response?.data?.detail || 'Failed to send reset link. Please try again.')
+        setForgotError(err.response?.data?.detail || t('auth.failedSendReset'))
       }
     }
     setForgotLoading(false)
@@ -296,7 +319,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
 
   const handleSendResetLink = async () => {
     if (!forgotEmail.trim() || !forgotEmail.includes('@')) {
-      setForgotError('Please enter a valid email address')
+      setForgotError(t('auth.enterValidEmail'))
       return
     }
     await sendResetLink(forgotEmail)
@@ -305,7 +328,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   const handleVerifyCode = async (e) => {
     e.preventDefault()
     if (!verificationCode.trim() || verificationCode.length !== 6) {
-      setVerifyError('Please enter the 6-digit code')
+      setVerifyError(t('auth.enterDigitCode'))
       return
     }
     setVerifyLoading(true)
@@ -340,11 +363,11 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   }
 
   const getPasswordRequirements = (pwd) => [
-    { label: 'At least 8 characters', met: pwd.length >= 8 },
-    { label: 'At least 2 uppercase letters', met: (pwd.match(/[A-Z]/g) || []).length >= 2 },
-    { label: 'At least 2 lowercase letters', met: (pwd.match(/[a-z]/g) || []).length >= 2 },
-    { label: 'At least 2 numbers', met: (pwd.match(/[0-9]/g) || []).length >= 2 },
-    { label: 'At least 2 special characters', met: (pwd.match(/[^A-Za-z0-9]/g) || []).length >= 2 },
+    { label: t('auth.pwdReq1'), met: pwd.length >= 8 },
+    { label: t('auth.pwdReq2'), met: (pwd.match(/[A-Z]/g) || []).length >= 2 },
+    { label: t('auth.pwdReq3'), met: (pwd.match(/[a-z]/g) || []).length >= 2 },
+    { label: t('auth.pwdReq4'), met: (pwd.match(/[0-9]/g) || []).length >= 2 },
+    { label: t('auth.pwdReq5'), met: (pwd.match(/[^A-Za-z0-9]/g) || []).length >= 2 },
   ]
 
   const passwordReqs = getPasswordRequirements(password)
@@ -361,24 +384,24 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
             <div className="gate-logo">
               <span className="gate-icon">&#9993;</span>
             </div>
-            <h1>Verify Your Email</h1>
+            <h1>{t('auth.verifyEmail')}</h1>
             <p className="gate-subtitle">
-              We sent a 6-digit code to <strong style={{color: '#3b82f6'}}>{pendingVerification.email}</strong>
+              {t('auth.codeSentTo')} <strong style={{color: '#3b82f6'}}>{pendingVerification.email}</strong>
             </p>
           </div>
         )}
         {compact && (
           <div className="auth-form-compact-header">
-            <h2>Verify Your Email</h2>
+            <h2>{t('auth.verifyEmail')}</h2>
             <p className="gate-subtitle">
-              Code sent to <strong style={{color: '#3b82f6'}}>{pendingVerification.email}</strong>
+              {t('auth.codeSentToCompact')} <strong style={{color: '#3b82f6'}}>{pendingVerification.email}</strong>
             </p>
           </div>
         )}
 
         <form className="access-form" onSubmit={handleVerifyCode}>
           <div className="form-group">
-            <label htmlFor="verify-code">Verification Code</label>
+            <label htmlFor="verify-code">{t('auth.verificationCode')}</label>
             <input
               id="verify-code"
               type="text"
@@ -401,7 +424,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           {resendMessage && <div className="gate-success">{resendMessage}</div>}
 
           <button type="submit" className="gate-submit-btn" disabled={verifyLoading || verificationCode.length !== 6}>
-            {verifyLoading ? 'Verifying...' : 'Verify Email'}
+            {verifyLoading ? t('auth.verifying') : t('auth.verifyEmailBtn')}
           </button>
         </form>
 
@@ -411,15 +434,15 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
             onClick={handleResendCode}
             disabled={resendCooldown > 0}
           >
-            {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
+            {resendCooldown > 0 ? t('auth.resendCodeIn', { seconds: resendCooldown }) : t('auth.resendCode')}
           </button>
           <button className="link-btn" onClick={handleBackToLogin}>
-            Back to login
+            {t('auth.backToLogin')}
           </button>
         </div>
 
         <div className="verify-help">
-          <p>Check your spam/junk folder if you don't see the email.</p>
+          <p>{t('auth.checkSpam')}</p>
         </div>
       </div>
     )
@@ -432,13 +455,13 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           <div className="gate-logo">
             <span className="gate-icon">&#9917;</span>
           </div>
-          <h1>Spark AI Prediction</h1>
-          <p className="gate-subtitle">Smart Match Analysis & Predictions</p>
+          <h1>{t('auth.sparkAIPrediction')}</h1>
+          <p className="gate-subtitle">{t('auth.smartAnalysis')}</p>
         </div>
       )}
       {compact && onClose && (
         <div className="auth-form-compact-header">
-          <h2>{mode === 'login' ? 'Welcome Back' : 'Create Account'}</h2>
+          <h2>{mode === 'login' ? t('auth.welcomeBack') : t('auth.createAccountTitle')}</h2>
           <button className="auth-modal-close" onClick={onClose} aria-label="Close">&times;</button>
         </div>
       )}
@@ -453,14 +476,14 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
             </div>
-            <h2 className="forgot-password-title">Reset Your Password</h2>
-            <p className="forgot-password-label">Enter the email address associated with your account:</p>
+            <h2 className="forgot-password-title">{t('auth.resetPassword')}</h2>
+            <p className="forgot-password-label">{t('auth.resetPasswordLabel')}</p>
             <div className="forgot-password-input-row">
               <input
                 type="email"
                 value={forgotEmail}
                 onChange={(e) => setForgotEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder={t('auth.emailPlaceholder')}
                 disabled={forgotLoading}
                 autoFocus
               />
@@ -470,7 +493,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
                 onClick={handleSendResetLink}
                 disabled={forgotLoading || !forgotEmail.trim()}
               >
-                {forgotLoading ? 'Sending...' : 'Send'}
+                {forgotLoading ? t('auth.sending') : t('auth.send')}
               </button>
             </div>
             {forgotMessage && <div className="forgot-success">{forgotMessage}</div>}
@@ -479,7 +502,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           <div className="gate-footer">
             <p>
               <button className="link-btn" onClick={() => setShowForgotPassword(false)}>
-                I remember my password, log in
+                {t('auth.rememberPassword')}
               </button>
             </p>
           </div>
@@ -492,13 +515,13 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
             className={`mode-btn ${mode === 'login' ? 'active' : ''}`}
             onClick={() => { setMode('login'); setError('') }}
           >
-            Log In
+            {t('auth.login')}
           </button>
           <button
             className={`mode-btn ${mode === 'signup' ? 'active' : ''}`}
             onClick={() => { setMode('signup'); setError('') }}
           >
-            Sign Up
+            {t('auth.signup')}
           </button>
         </div>
 
@@ -508,18 +531,18 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
         </div>
 
         <div className="auth-divider">
-          <span>or</span>
+          <span>{t('common.or')}</span>
         </div>
 
         <form className="access-form" onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="email">Email Address</label>
+            <label htmlFor="email">{t('auth.email')}</label>
             <input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              placeholder={t('auth.emailPlaceholder')}
               autoFocus
               disabled={loading || lockoutSeconds > 0}
               onBlur={handleEmailBlur}
@@ -527,14 +550,14 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t('auth.password')}</label>
             <div className="password-input-wrapper">
               <input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={mode === 'signup' ? 'Create a strong password' : 'Enter your password'}
+                placeholder={mode === 'signup' ? t('auth.createStrongPassword') : t('auth.enterPassword')}
                 disabled={loading || lockoutSeconds > 0}
               />
               <button
@@ -563,7 +586,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           {mode === 'login' && lockoutSeconds === 0 && (
             <div className="forgot-password-link">
               <button type="button" className="link-btn" onClick={handleForgotPassword}>
-                Forgot your password?
+                {t('auth.forgotPassword')}
               </button>
             </div>
           )}
@@ -590,14 +613,14 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           {mode === 'signup' && (
             <>
               <div className="form-group">
-                <label htmlFor="confirm-password">Confirm Password</label>
+                <label htmlFor="confirm-password">{t('auth.confirmPassword')}</label>
                 <div className="password-input-wrapper">
                   <input
                     id="confirm-password"
                     type={showConfirmPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repeat your password"
+                    placeholder={t('auth.repeatPassword')}
                     disabled={loading}
                   />
                   <button
@@ -623,23 +646,33 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
               </div>
 
               <div className="signup-personal-section">
-                <p className="signup-personal-label">Personal Information</p>
+                <p className="signup-personal-label">{t('auth.personalInfo')}</p>
 
                 <div className="form-group">
-                  <label htmlFor="full-name">Full Name</label>
+                  <label htmlFor="full-name">{t('auth.fullName')}</label>
                   <input
                     id="full-name"
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Enter your full name"
+                    placeholder={t('auth.enterFullName')}
                     maxLength={100}
                     disabled={loading}
                   />
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="date-of-birth">Date of Birth</label>
+                  <label>Country</label>
+                  <CountryPicker
+                    value={country}
+                    onChange={setCountry}
+                    disabled={loading}
+                    placeholder="Search for your country"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="date-of-birth">{t('auth.dateOfBirth')}</label>
                   <input
                     id="date-of-birth"
                     type="date"
@@ -650,37 +683,57 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="security-question">Security Question</label>
+                  <label htmlFor="security-question">{t('auth.securityQuestion')}</label>
                   <select
                     id="security-question"
                     value={securityQuestion}
                     onChange={(e) => setSecurityQuestion(e.target.value)}
                     disabled={loading}
                   >
-                    <option value="">Select a security question</option>
-                    <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
-                    <option value="What was your first pet's name?">What was your first pet's name?</option>
-                    <option value="What city were you born in?">What city were you born in?</option>
-                    <option value="What is your favorite movie?">What is your favorite movie?</option>
-                    <option value="What was the name of your first school?">What was the name of your first school?</option>
-                    <option value="What is your childhood nickname?">What is your childhood nickname?</option>
+                    <option value="">{t('auth.selectSecurityQuestion')}</option>
+                    <option value="What is your mother's maiden name?">{t('auth.secQ1')}</option>
+                    <option value="What was your first pet's name?">{t('auth.secQ2')}</option>
+                    <option value="What city were you born in?">{t('auth.secQ3')}</option>
+                    <option value="What is your favorite movie?">{t('auth.secQ4')}</option>
+                    <option value="What was the name of your first school?">{t('auth.secQ5')}</option>
+                    <option value="What is your childhood nickname?">{t('auth.secQ6')}</option>
                   </select>
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="security-answer">Security Answer</label>
+                  <label htmlFor="security-answer">{t('auth.securityAnswer')}</label>
                   <input
                     id="security-answer"
                     type="text"
                     value={securityAnswer}
                     onChange={(e) => setSecurityAnswer(e.target.value)}
-                    placeholder="Enter your answer"
+                    placeholder={t('auth.enterYourAnswer')}
                     maxLength={200}
                     disabled={loading}
                   />
                 </div>
               </div>
             </>
+          )}
+
+          {/* Terms of Service checkbox */}
+          {mode === 'signup' && (
+            <div className="terms-checkbox-section">
+              <label className="terms-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  disabled={loading}
+                />
+                <span>
+                  {t('auth.agreeToTerms')}{' '}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="terms-link">
+                    {t('auth.termsOfService')}
+                  </a>
+                </span>
+              </label>
+            </div>
           )}
 
           {/* CAPTCHA Widget */}
@@ -704,17 +757,17 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           {mode === 'login' && attemptsRemaining !== null && attemptsRemaining > 0 && lockoutSeconds === 0 && (
             <div className="gate-warning">
               {attemptsRemaining === 1
-                ? 'Warning: 1 attempt remaining before your account is locked for 24 hours.'
-                : `You have ${attemptsRemaining} attempts remaining.`}
+                ? t('auth.warningLastAttempt')
+                : t('auth.attemptsRemaining', { count: attemptsRemaining })}
             </div>
           )}
 
           {/* Prominent forgot password prompt after 3 failed attempts */}
           {mode === 'login' && attemptsRemaining !== null && attemptsRemaining <= 2 && attemptsRemaining > 0 && lockoutSeconds === 0 && (
             <div className="forgot-password-prompt">
-              <span>Forgotten your password? </span>
+              <span>{t('auth.forgottenPassword')} </span>
               <button type="button" className="link-btn forgot-prompt-link" onClick={handleForgotPassword}>
-                Click here to reset it
+                {t('auth.clickToReset')}
               </button>
             </div>
           )}
@@ -728,25 +781,25 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
               </div>
-              <p className="lockout-title">Account Temporarily Locked</p>
-              <p className="lockout-message">Too many failed login attempts. You can try again in:</p>
+              <p className="lockout-title">{t('auth.accountTempLocked')}</p>
+              <p className="lockout-message">{t('auth.tooManyAttempts')}</p>
               <div className="lockout-timer">{formatLockoutTime(lockoutSeconds)}</div>
-              <p className="lockout-reset-hint">You can reset your password after the lockout period expires.</p>
+              <p className="lockout-reset-hint">{t('auth.lockoutResetHint')}</p>
             </div>
           )}
 
-          <button type="submit" className="gate-submit-btn" disabled={loading || lockoutSeconds > 0 || ((showCaptcha || mode === 'signup') && !captchaToken)}>
-            {loading ? (mode === 'login' ? 'Logging in...' : 'Creating account...') :
-              lockoutSeconds > 0 ? 'Account Locked' :
-              (mode === 'login' ? 'Log In' : 'Create Account')}
+          <button type="submit" className="gate-submit-btn" disabled={loading || lockoutSeconds > 0 || ((showCaptcha || mode === 'signup') && !captchaToken) || (mode === 'signup' && !termsAccepted)}>
+            {loading ? (mode === 'login' ? t('auth.loggingIn') : t('auth.creatingAccount')) :
+              lockoutSeconds > 0 ? t('auth.accountLocked') :
+              (mode === 'login' ? t('auth.login') : t('auth.createAccount'))}
           </button>
         </form>
 
         <div className="gate-footer">
           {mode === 'login' ? (
-            <p>Don't have an account? <button className="link-btn" onClick={() => setMode('signup')}>Sign up for free</button></p>
+            <p>{t('auth.noAccount')} <button className="link-btn" onClick={() => setMode('signup')}>{t('auth.signUpFree')}</button></p>
           ) : (
-            <p>Already have an account? <button className="link-btn" onClick={() => setMode('login')}>Log in</button></p>
+            <p>{t('auth.haveAccount')} <button className="link-btn" onClick={() => setMode('login')}>{t('auth.logIn')}</button></p>
           )}
         </div>
       </>)}

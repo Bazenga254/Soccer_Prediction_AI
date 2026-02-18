@@ -1,5 +1,6 @@
 import { useBetSlip } from '../context/BetSlipContext'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export default function BetSlip() {
   const {
@@ -21,6 +22,7 @@ export default function BetSlip() {
   const [isPaid, setIsPaid] = useState(false)
   const [price, setPrice] = useState('2.00')
   const [analysisNotes, setAnalysisNotes] = useState('')
+  const { t } = useTranslation()
 
   const wordCount = analysisNotes.trim() ? analysisNotes.trim().split(/\s+/).length : 0
 
@@ -152,7 +154,7 @@ export default function BetSlip() {
                 Confirm {betCount > 1 ? `All ${betCount} Predictions` : 'Prediction'}
               </button>
               <button className="clear-all-btn" onClick={clearAllBets}>
-                Clear All
+                {t('betSlip.clearAll')}
               </button>
             </>
           ) : (

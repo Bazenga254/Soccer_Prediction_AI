@@ -29,14 +29,17 @@ import prediction_tracker
 import user_auth
 import community
 import subscriptions
+import pricing_config
 import ai_support
-import swypt_payment
+import daraja_payment
+import whop_payment
 import jackpot_analyzer
 import admin_rbac
 import activity_logger
 from admin_routes import admin_router
 from employee_routes import employee_router
 import employee_portal
+import bot_manager
 
 # Admin password for managing access codes
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "SoccerAI2026Admin")
@@ -152,6 +155,9 @@ async def startup():
     user_auth.init_user_db()
     print("[OK] User authentication system initialized")
 
+    user_auth.init_tracking_db()
+    print("[OK] Visitor tracking system initialized")
+
     # Create uploads directories
     (Path(__file__).parent / "uploads" / "avatars").mkdir(parents=True, exist_ok=True)
     (Path(__file__).parent / "uploads" / "support").mkdir(parents=True, exist_ok=True)
@@ -161,6 +167,10 @@ async def startup():
     community.init_community_db()
     print("[OK] Community predictions system initialized")
 
+    # Initialize pricing configuration
+    pricing_config.init_pricing_db()
+    print("[OK] Pricing configuration initialized")
+
     # Initialize subscriptions
     subscriptions.init_subscriptions_db()
     expired = subscriptions.check_expired_subscriptions()
@@ -169,8 +179,12 @@ async def startup():
     print("[OK] Subscription system initialized")
 
     # Initialize payment system
-    swypt_payment.init_payment_db()
-    print("[OK] Swypt payment system initialized")
+    daraja_payment.init_payment_db()
+    print("[OK] Daraja M-Pesa payment system initialized")
+
+    # Initialize Whop payment system
+    whop_payment.init_whop_db()
+    print("[OK] Whop payment system initialized")
 
     # Initialize jackpot analyzer
     jackpot_analyzer.init_db()
@@ -189,9 +203,15 @@ async def startup():
     asyncio.create_task(_inactivity_checker())
     asyncio.create_task(_payment_expiry_checker())
     asyncio.create_task(_active_users_cleanup())
+    asyncio.create_task(bot_manager.start_bot_heartbeats())
+    asyncio.create_task(_prediction_result_checker())
+    asyncio.create_task(_weekly_disbursement_generator())
     print("[OK] Support keep-alive checker started (30-min idle, 3-min response)")
     print("[OK] Payment expiry checker started (15-min timeout)")
     print("[OK] Active user tracking started")
+    print("[OK] Bot heartbeat system started")
+    print("[OK] Prediction result checker started (5-min interval)")
+    print("[OK] Weekly disbursement generator started (Fridays 10:00 EAT)")
     print("=" * 50)
 
 
@@ -203,6 +223,16 @@ async def get_all_teams(competition: str = "PL"):
         "competition": competition,
         "using_live_data": is_using_live_data(),
         "data_source": "API-Football" if is_using_live_data() else "Sample Data"
+    }
+
+
+@app.get("/api/fixtures/upcoming-all")
+async def get_all_upcoming_fixtures(days: int = 7):
+    """Get upcoming fixtures across all leagues for the next N days."""
+    fixtures = await football_api.fetch_all_upcoming_fixtures(days=min(days, 14))
+    return {
+        "fixtures": fixtures,
+        "count": len(fixtures),
     }
 
 
@@ -467,8 +497,9 @@ async def analysis_views_status(authorization: str = Header(None)):
     if not payload:
         return {"views_used": 0, "max_views": 3, "allowed": True, "reset_at": None, "balance_usd": 0}
     tier = payload.get("tier", "free")
-    if tier == "pro":
-        return {"views_used": 0, "max_views": -1, "allowed": True, "reset_at": None, "balance_usd": 0}
+    if tier in ("pro", "trial"):
+        max_views = -1 if tier == "pro" else 10
+        return {"views_used": 0, "max_views": max_views, "allowed": True, "reset_at": None, "balance_usd": 0}
     result = user_auth.get_analysis_views_status(payload["user_id"])
     bal = community.get_user_balance(payload["user_id"])
     result["balance_usd"] = bal.get("balance_usd", 0)
@@ -482,8 +513,9 @@ async def record_analysis_view(request: dict, authorization: str = Header(None))
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     tier = payload.get("tier", "free")
-    if tier == "pro":
-        return {"views_used": 0, "max_views": -1, "allowed": True, "reset_at": None}
+    if tier in ("pro", "trial"):
+        max_views = -1 if tier == "pro" else 10
+        return {"views_used": 0, "max_views": max_views, "allowed": True, "reset_at": None}
     match_key = request.get("match_key", "")
     if not match_key:
         raise HTTPException(status_code=400, detail="match_key is required")
@@ -495,19 +527,20 @@ async def record_analysis_view(request: dict, authorization: str = Header(None))
 
 @app.post("/api/balance/use-for-analysis")
 async def use_balance_for_analysis(authorization: str = Header(None)):
-    """Deduct $0.50 from user balance for a match analysis view."""
+    """Deduct match analysis price from user balance."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     tier = payload.get("tier", "free")
-    if tier == "pro":
-        raise HTTPException(status_code=400, detail="Pro users have unlimited access")
+    if tier in ("pro", "trial"):
+        raise HTTPException(status_code=400, detail="Subscribed users have unlimited access")
     user_id = payload["user_id"]
+    price = pricing_config.get("match_analysis_price_usd", 0.50)
     bal = community.get_user_balance(user_id)
-    if bal.get("balance_usd", 0) < 0.50:
-        raise HTTPException(status_code=403, detail="Insufficient balance. Deposit at least $0.50 to continue.")
+    if bal.get("balance_usd", 0) < price:
+        raise HTTPException(status_code=403, detail=f"Insufficient balance. Deposit at least ${price:.2f} to continue.")
     updated = community.adjust_user_balance(
-        user_id=user_id, amount_usd=-0.50, amount_kes=0,
+        user_id=user_id, amount_usd=-price, amount_kes=0,
         reason="Match analysis view", adjustment_type="analysis_deduction"
     )
     return {"success": True, "balance": updated}
@@ -515,19 +548,20 @@ async def use_balance_for_analysis(authorization: str = Header(None)):
 
 @app.post("/api/balance/use-for-jackpot")
 async def use_balance_for_jackpot(authorization: str = Header(None)):
-    """Deduct $1.00 from user balance for a jackpot analysis."""
+    """Deduct jackpot analysis price from user balance."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     tier = payload.get("tier", "free")
-    if tier == "pro":
-        raise HTTPException(status_code=400, detail="Pro users have unlimited access")
+    if tier in ("pro", "trial"):
+        raise HTTPException(status_code=400, detail="Subscribed users have unlimited access")
     user_id = payload["user_id"]
+    price = pricing_config.get("jackpot_analysis_price_usd", 1.00)
     bal = community.get_user_balance(user_id)
-    if bal.get("balance_usd", 0) < 1.00:
-        raise HTTPException(status_code=403, detail="Insufficient balance. Deposit at least $1.00 to continue.")
+    if bal.get("balance_usd", 0) < price:
+        raise HTTPException(status_code=403, detail=f"Insufficient balance. Deposit at least ${price:.2f} to continue.")
     updated = community.adjust_user_balance(
-        user_id=user_id, amount_usd=-1.00, amount_kes=0,
+        user_id=user_id, amount_usd=-price, amount_kes=0,
         reason="Jackpot analysis", adjustment_type="jackpot_deduction"
     )
     return {"success": True, "balance": updated}
@@ -740,6 +774,8 @@ class RegisterRequest(BaseModel):
     date_of_birth: str = ""
     security_question: str = ""
     security_answer: str = ""
+    terms_accepted: bool = False
+    country: str = ""
 
 class LoginRequest(BaseModel):
     email: str
@@ -750,6 +786,7 @@ class GoogleLoginRequest(BaseModel):
     token: str
     referral_code: str = ""
     captcha_token: str = ""
+    terms_accepted: bool = False
 
 class CaptchaCheckRequest(BaseModel):
     email: str
@@ -775,11 +812,15 @@ class UpdateUsernameRequest(BaseModel):
 class UpdateDisplayNameRequest(BaseModel):
     display_name: str
 
+class UpdateMpesaPhoneRequest(BaseModel):
+    mpesa_phone: str
+
 class PersonalInfoRequest(BaseModel):
     full_name: str = None
     date_of_birth: str = None
     security_question: str = None
     security_answer: str = None
+    country: str = None
 
 class DeleteAccountRequest(BaseModel):
     password: str
@@ -928,6 +969,9 @@ async def register_via_invite(body: InviteRegisterRequest):
 @app.post("/api/user/register")
 async def register(body: RegisterRequest, request: Request):
     """Register a new user account. Returns requires_verification if email needs to be verified."""
+    if not body.terms_accepted:
+        raise HTTPException(status_code=400, detail="You must accept the Terms of Service to create an account.")
+
     result = user_auth.register_user(
         email=body.email,
         password=body.password,
@@ -939,7 +983,7 @@ async def register(body: RegisterRequest, request: Request):
         raise HTTPException(status_code=400, detail=result["error"])
 
     # Save personal info if provided during registration
-    has_personal = any([body.full_name, body.date_of_birth, body.security_question, body.security_answer])
+    has_personal = any([body.full_name, body.date_of_birth, body.security_question, body.security_answer, body.country])
     if has_personal:
         # Look up the user by email to get their ID
         conn = user_auth._get_db()
@@ -952,7 +996,20 @@ async def register(body: RegisterRequest, request: Request):
                 date_of_birth=body.date_of_birth or None,
                 security_question=body.security_question or None,
                 security_answer=body.security_answer or None,
+                country=body.country or None,
             )
+
+    # Save terms acceptance timestamp
+    if result.get("success"):
+        conn = user_auth._get_db()
+        user = conn.execute("SELECT id FROM users WHERE email = ?", (body.email.lower().strip(),)).fetchone()
+        if user:
+            conn.execute(
+                "UPDATE users SET terms_accepted_at = ? WHERE id = ?",
+                (datetime.now().isoformat(), user["id"])
+            )
+            conn.commit()
+        conn.close()
 
     return result
 
@@ -1009,6 +1066,16 @@ async def login(body: LoginRequest, request: Request):
                     "attempts_remaining": result["attempts_remaining"],
                 }
             )
+        # Handle suspended account
+        if result.get("suspended"):
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "success": False,
+                    "detail": detail,
+                    "suspended": True,
+                }
+            )
         raise HTTPException(status_code=401, detail=detail)
     return result
 
@@ -1022,8 +1089,14 @@ async def google_login(body: GoogleLoginRequest, request: Request):
         referral_code=body.referral_code,
         captcha_token=body.captcha_token,
         client_ip=client_ip,
+        terms_accepted=body.terms_accepted,
     )
     if not result["success"]:
+        if result.get("suspended"):
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "detail": result["error"], "suspended": True}
+            )
         raise HTTPException(status_code=401, detail=result["error"])
     return result
 
@@ -1102,6 +1175,18 @@ async def get_me(authorization: str = Header(None)):
     return {"user": profile}
 
 
+@app.post("/api/user/accept-terms")
+async def accept_terms(authorization: str = Header(None)):
+    """Accept Terms of Service (for existing users who haven't accepted yet)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = user_auth.accept_terms(payload["user_id"])
+    if not result["success"]:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return {"success": True}
+
+
 @app.post("/api/heartbeat")
 async def heartbeat(authorization: str = Header(None)):
     """Record user activity heartbeat for online tracking."""
@@ -1148,6 +1233,18 @@ async def update_display_name(request: UpdateDisplayNameRequest, authorization: 
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     result = user_auth.update_display_name(payload["user_id"], request.display_name)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.put("/api/user/mpesa-phone")
+async def update_mpesa_phone(request: UpdateMpesaPhoneRequest, authorization: str = Header(None)):
+    """Save/update user's M-Pesa phone for commission disbursements."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = user_auth.update_mpesa_phone(payload["user_id"], request.mpesa_phone)
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
@@ -1261,6 +1358,7 @@ async def update_personal_info(req: PersonalInfoRequest, authorization: str = He
         date_of_birth=req.date_of_birth,
         security_question=req.security_question,
         security_answer=req.security_answer,
+        country=req.country,
     )
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -1301,6 +1399,63 @@ async def get_plans():
     return {"plans": subscriptions.get_plans()}
 
 
+@app.get("/api/pricing")
+async def get_public_pricing():
+    """Get all public pricing info (plans, pay-per-use, commissions, free limits)."""
+    return pricing_config.get_public_pricing()
+
+
+# ─── Geo Detection (Public) ───
+
+import time as _time
+import httpx as _httpx
+
+_geo_cache: dict = {}  # { ip: (country_code, timestamp) }
+_GEO_CACHE_TTL = 3600  # 1 hour
+
+
+@app.get("/api/geo/detect")
+async def detect_geo(request: Request):
+    """Detect user's country from IP and return appropriate currency."""
+    ip = _get_client_ip(request)
+    # Check cache
+    if ip in _geo_cache:
+        code, ts = _geo_cache[ip]
+        if _time.time() - ts < _GEO_CACHE_TTL:
+            return {"country_code": code, "currency": "KES" if code == "KE" else "USD"}
+    # Private/local IPs → USD
+    if ip in ("127.0.0.1", "::1", "unknown") or ip.startswith(("10.", "192.168.", "172.")):
+        return {"country_code": "US", "currency": "USD"}
+    # Call ip-api.com
+    try:
+        async with _httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"http://ip-api.com/json/{ip}?fields=countryCode")
+            data = resp.json()
+            code = data.get("countryCode", "US")
+            _geo_cache[ip] = (code, _time.time())
+            return {"country_code": code, "currency": "KES" if code == "KE" else "USD"}
+    except Exception:
+        return {"country_code": "US", "currency": "USD"}
+
+
+# ─── Documentation Endpoints (Public) ───
+
+import docs_content
+
+@app.get("/api/docs")
+async def get_docs():
+    """Return all documentation sections (public, no auth required)."""
+    return {"sections": docs_content.get_all_sections()}
+
+@app.get("/api/docs/{section_id}")
+async def get_doc_section(section_id: str):
+    """Return a specific documentation section."""
+    section = docs_content.get_section(section_id)
+    if not section:
+        raise HTTPException(status_code=404, detail="Section not found")
+    return section
+
+
 @app.get("/api/subscription/limits")
 async def get_tier_limits(authorization: str = Header(None)):
     """Get feature limits for current user's tier."""
@@ -1321,6 +1476,7 @@ async def get_subscription_status(authorization: str = Header(None)):
         "has_subscription": sub is not None,
         "subscription": sub,
         "tier": payload["tier"],
+        "has_used_trial": user_auth.has_used_trial(payload["user_id"]),
     }
 
 
@@ -1373,18 +1529,119 @@ async def get_subscription_history(authorization: str = Header(None)):
 # ==================== END SUBSCRIPTION ENDPOINTS ====================
 
 
-# ==================== PAYMENT ENDPOINTS (SWYPT / M-PESA) ====================
+# ==================== PAYMENT ENDPOINTS (DARAJA / M-PESA) ====================
 
 async def _payment_expiry_checker():
     """Background task: expire stale payment transactions every 2 minutes."""
     while True:
         try:
             await asyncio.sleep(120)
-            expired = swypt_payment.expire_stale_transactions(minutes=15)
+            expired = daraja_payment.expire_stale_transactions(minutes=15)
             if expired:
                 print(f"[Payment] Expired {expired} stale transaction(s)")
         except Exception as e:
             print(f"[Payment] Expiry checker error: {e}")
+
+
+async def _weekly_disbursement_generator():
+    """Background task: auto-generate disbursement batch on Fridays at 10:00 AM EAT (UTC+3)."""
+    while True:
+        try:
+            await asyncio.sleep(300)  # Check every 5 minutes
+            now = datetime.now()
+            eat_hour = (now.hour + 3) % 24  # Server is UTC, EAT = UTC+3
+
+            if now.weekday() == 4 and eat_hour == 10 and now.minute < 5:
+                result = await daraja_payment.generate_disbursement_batch()
+                if result["success"]:
+                    print(f"[Disbursement] Friday batch generated: {result['total_users']} users, "
+                          f"${result['total_amount_usd']:.2f} USD / KES {result['total_amount_kes']:.0f}")
+                else:
+                    print(f"[Disbursement] Batch skipped: {result.get('error', '')}")
+        except Exception as e:
+            print(f"[Disbursement] Weekly generator error: {e}")
+
+
+async def _prediction_result_checker():
+    """Background task: check finished matches and update community + track record predictions every 5 minutes."""
+    while True:
+        try:
+            await asyncio.sleep(300)  # Every 5 minutes
+
+            # Get unfinished prediction info from BOTH databases
+            comm_info = community.get_unfinished_prediction_info()
+            tracker_info = prediction_tracker.get_unfinished_prediction_info()
+
+            # Merge dates and team keys from both sources
+            past_dates = sorted(set(comm_info["dates"]) | set(tracker_info["dates"]))
+            team_keys = comm_info["team_keys"] | tracker_info["team_keys"]
+
+            if not past_dates:
+                continue  # No unfinished predictions in either database
+
+            # Helper to pre-filter: only keep finished fixtures matching our prediction team pairs
+            def is_relevant(f):
+                if f.get("status") not in ("FT", "AET", "PEN"):
+                    return False
+                h = f.get("home_team", {}).get("id")
+                a = f.get("away_team", {}).get("id")
+                return f"{h}-{a}" in team_keys
+
+            # 1. Check today's fixtures
+            all_finished = []
+            fixtures = await football_api.fetch_todays_fixtures()
+            if fixtures:
+                all_finished.extend([f for f in fixtures if is_relevant(f)])
+
+            # 2. Check all dates from each prediction date up to today
+            # (prediction date != match date; match could be days later)
+            from datetime import timedelta
+            today_dt = datetime.now()
+            today_yyyymmdd = today_dt.strftime("%Y%m%d")
+            all_dates_to_check = set()
+            for date_str in past_dates:
+                try:
+                    pred_dt = datetime.strptime(date_str, "%Y%m%d")
+                    d = pred_dt
+                    while d <= today_dt:
+                        all_dates_to_check.add(d.strftime("%Y%m%d"))
+                        d += timedelta(days=1)
+                except ValueError:
+                    all_dates_to_check.add(date_str)
+            # Remove today (already checked via today's fixtures)
+            all_dates_to_check.discard(today_yyyymmdd)
+
+            for date_str in sorted(all_dates_to_check):
+                api_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                past_fixtures = await football_api.fetch_fixtures_by_date(api_date)
+                if past_fixtures:
+                    all_finished.extend([f for f in past_fixtures if is_relevant(f)])
+
+            if not all_finished:
+                print(f"[Predictions] No matching finished fixtures (dates: {past_dates}, team_keys: {team_keys})")
+                continue
+
+            print(f"[Predictions] Found {len(all_finished)} relevant finished fixtures for {len(team_keys)} prediction team pairs")
+
+            # Update community predictions
+            result = community.check_and_update_finished_predictions(all_finished)
+            if result["updated"] > 0:
+                print(f"[Predictions] Community: Updated {result['updated']} predictions: "
+                      f"{result['correct']} correct, {result['incorrect']} incorrect, "
+                      f"{result['notified_followers']} followers notified")
+
+            # Update track record predictions
+            tracker_result = prediction_tracker.check_and_update_from_fixtures(all_finished)
+            if tracker_result["updated"] > 0:
+                print(f"[Predictions] Track Record: Updated {tracker_result['updated']} predictions: "
+                      f"{tracker_result['correct']} correct, {tracker_result['incorrect']} incorrect")
+
+            if result["updated"] == 0 and tracker_result["updated"] == 0:
+                print(f"[Predictions] No predictions matched any finished fixtures")
+        except Exception as e:
+            import traceback
+            print(f"[Predictions] Result checker error: {e}")
+            traceback.print_exc()
 
 
 class MpesaQuoteRequest(BaseModel):
@@ -1401,19 +1658,20 @@ class MpesaPaymentRequest(BaseModel):
 
 class WithdrawalRequest(BaseModel):
     amount_usd: float
-    phone: str
+    phone: str = ""
+    withdrawal_method: str = "mpesa"
 
 
 @app.post("/api/payment/quote")
 async def get_payment_quote(request: MpesaQuoteRequest, authorization: str = Header(None)):
-    """Get KES to USD or USD to KES conversion quote from Swypt."""
+    """Get KES to USD or USD to KES conversion quote."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     if request.amount_kes > 0:
-        result = await swypt_payment.get_kes_to_usd_quote(request.amount_kes)
+        result = await daraja_payment.get_kes_to_usd_quote(request.amount_kes)
     elif request.amount_usd > 0:
-        result = await swypt_payment.get_usd_to_kes_quote(request.amount_usd)
+        result = await daraja_payment.get_usd_to_kes_quote(request.amount_usd)
     else:
         raise HTTPException(status_code=400, detail="Provide amount_kes or amount_usd")
     if not result["success"]:
@@ -1423,11 +1681,32 @@ async def get_payment_quote(request: MpesaQuoteRequest, authorization: str = Hea
 
 @app.post("/api/payment/mpesa/initiate")
 async def initiate_mpesa_payment(request: MpesaPaymentRequest, authorization: str = Header(None)):
-    """Initiate M-Pesa STK push via Swypt on-ramp."""
+    """Initiate M-Pesa STK push via Daraja API."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    result = await swypt_payment.initiate_stk_push(
+
+    # Validate subscription requests: plan must exist and amount must match
+    if request.transaction_type == "subscription":
+        plans = subscriptions.get_plans()
+        if not request.reference_id or request.reference_id not in plans:
+            raise HTTPException(status_code=400, detail="Invalid subscription plan")
+        plan = plans[request.reference_id]
+        if plan["currency"] == "KES":
+            # Amount must match the plan price exactly
+            if abs(request.amount_kes - plan["price"]) > 1:
+                raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
+        else:
+            # USD plan paid via M-Pesa: verify KES equivalent is reasonable
+            quote = await daraja_payment.get_usd_to_kes_quote(plan["price"])
+            if quote.get("success") and abs(request.amount_kes - quote["amount_kes"]) > 50:
+                raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
+
+    # Validate allowed transaction types
+    if request.transaction_type not in ("subscription", "balance_topup", "prediction_purchase"):
+        raise HTTPException(status_code=400, detail="Invalid transaction type")
+
+    result = await daraja_payment.initiate_stk_push(
         phone=request.phone,
         amount_kes=request.amount_kes,
         user_id=payload["user_id"],
@@ -1439,13 +1718,49 @@ async def initiate_mpesa_payment(request: MpesaPaymentRequest, authorization: st
     return result
 
 
+@app.post("/api/payment/mpesa/callback")
+async def daraja_mpesa_callback(request: Request):
+    """Daraja STK Push callback — Safaricom POSTs payment results here (unauthenticated)."""
+    try:
+        callback_data = await request.json()
+        await daraja_payment.handle_stk_callback(callback_data)
+    except Exception as e:
+        print(f"[Daraja Callback] Error: {e}")
+    # Always return 200 to Safaricom regardless of outcome
+    return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+
+@app.post("/api/payment/mpesa/b2c/result")
+async def daraja_b2c_result_callback(request: Request):
+    """B2C result callback — Safaricom POSTs when disbursement completes/fails."""
+    try:
+        callback_data = await request.json()
+        print(f"[B2C Result] {callback_data}")
+        await daraja_payment.handle_b2c_result_callback(callback_data)
+    except Exception as e:
+        print(f"[B2C Result Callback] Error: {e}")
+    return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+
+@app.post("/api/payment/mpesa/b2c/timeout")
+async def daraja_b2c_timeout_callback(request: Request):
+    """B2C timeout callback — Safaricom POSTs when request times out."""
+    try:
+        callback_data = await request.json()
+        print(f"[B2C Timeout] {callback_data}")
+        await daraja_payment.handle_b2c_timeout_callback(callback_data)
+    except Exception as e:
+        print(f"[B2C Timeout Callback] Error: {e}")
+    return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+
 @app.get("/api/payment/status/{transaction_id}")
 async def get_payment_status(transaction_id: int, authorization: str = Header(None)):
     """Check M-Pesa payment status. Frontend polls this."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    result = await swypt_payment.check_payment_status(transaction_id, payload["user_id"])
+    result = await daraja_payment.check_payment_status(transaction_id, payload["user_id"])
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Status check failed"))
     return result
@@ -1457,21 +1772,37 @@ async def get_payment_history(authorization: str = Header(None)):
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {"transactions": swypt_payment.get_user_transactions(payload["user_id"])}
+    return {"transactions": daraja_payment.get_user_transactions(payload["user_id"])}
+
+
+@app.get("/api/user/transactions")
+async def get_user_transactions_unified(
+    filter: str = Query("all"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    authorization: str = Header(None),
+):
+    """Get unified transaction history across all payment types."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    import transactions
+    return transactions.get_unified_transactions(payload["user_id"], filter, offset, limit)
 
 
 # ==================== WITHDRAWAL ENDPOINTS ====================
 
 @app.post("/api/withdrawal/request")
 async def request_withdrawal(body: WithdrawalRequest, authorization: str = Header(None)):
-    """Request a withdrawal to M-Pesa."""
+    """Request a withdrawal via M-Pesa or Whop."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    result = swypt_payment.request_withdrawal(
+    result = daraja_payment.request_withdrawal(
         user_id=payload["user_id"],
         amount_usd=body.amount_usd,
         phone=body.phone,
+        withdrawal_method=body.withdrawal_method,
     )
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Withdrawal request failed"))
@@ -1484,10 +1815,254 @@ async def get_withdrawal_history(authorization: str = Header(None)):
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {"withdrawals": swypt_payment.get_user_withdrawals(payload["user_id"])}
+    return {"withdrawals": daraja_payment.get_user_withdrawals(payload["user_id"])}
+
+
+@app.get("/api/withdrawal/whop-available")
+async def check_whop_withdrawal_available(authorization: str = Header(None)):
+    """Check if user has a linked Whop account for USD withdrawals."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    profile = user_auth.get_user_profile(payload["user_id"])
+    has_whop = bool(profile and profile.get("whop_user_id"))
+    return {"available": has_whop, "whop_user_id": profile.get("whop_user_id", "") if profile else ""}
+
+
+# ==================== WITHDRAWAL OPTIONS ENDPOINTS ====================
+
+class AddWithdrawalOptionRequest(BaseModel):
+    method: str  # 'mpesa' or 'whop'
+    mpesa_phone: str = ""
+
+class VerifyPhoneOTPRequest(BaseModel):
+    phone: str
+    code: str
+
+class SetPrimaryOptionRequest(BaseModel):
+    method: str
+
+class FeePreviewRequest(BaseModel):
+    amount_usd: float = 0
+    method: str = "mpesa"
+
+
+@app.get("/api/withdrawal/options")
+async def get_withdrawal_options(authorization: str = Header(None)):
+    """Get user's configured withdrawal options."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return daraja_payment.get_withdrawal_options(payload["user_id"])
+
+
+@app.post("/api/withdrawal/options/add")
+async def add_withdrawal_option(body: AddWithdrawalOptionRequest, authorization: str = Header(None)):
+    """Add a withdrawal method. M-Pesa triggers OTP; Whop activates immediately with cooldown."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = daraja_payment.add_withdrawal_option(
+        user_id=payload["user_id"],
+        method=body.method,
+        phone=body.mpesa_phone,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed"))
+    return result
+
+
+@app.post("/api/withdrawal/options/verify-phone")
+async def verify_phone_otp(body: VerifyPhoneOTPRequest, authorization: str = Header(None)):
+    """Verify M-Pesa phone with SMS OTP code."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = daraja_payment.verify_phone_otp(
+        user_id=payload["user_id"],
+        phone=body.phone,
+        code=body.code,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed"))
+    return result
+
+
+@app.delete("/api/withdrawal/options/{method}")
+async def remove_withdrawal_option(method: str, authorization: str = Header(None)):
+    """Remove a withdrawal method."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = daraja_payment.remove_withdrawal_option(payload["user_id"], method)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed"))
+    return result
+
+
+@app.put("/api/withdrawal/options/primary")
+async def set_primary_withdrawal_option(body: SetPrimaryOptionRequest, authorization: str = Header(None)):
+    """Set which method to use for automatic weekly withdrawals."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = daraja_payment.set_primary_withdrawal_option(payload["user_id"], body.method)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed"))
+    return result
+
+
+@app.post("/api/withdrawal/fee-preview")
+async def get_withdrawal_fee_preview(body: FeePreviewRequest, authorization: str = Header(None)):
+    """Get fee breakdown for a withdrawal amount and method."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if body.amount_usd <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    result = await daraja_payment.get_withdrawal_fee_preview(body.amount_usd, body.method)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed"))
+    return result
 
 
 # Withdrawal admin endpoints moved to admin_routes.py
+
+
+# ==================== WHOP PAYMENT ENDPOINTS ====================
+
+class WhopCheckoutRequest(BaseModel):
+    transaction_type: str  # 'subscription', 'prediction_purchase', 'balance_topup'
+    plan_id: str = ""
+    prediction_id: int = 0
+    amount_usd: float = 0
+
+
+@app.post("/api/whop/create-checkout")
+async def create_whop_checkout(body: WhopCheckoutRequest, authorization: str = Header(None)):
+    """Create a Whop checkout session for card payments."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_id = payload["user_id"]
+
+    if body.transaction_type == "subscription":
+        plans = subscriptions.get_plans()
+        if not body.plan_id or body.plan_id not in plans:
+            raise HTTPException(status_code=400, detail="Invalid plan")
+        plan = plans[body.plan_id]
+        amount = plan["price"]
+        # Convert KES plans to USD
+        if plan["currency"] == "KES":
+            amount = round(plan["price"] / 130.0, 2)
+        redirect_url = "https://spark-ai-prediction.com/upgrade"
+        result = whop_payment.create_checkout_session(
+            user_id=user_id,
+            transaction_type="subscription",
+            amount_usd=amount,
+            reference_id=body.plan_id,
+            plan_type="one_time",
+            title=plan["name"],
+            redirect_url=redirect_url,
+        )
+
+    elif body.transaction_type == "prediction_purchase":
+        if not body.prediction_id:
+            raise HTTPException(status_code=400, detail="Missing prediction_id")
+        # Get prediction price from DB
+        pred = community.get_prediction(body.prediction_id)
+        if not pred or not pred.get("is_paid"):
+            raise HTTPException(status_code=404, detail="Prediction not found or not paid")
+        result = whop_payment.create_checkout_session(
+            user_id=user_id,
+            transaction_type="prediction_purchase",
+            amount_usd=pred["price_usd"],
+            reference_id=str(body.prediction_id),
+            plan_type="one_time",
+            title=f"Unlock: {pred.get('team_a_name', '')} vs {pred.get('team_b_name', '')}",
+            redirect_url="https://spark-ai-prediction.com/community",
+        )
+
+    elif body.transaction_type == "balance_topup":
+        if body.amount_usd < 2.0:
+            raise HTTPException(status_code=400, detail="Minimum top-up is $2.00")
+        result = whop_payment.create_checkout_session(
+            user_id=user_id,
+            transaction_type="balance_topup",
+            amount_usd=body.amount_usd,
+            reference_id="",
+            plan_type="one_time",
+            title="Account Balance Top-up",
+            redirect_url="https://spark-ai-prediction.com/upgrade",
+        )
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid transaction type")
+
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result.get("error", "Checkout creation failed"))
+
+    return result
+
+
+@app.post("/api/webhook/whop")
+async def handle_whop_webhook(request: Request):
+    """Handle incoming Whop webhook events. Public endpoint, signature-verified."""
+    try:
+        body = await request.body()
+        headers = dict(request.headers)
+
+        # Verify webhook signature
+        print(f"[Whop Webhook] Received webhook, body length: {len(body)}")
+        if not whop_payment.verify_webhook(body, headers):
+            print(f"[Whop Webhook] Signature verification FAILED")
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+        print(f"[Whop Webhook] Signature verified OK")
+
+        event = json.loads(body)
+        # Whop sends event types with underscores (payment_succeeded)
+        # Normalize to underscores so both formats work
+        event_type = event.get("type", "").replace(".", "_")
+        print(f"[Whop Webhook] Received event: {event_type}")
+
+        if event_type == "payment_succeeded":
+            result = whop_payment.process_payment_webhook(event)
+        elif event_type == "payment_failed":
+            result = whop_payment.process_payment_failed(event)
+        else:
+            result = {"success": True, "message": f"Event {event_type} acknowledged"}
+
+        return {"ok": True}
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Whop webhook: {e}")
+        return {"ok": True}  # Always return 200 to prevent retries
+
+
+@app.get("/api/whop/check-payment/{checkout_id}")
+async def check_whop_payment(checkout_id: str, authorization: str = Header(None)):
+    """Check if a Whop payment has been completed (for polling from frontend).
+    Checks our DB first, then queries Whop API directly if still pending."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    status = whop_payment.check_and_fulfill_payment(checkout_id, payload["user_id"])
+    return {"status": status}
+
+
+@app.get("/api/user/referral-earnings")
+async def get_referral_earnings(authorization: str = Header(None)):
+    """Get the authenticated user's referral earnings history."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return whop_payment.get_referral_earnings(payload["user_id"])
+
 
 # ==================== END PAYMENT ENDPOINTS ====================
 
@@ -1543,6 +2118,77 @@ async def update_prediction_result(request: UpdateResultRequest):
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
     return result
+
+@app.post("/api/predictions/refresh-results")
+async def refresh_prediction_results():
+    """Manually trigger result checking for all unfinished predictions."""
+    tracker_info = prediction_tracker.get_unfinished_prediction_info()
+    if not tracker_info["dates"]:
+        return {"message": "No pending predictions", "updated": 0}
+
+    team_keys = tracker_info["team_keys"]
+
+    def is_relevant_team(f):
+        h = f.get("home_team", {}).get("id")
+        a = f.get("away_team", {}).get("id")
+        return f"{h}-{a}" in team_keys
+
+    all_relevant = []  # All matching fixtures (any status)
+    all_finished = []  # Only finished fixtures
+
+    from datetime import timedelta
+    today_dt = datetime.now()
+    today_yyyymmdd = today_dt.strftime("%Y%m%d")
+
+    # Check today's fixtures
+    fixtures = await football_api.fetch_todays_fixtures()
+    if fixtures:
+        for f in fixtures:
+            if is_relevant_team(f):
+                all_relevant.append(f)
+                if f.get("status") in ("FT", "AET", "PEN"):
+                    all_finished.append(f)
+
+    # Check past dates + upcoming days (up to 7 days ahead for scheduled match dates)
+    all_dates_to_check = set()
+    for date_str in tracker_info["dates"]:
+        try:
+            pred_dt = datetime.strptime(date_str, "%Y%m%d")
+            d = pred_dt
+            end_dt = today_dt + timedelta(days=7)
+            while d <= end_dt:
+                all_dates_to_check.add(d.strftime("%Y%m%d"))
+                d += timedelta(days=1)
+        except ValueError:
+            all_dates_to_check.add(date_str)
+    all_dates_to_check.discard(today_yyyymmdd)
+
+    for date_str in sorted(all_dates_to_check):
+        api_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+        date_fixtures = await football_api.fetch_fixtures_by_date(api_date)
+        if date_fixtures:
+            for f in date_fixtures:
+                if is_relevant_team(f):
+                    all_relevant.append(f)
+                    if f.get("status") in ("FT", "AET", "PEN"):
+                        all_finished.append(f)
+
+    # Update match dates for all predictions (using any fixture, finished or not)
+    dates_updated = prediction_tracker.update_match_dates(all_relevant)
+
+    # Resolve finished predictions
+    result = {"updated": 0, "correct": 0, "incorrect": 0}
+    if all_finished:
+        result = prediction_tracker.check_and_update_from_fixtures(all_finished)
+
+    return {
+        "message": f"Updated {result['updated']} results ({result['correct']} correct, {result['incorrect']} incorrect), {dates_updated} match dates set",
+        "updated": result["updated"],
+        "correct": result["correct"],
+        "incorrect": result["incorrect"],
+        "dates_updated": dates_updated,
+    }
+
 
 @app.delete("/api/predictions/clear")
 async def clear_predictions():
@@ -1662,6 +2308,78 @@ async def confirm_predictions(request: ConfirmPredictionsRequest, authorization:
 
 
 # ==================== END TRACK RECORD ENDPOINTS ====================
+
+
+# ==================== COOKIE CONSENT & VISITOR TRACKING ENDPOINTS ====================
+
+class ConsentRequest(BaseModel):
+    session_id: str
+    consent_given: bool
+
+class TrackPageRequest(BaseModel):
+    session_id: str
+    page: str
+    referrer: str = ""
+    user_agent: str = ""
+    device_type: str = ""
+    browser: str = ""
+    os: str = ""
+    session_start: str = ""
+
+class SessionDurationRequest(BaseModel):
+    session_id: str
+    duration_seconds: int
+
+
+@app.post("/api/consent")
+async def record_cookie_consent(body: ConsentRequest, request: Request):
+    """Record user's cookie consent decision."""
+    client_ip = _get_client_ip(request)
+    user_auth.record_consent(
+        session_id=body.session_id,
+        ip_address=client_ip,
+        consent_given=body.consent_given,
+    )
+    return {"ok": True}
+
+
+@app.post("/api/track/page")
+async def track_page_visit(body: TrackPageRequest, request: Request, authorization: str = Header(None)):
+    """Record a page visit (only called when user has consented)."""
+    client_ip = _get_client_ip(request)
+    user_id = None
+    payload = _get_current_user(authorization)
+    if payload:
+        user_id = payload.get("user_id")
+    # Resolve country from geo cache
+    country = None
+    if client_ip in _geo_cache:
+        code, ts = _geo_cache[client_ip]
+        if time.time() - ts < GEO_CACHE_TTL:
+            country = code
+    user_auth.record_page_visit(
+        session_id=body.session_id,
+        ip_address=client_ip,
+        user_agent=body.user_agent,
+        device_type=body.device_type,
+        browser=body.browser,
+        os_name=body.os,
+        page=body.page,
+        referrer=body.referrer,
+        session_start=body.session_start,
+        user_id=user_id,
+        country=country,
+    )
+    return {"ok": True}
+
+
+@app.post("/api/track/duration")
+async def track_session_duration(body: SessionDurationRequest):
+    """Update session duration (called on page unload/visibility change)."""
+    user_auth.update_session_duration(body.session_id, body.duration_seconds)
+    return {"ok": True}
+
+# ==================== END COOKIE CONSENT & TRACKING ENDPOINTS ====================
 
 
 # ==================== COMMUNITY PREDICTIONS ENDPOINTS ====================
@@ -1813,6 +2531,12 @@ async def get_top_predictors():
     return {"predictors": community.get_top_predictors()}
 
 
+@app.get("/api/community/user-stats/{user_id}")
+async def get_user_prediction_stats(user_id: int):
+    """Get win/loss prediction stats for a user (public)."""
+    return community.get_user_prediction_stats(user_id)
+
+
 # --- Reactions (Like/Dislike) ---
 
 class ReactionRequest(BaseModel):
@@ -1953,6 +2677,24 @@ async def get_creator_dashboard(authorization: str = Header(None)):
     return community.get_creator_dashboard(payload["user_id"])
 
 
+# ==================== ANALYTICS TRACKING ====================
+
+class ViewTrackRequest(BaseModel):
+    prediction_ids: List[int]
+
+@app.post("/api/community/track-views")
+async def track_prediction_views(request: ViewTrackRequest):
+    """Track impressions when predictions appear in user's feed."""
+    if not request.prediction_ids or len(request.prediction_ids) > 50:
+        return {"success": False, "error": "Invalid prediction IDs (max 50)"}
+    return community.increment_view_count(request.prediction_ids)
+
+@app.post("/api/community/{prediction_id}/track-click")
+async def track_prediction_click(prediction_id: int):
+    """Track when a user clicks/expands a prediction card."""
+    return community.increment_click_count(prediction_id)
+
+
 # ==================== FOLLOW SYSTEM ====================
 
 @app.post("/api/community/follow/{target_user_id}")
@@ -2091,6 +2833,15 @@ async def mark_notifications_read(authorization: str = Header(None)):
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return community.mark_notifications_read(payload["user_id"])
+
+
+@app.post("/api/user/notifications/{notification_id}/read")
+async def mark_single_notification_read(notification_id: int, authorization: str = Header(None)):
+    """Mark a single notification as read."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return community.mark_single_notification_read(payload["user_id"], notification_id)
 
 
 @app.get("/api/user/earnings")
@@ -2309,7 +3060,7 @@ async def support_send(request: SupportMessageRequest, authorization: str = Head
             history = community.get_support_messages(user_id, mark_read_for=None, limit=50, current_conv_only=True)
             # Don't include the message we just sent in history passed to AI
             history_for_ai = history[:-1] if history else []
-            ai_result = ai_support.get_ai_response(request.content, history_for_ai, category=request.category)
+            ai_result = ai_support.get_ai_response(request.content, history_for_ai, category=request.category, user_id=user_id)
 
             # Save AI response
             community.send_support_message(user_id, "ai", ai_result["response"])
@@ -3398,9 +4149,9 @@ async def analyze_jackpot(request: JackpotAnalyzeRequest, authorization: str = H
     if len(request.matches) < 2:
         raise HTTPException(status_code=400, detail="Select at least 2 matches")
 
-    # Tier-based match limit: free = 5, pro = 30
+    # Tier-based match limit: free = 5, pro/trial = 30
     tier = payload.get("tier", "free")
-    max_matches = 30 if tier == "pro" else 5
+    max_matches = 30 if tier in ("pro", "trial") else 5
     if len(request.matches) > max_matches:
         raise HTTPException(
             status_code=403,
@@ -3410,7 +4161,7 @@ async def analyze_jackpot(request: JackpotAnalyzeRequest, authorization: str = H
     user_id = payload["user_id"]
 
     # Free users: check lock-based limit (unless paid via balance)
-    if tier != "pro" and not request.balance_paid:
+    if tier not in ("pro", "trial") and not request.balance_paid:
         lock_info = jackpot_analyzer.get_jackpot_lock_status(user_id)
         if lock_info["locked"]:
             raise HTTPException(
@@ -3442,7 +4193,7 @@ async def analyze_jackpot(request: JackpotAnalyzeRequest, authorization: str = H
         jackpot_analyzer.complete_session(session_id, results, combinations)
 
         # Record lock for free users (sets 72h cooldown)
-        if tier != "pro" and not request.balance_paid:
+        if tier not in ("pro", "trial") and not request.balance_paid:
             jackpot_analyzer.record_jackpot_session_lock(user_id)
 
         return {
@@ -3494,16 +4245,16 @@ async def get_jackpot_limits(authorization: str = Header(None)):
     """Get jackpot match limits for the current user's tier."""
     payload = _get_current_user(authorization)
     tier = payload.get("tier", "free") if payload else "free"
-    max_matches = 30 if tier == "pro" else 5
+    max_matches = 30 if tier in ("pro", "trial") else 5
     user_id = payload.get("user_id") if payload else None
     ai_chats_used = jackpot_analyzer.get_ai_chat_count(user_id) if user_id else 0
-    max_ai_chats = -1 if tier == "pro" else 10
+    max_ai_chats = -1 if tier in ("pro", "trial") else 10
     bal = community.get_user_balance(user_id) if user_id else {"balance_usd": 0}
 
     # Lock-based session limits for free users
-    if tier == "pro":
+    if tier in ("pro", "trial"):
         sessions_used = 0
-        max_sessions = -1
+        max_sessions = -1 if tier == "pro" else 3
         locked = False
         locked_until = None
     elif user_id:

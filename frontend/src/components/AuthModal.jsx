@@ -1,7 +1,10 @@
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import AuthForm from './AuthForm'
 
 export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
+  const { t } = useTranslation()
+
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 const CHAT_EMOJIS = [
@@ -23,6 +24,7 @@ function EmojiPicker({ onSelect }) {
 }
 
 export default function LiveChatPopup({ matchKey, matchName, onClose }) {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const [messages, setMessages] = useState([])
   const [newMsg, setNewMsg] = useState('')
@@ -102,7 +104,7 @@ export default function LiveChatPopup({ matchKey, matchName, onClose }) {
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           </span>
-          <span>Live Chat</span>
+          <span>{t('community.liveChat')}</span>
           <span className="live-chat-popup-badge">{messages.length}</span>
         </div>
         <div className="live-chat-popup-actions">
@@ -115,7 +117,7 @@ export default function LiveChatPopup({ matchKey, matchName, onClose }) {
           <div className="live-chat-popup-match-name">{matchName}</div>
           <div className="live-chat-popup-messages">
             {messages.length === 0 && (
-              <p className="chat-empty">No messages yet. Start the discussion!</p>
+              <p className="chat-empty">{t('community.noChatMessagesAlt')}</p>
             )}
             {messages.map(m => (
               <div key={m.id} className={`chat-bubble ${m.user_id === user?.id ? 'own' : ''}`}>
@@ -134,7 +136,7 @@ export default function LiveChatPopup({ matchKey, matchName, onClose }) {
             <div ref={chatEndRef} />
           </div>
           <div className="live-chat-popup-input">
-            <button className="emoji-toggle-btn" onClick={() => setShowEmoji(!showEmoji)} type="button" title="Emojis">
+            <button className="emoji-toggle-btn" onClick={() => setShowEmoji(!showEmoji)} type="button" title={t('community.emojis')}>
               {'\u{1F600}'}
             </button>
             {showEmoji && <EmojiPicker onSelect={handleEmojiSelect} />}
@@ -143,7 +145,7 @@ export default function LiveChatPopup({ matchKey, matchName, onClose }) {
               type="text"
               value={newMsg}
               onChange={e => setNewMsg(e.target.value)}
-              placeholder="Discuss this match..."
+              placeholder={t('community.discussMatch')}
               maxLength={500}
               onKeyDown={e => e.key === 'Enter' && handleSend()}
               disabled={sending}

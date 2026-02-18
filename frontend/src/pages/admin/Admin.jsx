@@ -18,6 +18,10 @@ import PredictionsTab from './tabs/PredictionsTab'
 import SalesTab from './tabs/SalesTab'
 import SettingsTab from './tabs/SettingsTab'
 import BroadcastTab from './tabs/BroadcastTab'
+import BotsTab from './tabs/BotsTab'
+import DocsTab from './tabs/DocsTab'
+import CreatorAnalyticsTab from './tabs/CreatorAnalyticsTab'
+import PricingTab from './tabs/PricingTab'
 import './styles/admin.css'
 
 class AdminErrorBoundary extends Component {
@@ -67,6 +71,10 @@ const TAB_COMPONENTS = {
   sales: SalesTab,
   settings: SettingsTab,
   broadcast: BroadcastTab,
+  bots: BotsTab,
+  docs: DocsTab,
+  analytics: CreatorAnalyticsTab,
+  pricing: PricingTab,
 }
 
 function AdminShell() {

@@ -325,6 +325,15 @@ def init_user_db():
         "ALTER TABLE users ADD COLUMN role_id INTEGER REFERENCES roles(id)",
         "ALTER TABLE users ADD COLUMN department TEXT",
         "ALTER TABLE users ADD COLUMN password_expires_at TEXT",
+        "ALTER TABLE users ADD COLUMN is_bot INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN bot_assigned_to INTEGER REFERENCES users(id)",
+        "ALTER TABLE users ADD COLUMN terms_accepted_at TEXT",
+        "ALTER TABLE users ADD COLUMN whop_user_id TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN mpesa_phone TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN suspension_reason TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN suspended_at TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN country TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN has_used_trial INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(col_sql)
@@ -399,6 +408,213 @@ def init_user_db():
 
     conn.commit()
     conn.close()
+
+
+def init_tracking_db():
+    """Create visitor tracking and cookie consent tables."""
+    conn = _get_db()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS visitor_tracking (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            user_id INTEGER REFERENCES users(id),
+            ip_address TEXT,
+            user_agent TEXT,
+            device_type TEXT,
+            browser TEXT,
+            os TEXT,
+            page_visited TEXT,
+            referrer TEXT,
+            visit_timestamp TEXT NOT NULL,
+            session_start TEXT,
+            session_duration_seconds INTEGER DEFAULT 0,
+            consent_given INTEGER DEFAULT 0,
+            country TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_vt_session ON visitor_tracking(session_id);
+        CREATE INDEX IF NOT EXISTS idx_vt_user ON visitor_tracking(user_id);
+        CREATE INDEX IF NOT EXISTS idx_vt_timestamp ON visitor_tracking(visit_timestamp);
+
+        CREATE TABLE IF NOT EXISTS cookie_consents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            user_id INTEGER REFERENCES users(id),
+            ip_address TEXT,
+            consent_given INTEGER NOT NULL,
+            consent_timestamp TEXT NOT NULL,
+            consent_type TEXT DEFAULT 'all'
+        );
+        CREATE INDEX IF NOT EXISTS idx_cc_session ON cookie_consents(session_id);
+    """)
+    conn.commit()
+    conn.close()
+
+
+def record_consent(session_id: str, ip_address: str, consent_given: bool, user_id: int = None):
+    """Record a user's cookie consent decision."""
+    conn = _get_db()
+    conn.execute(
+        """INSERT INTO cookie_consents (session_id, user_id, ip_address, consent_given, consent_timestamp, consent_type)
+           VALUES (?, ?, ?, ?, ?, 'all')""",
+        (session_id, user_id, ip_address, 1 if consent_given else 0, datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+
+def record_page_visit(session_id: str, ip_address: str, user_agent: str, device_type: str,
+                      browser: str, os_name: str, page: str, referrer: str,
+                      session_start: str, user_id: int = None, country: str = None):
+    """Record a page visit for tracking (only called when user consented)."""
+    conn = _get_db()
+    conn.execute(
+        """INSERT INTO visitor_tracking
+           (session_id, user_id, ip_address, user_agent, device_type, browser, os,
+            page_visited, referrer, visit_timestamp, session_start, consent_given, country, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+        (session_id, user_id, ip_address, user_agent, device_type, browser, os_name,
+         page, referrer, datetime.now().isoformat(), session_start, country, datetime.now().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_session_duration(session_id: str, duration_seconds: int):
+    """Update the session duration for the latest entry of a session."""
+    conn = _get_db()
+    conn.execute(
+        """UPDATE visitor_tracking SET session_duration_seconds = ?
+           WHERE session_id = ? AND id = (SELECT MAX(id) FROM visitor_tracking WHERE session_id = ?)""",
+        (duration_seconds, session_id, session_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def _classify_referrer(referrer: str) -> str:
+    """Classify a referrer URL into a traffic source name."""
+    if not referrer:
+        return "Direct"
+    r = referrer.lower()
+    if "google" in r and "youtube" not in r:
+        return "Google"
+    if "youtube" in r or "youtu.be" in r:
+        return "YouTube"
+    if "tiktok" in r:
+        return "TikTok"
+    if "twitter" in r or "x.com" in r or "t.co" in r:
+        return "X (Twitter)"
+    if "facebook" in r or "fb.com" in r:
+        return "Facebook"
+    if "instagram" in r:
+        return "Instagram"
+    if "reddit" in r:
+        return "Reddit"
+    if "linkedin" in r:
+        return "LinkedIn"
+    if "whatsapp" in r:
+        return "WhatsApp"
+    if "telegram" in r or "t.me" in r:
+        return "Telegram"
+    if "bing" in r:
+        return "Bing"
+    if "yahoo" in r:
+        return "Yahoo"
+    return referrer[:60]
+
+
+def get_user_tracking_summary(user_id: int) -> dict:
+    """Get aggregated tracking data for a user from visitor_tracking."""
+    conn = _get_db()
+    latest = conn.execute(
+        """SELECT ip_address, device_type, browser, os, referrer, country, user_agent, visit_timestamp
+           FROM visitor_tracking WHERE user_id = ? ORDER BY visit_timestamp DESC LIMIT 1""",
+        (user_id,)
+    ).fetchone()
+    first = conn.execute(
+        """SELECT referrer, ip_address, device_type, browser, os, country, visit_timestamp
+           FROM visitor_tracking WHERE user_id = ? ORDER BY visit_timestamp ASC LIMIT 1""",
+        (user_id,)
+    ).fetchone()
+    consent = conn.execute(
+        """SELECT consent_given FROM cookie_consents WHERE user_id = ? ORDER BY consent_timestamp DESC LIMIT 1""",
+        (user_id,)
+    ).fetchone()
+    sessions = conn.execute(
+        "SELECT COUNT(DISTINCT session_id) as cnt FROM visitor_tracking WHERE user_id = ?",
+        (user_id,)
+    ).fetchone()
+    pageviews = conn.execute(
+        "SELECT COUNT(*) as cnt FROM visitor_tracking WHERE user_id = ?",
+        (user_id,)
+    ).fetchone()
+    conn.close()
+
+    result = {
+        "has_tracking": latest is not None,
+        "total_sessions": sessions["cnt"] if sessions else 0,
+        "total_pageviews": pageviews["cnt"] if pageviews else 0,
+        "cookie_consent": bool(consent["consent_given"]) if consent else None,
+    }
+    if latest:
+        result["latest"] = {
+            "ip_address": latest["ip_address"],
+            "device_type": latest["device_type"],
+            "browser": latest["browser"],
+            "os": latest["os"],
+            "country_ip": latest["country"],
+            "last_seen": latest["visit_timestamp"],
+        }
+    if first:
+        result["first_visit"] = {
+            "referrer": first["referrer"],
+            "source": _classify_referrer(first["referrer"]),
+            "device_type": first["device_type"],
+            "browser": first["browser"],
+            "os": first["os"],
+            "country_ip": first["country"],
+            "timestamp": first["visit_timestamp"],
+        }
+    return result
+
+
+def get_all_users_tracking_summary() -> dict:
+    """Get tracking summary for all users (for admin users list). Returns dict keyed by user_id."""
+    conn = _get_db()
+    rows = conn.execute("""
+        SELECT vt.user_id, vt.ip_address, vt.device_type, vt.browser, vt.os, vt.referrer, vt.country
+        FROM visitor_tracking vt
+        INNER JOIN (
+            SELECT user_id, MAX(visit_timestamp) as max_ts
+            FROM visitor_tracking WHERE user_id IS NOT NULL
+            GROUP BY user_id
+        ) latest ON vt.user_id = latest.user_id AND vt.visit_timestamp = latest.max_ts
+    """).fetchall()
+    first_rows = conn.execute("""
+        SELECT vt.user_id, vt.referrer
+        FROM visitor_tracking vt
+        INNER JOIN (
+            SELECT user_id, MIN(visit_timestamp) as min_ts
+            FROM visitor_tracking WHERE user_id IS NOT NULL
+            GROUP BY user_id
+        ) first ON vt.user_id = first.user_id AND vt.visit_timestamp = first.min_ts
+    """).fetchall()
+    conn.close()
+
+    first_ref = {r["user_id"]: r["referrer"] for r in first_rows}
+    result = {}
+    for r in rows:
+        uid = r["user_id"]
+        result[uid] = {
+            "country_ip": r["country"],
+            "ip_address": r["ip_address"],
+            "browser": r["browser"],
+            "os": r["os"],
+            "device_type": r["device_type"],
+            "source": _classify_referrer(first_ref.get(uid, "")),
+        }
+    return result
 
 
 def init_employee_tables():
@@ -682,7 +898,7 @@ def _get_zoho_access_token() -> str:
         return ""
 
 
-def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email: str = "") -> bool:
+def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email: str = "", sender_name: str = "Spark AI") -> bool:
     """Send an email via Zoho Mail API (HTTPS). Bypasses SMTP port blocking."""
     account_id = os.environ.get("ZOHO_ACCOUNT_ID", "")
     if not from_email:
@@ -699,6 +915,7 @@ def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email:
     try:
         payload = _json.dumps({
             "fromAddress": from_email,
+            "sender": sender_name,
             "toAddress": to_email,
             "subject": subject,
             "content": html_content,
@@ -905,7 +1122,7 @@ def send_first_prediction_email(to_email: str, display_name: str = "") -> bool:
     return _send_zoho_email(to_email, "Your first prediction of the day! - Spark AI", html_body)
 
 
-def send_notification_email(to_email: str, display_name: str, notif_type: str, title: str, message: str, metadata: dict = None) -> bool:
+def send_notification_email(to_email: str, display_name: str, notif_type: str, title: str, message: str, metadata: dict = None, from_email: str = "") -> bool:
     """Send an email notification for important events. Returns True on success."""
     greeting = display_name or "there"
     meta = metadata or {}
@@ -918,6 +1135,13 @@ def send_notification_email(to_email: str, display_name: str, notif_type: str, t
         "rating":              {"icon": "&#11088;",  "color": "#f97316", "label": "New Rating"},
         "withdrawal":          {"icon": "&#128176;", "color": "#f59e0b", "label": "Withdrawal"},
         "referral_subscription": {"icon": "&#129309;", "color": "#3b82f6", "label": "Referral"},
+        "prediction_sale":     {"icon": "&#127881;", "color": "#22c55e", "label": "Sale"},
+        "referral_commission": {"icon": "&#128176;", "color": "#22c55e", "label": "Commission"},
+        "prediction_result":   {"icon": "&#9989;", "color": "#22c55e", "label": "Result"},
+        "withdrawal_method_added":   {"icon": "&#128179;", "color": "#22c55e", "label": "Payment Method"},
+        "withdrawal_method_removed": {"icon": "&#128179;", "color": "#f97316", "label": "Payment Method"},
+        "withdrawal_completed":      {"icon": "&#128176;", "color": "#22c55e", "label": "Payout"},
+        "withdrawal_failed":         {"icon": "&#128176;", "color": "#ef4444", "label": "Payout"},
     }
     style = type_styles.get(notif_type, {"icon": "&#128276;", "color": "#3b82f6", "label": "Notification"})
 
@@ -951,13 +1175,314 @@ def send_notification_email(to_email: str, display_name: str, notif_type: str, t
     """
 
     subject = f"{title} - Spark AI"
-    return _send_zoho_email(to_email, subject, html_body)
+    return _send_zoho_email(to_email, subject, html_body, from_email=from_email)
 
 
 def _hex_to_rgb(hex_color: str) -> str:
     """Convert hex color like '#6c5ce7' to '108,92,231' for CSS rgba()."""
     h = hex_color.lstrip("#")
     return ",".join(str(int(h[i:i+2], 16)) for i in (0, 2, 4))
+
+
+# ==================== INVOICE EMAIL ====================
+
+def send_invoice_email(
+    to_email: str,
+    display_name: str,
+    invoice_number: str,
+    transaction_type: str,
+    amount_kes: float = 0,
+    amount_usd: float = 0,
+    exchange_rate: float = 0,
+    payment_method: str = "M-Pesa",
+    receipt_number: str = "",
+    reference_id: str = "",
+    completed_at: str = "",
+) -> bool:
+    """Send a professional invoice/receipt email after successful payment."""
+    greeting = display_name or "there"
+    now = completed_at or datetime.now().isoformat()
+    try:
+        date_str = datetime.fromisoformat(now.replace("Z", "+00:00")).strftime("%B %d, %Y at %I:%M %p")
+    except Exception:
+        date_str = now[:19]
+
+    # Determine description based on transaction type
+    type_labels = {
+        "subscription": "Pro Subscription",
+        "prediction_purchase": "Prediction Purchase",
+        "balance_topup": "Balance Top-Up",
+    }
+    description = type_labels.get(transaction_type, transaction_type.replace("_", " ").title())
+
+    # Plan detail for subscriptions
+    plan_detail = ""
+    if transaction_type == "subscription" and reference_id:
+        plan_map = {
+            "weekly_usd": "Pro Weekly (USD)",
+            "weekly_kes": "Pro Weekly (KES)",
+            "monthly_usd": "Pro Monthly (USD)",
+            "monthly_kes": "Pro Monthly (KES)",
+        }
+        plan_detail = plan_map.get(reference_id, reference_id.replace("_", " ").title())
+
+    # Build amount display
+    amount_display = ""
+    if amount_kes and amount_usd:
+        amount_display = f"KES {amount_kes:,.0f} (~${amount_usd:,.2f})"
+    elif amount_kes:
+        amount_display = f"KES {amount_kes:,.0f}"
+    elif amount_usd:
+        amount_display = f"${amount_usd:,.2f}"
+
+    # Build line items
+    line_items_html = f"""
+        <tr>
+            <td style="padding: 12px 0; color: #e2e8f0; border-bottom: 1px solid #1e293b;">
+                {description}{f'<br><span style="color:#64748b;font-size:12px;">{plan_detail}</span>' if plan_detail else ''}
+            </td>
+            <td style="padding: 12px 0; color: #e2e8f0; text-align: right; border-bottom: 1px solid #1e293b; font-weight: bold;">
+                {amount_display}
+            </td>
+        </tr>
+    """
+
+    # Exchange rate row
+    exchange_row = ""
+    if exchange_rate and amount_kes and amount_usd:
+        exchange_row = f"""
+        <tr>
+            <td style="padding: 8px 0; color: #64748b; font-size: 12px;">Exchange Rate</td>
+            <td style="padding: 8px 0; color: #64748b; font-size: 12px; text-align: right;">1 USD = KES {exchange_rate:,.2f}</td>
+        </tr>"""
+
+    # Receipt/reference details
+    details_rows = ""
+    if receipt_number:
+        details_rows += f"""
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Receipt No.</td>
+            <td style="padding: 6px 0; color: #94a3b8; font-size: 13px; text-align: right; font-family: monospace;">{receipt_number}</td>
+        </tr>"""
+    details_rows += f"""
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Payment Method</td>
+            <td style="padding: 6px 0; color: #94a3b8; font-size: 13px; text-align: right;">{payment_method}</td>
+        </tr>
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Date</td>
+            <td style="padding: 6px 0; color: #94a3b8; font-size: 13px; text-align: right;">{date_str}</td>
+        </tr>
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Invoice No.</td>
+            <td style="padding: 6px 0; color: #94a3b8; font-size: 13px; text-align: right; font-family: monospace;">{invoice_number}</td>
+        </tr>"""
+
+    logo_url = "https://www.spark-ai-prediction.com/logo.png"
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto;
+                background: #0f172a; color: #f1f5f9; border-radius: 16px; overflow: hidden;">
+        <!-- Header with logo -->
+        <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                    padding: 32px 40px 24px; text-align: center; border-bottom: 1px solid #1e293b;">
+            <img src="{logo_url}" alt="Spark AI" width="60" height="60"
+                 style="border-radius: 12px; margin-bottom: 12px;" />
+            <h1 style="color: #f1f5f9; margin: 0; font-size: 22px;">Payment Receipt</h1>
+            <p style="color: #64748b; margin: 6px 0 0; font-size: 13px;">Invoice #{invoice_number}</p>
+        </div>
+
+        <div style="padding: 32px 40px;">
+            <!-- Greeting -->
+            <p style="color: #94a3b8; margin: 0 0 20px;">Hey {greeting},</p>
+            <p style="color: #94a3b8; margin: 0 0 24px;">
+                Thank you for your payment! Here's your receipt for this transaction.
+            </p>
+
+            <!-- Amount highlight -->
+            <div style="background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.25);
+                        border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+                <p style="color: #64748b; margin: 0 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Amount Paid</p>
+                <p style="color: #22c55e; margin: 0; font-size: 28px; font-weight: bold;">{amount_display}</p>
+                <p style="color: #22c55e; margin: 4px 0 0; font-size: 13px;">&#10003; Payment Successful</p>
+            </div>
+
+            <!-- Line items table -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                <tr>
+                    <th style="text-align: left; color: #64748b; font-size: 11px; text-transform: uppercase;
+                               letter-spacing: 1px; padding-bottom: 8px; border-bottom: 2px solid #1e293b;">Description</th>
+                    <th style="text-align: right; color: #64748b; font-size: 11px; text-transform: uppercase;
+                               letter-spacing: 1px; padding-bottom: 8px; border-bottom: 2px solid #1e293b;">Amount</th>
+                </tr>
+                {line_items_html}
+                {exchange_row}
+                <tr>
+                    <td style="padding: 12px 0; color: #f1f5f9; font-weight: bold; font-size: 15px;">Total</td>
+                    <td style="padding: 12px 0; color: #22c55e; font-weight: bold; font-size: 15px; text-align: right;">{amount_display}</td>
+                </tr>
+            </table>
+
+            <!-- Transaction details -->
+            <div style="background: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    {details_rows}
+                </table>
+            </div>
+
+            <!-- CTA -->
+            <div style="text-align: center; margin: 28px 0;">
+                <a href="https://www.spark-ai-prediction.com/transactions"
+                   style="display: inline-block; background: #3b82f6; color: #ffffff;
+                          text-decoration: none; padding: 14px 32px; border-radius: 8px;
+                          font-weight: bold; font-size: 15px;">
+                    View Transaction History
+                </a>
+            </div>
+
+            <!-- Footer -->
+            <div style="border-top: 1px solid #1e293b; padding-top: 20px; text-align: center;">
+                <p style="color: #475569; font-size: 12px; margin: 0 0 4px;">
+                    Spark AI Prediction &mdash; AI-Powered Football Predictions
+                </p>
+                <p style="color: #475569; font-size: 11px; margin: 0;">
+                    Questions? Contact <a href="mailto:support@sparkaipredict.com" style="color: #60a5fa; text-decoration: none;">support@sparkaipredict.com</a>
+                </p>
+            </div>
+        </div>
+    </div>
+    """
+
+    subject = f"Payment Receipt #{invoice_number} - Spark AI"
+    payment_email = os.environ.get("ZOHO_PAYMENT_EMAIL", "")
+    return _send_zoho_email(to_email, subject, html_body, from_email=payment_email)
+
+
+# ==================== SUSPENSION EMAIL ====================
+
+SUSPENSION_REASONS = {
+    "community_guidelines": {
+        "label": "Community Guidelines Violation",
+        "description": "Your account was found to be in violation of our community guidelines, including harassment, threats, or abusive behavior toward other users.",
+        "tos_ref": "Sections 5 (User Responsibilities) and 6 (Prohibited Activities)",
+    },
+    "fraudulent_activity": {
+        "label": "Fraudulent Activity",
+        "description": "Your account was involved in fraudulent activity, including posting misleading or fraudulent predictions, or manipulating community metrics.",
+        "tos_ref": "Section 6 (Prohibited Activities)",
+    },
+    "spam_misleading": {
+        "label": "Spam or Misleading Content",
+        "description": "Your account was found to be posting spam, misleading content, or false information on the platform.",
+        "tos_ref": "Section 6 (Prohibited Activities)",
+    },
+    "multiple_accounts": {
+        "label": "Multiple Accounts",
+        "description": "Your account was found to be one of multiple accounts operated by the same person, which violates our one-account-per-person policy.",
+        "tos_ref": "Sections 2 (Account Registration) and 6 (Prohibited Activities)",
+    },
+    "payment_abuse": {
+        "label": "Payment/Earnings Abuse",
+        "description": "Your account was involved in abuse of the referral, earnings, or payment system.",
+        "tos_ref": "Section 6 (Prohibited Activities)",
+    },
+    "unauthorized_access": {
+        "label": "Unauthorized Access Attempt",
+        "description": "Your account was involved in attempting to access other users' accounts, scraping data, or exploiting platform vulnerabilities.",
+        "tos_ref": "Section 6 (Prohibited Activities)",
+    },
+    "prohibited_content": {
+        "label": "Prohibited Content",
+        "description": "Your account was found to be promoting illegal services, sharing premium content without authorization, or posting prohibited material.",
+        "tos_ref": "Section 6 (Prohibited Activities)",
+    },
+    "other": {
+        "label": "Terms of Service Violation",
+        "description": "Your account was suspended for violating our Terms of Service.",
+        "tos_ref": "Section 7 (Account Termination)",
+    },
+}
+
+
+def send_suspension_email(to_email: str, display_name: str, reason_key: str, custom_note: str = "") -> bool:
+    """Send a suspension notification email to the user. Returns True on success."""
+    greeting = display_name or "there"
+    reason = SUSPENSION_REASONS.get(reason_key, SUSPENSION_REASONS["other"])
+
+    note_section = ""
+    if custom_note:
+        note_section = f"""
+        <div style="background: rgba(148,163,184,0.1); border: 1px solid rgba(148,163,184,0.2);
+                    border-radius: 8px; padding: 14px; margin: 16px 0;">
+            <p style="color: #94a3b8; margin: 0; font-size: 13px; font-weight: 600;">Additional Note from Admin:</p>
+            <p style="color: #cbd5e1; margin: 8px 0 0; font-size: 14px;">{custom_note}</p>
+        </div>
+        """
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto;
+                background: #0f172a; color: #f1f5f9; padding: 40px; border-radius: 16px;">
+
+        <div style="text-align: center; margin-bottom: 24px;">
+            <span style="font-size: 48px;">&#9888;</span>
+            <h1 style="color: #ef4444; margin: 8px 0; font-size: 22px;">Your Account Has Been Suspended</h1>
+        </div>
+
+        <p style="color: #94a3b8;">Hey {greeting},</p>
+        <p style="color: #94a3b8; font-size: 14px;">
+            We're writing to inform you that your Spark AI Prediction account has been suspended
+            due to the following reason:
+        </p>
+
+        <div style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+                    border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="color: #ef4444; margin: 0 0 8px; font-size: 16px; font-weight: bold;">
+                {reason['label']}
+            </p>
+            <p style="color: #fca5a5; margin: 0; font-size: 14px;">
+                {reason['description']}
+            </p>
+            <p style="color: #94a3b8; margin: 8px 0 0; font-size: 12px;">
+                Reference: Terms of Service — {reason['tos_ref']}
+            </p>
+        </div>
+
+        {note_section}
+
+        <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2);
+                    border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="color: #f59e0b; margin: 0 0 8px; font-size: 14px; font-weight: bold;">
+                What This Means:
+            </p>
+            <ul style="color: #cbd5e1; margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.8;">
+                <li>All access to the Service has been revoked immediately</li>
+                <li>You are not entitled to any refund or credit for unused subscription periods</li>
+                <li>Any pending earnings, payouts, or creator revenue have been forfeited</li>
+                <li>Your predictions have been hidden from the marketplace</li>
+                <li>Purchases of your predictions have been refunded to the buyers</li>
+            </ul>
+        </div>
+
+        <div style="background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2);
+                    border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="color: #60a5fa; margin: 0 0 8px; font-size: 14px; font-weight: bold;">
+                Appeal Process
+            </p>
+            <p style="color: #94a3b8; margin: 0; font-size: 13px;">
+                If you believe this suspension was made in error, you may submit an appeal by contacting us at
+                <a href="mailto:support@sparkaipredict.com" style="color: #60a5fa; text-decoration: underline;">support@sparkaipredict.com</a>
+                or through the in-app support chat. Appeals are reviewed at our discretion.
+            </p>
+        </div>
+
+        <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 28px;">
+            This email was sent by Spark AI Prediction. Please do not reply to this email.
+        </p>
+    </div>
+    """
+
+    subject = "Account Suspended - Spark AI Prediction"
+    return _send_zoho_email(to_email, subject, html_body)
 
 
 def get_user_email_by_id(user_id: int) -> dict:
@@ -1146,7 +1671,7 @@ AVATAR_COLORS = [
 ]
 
 
-def google_login(google_token: str, referral_code: str = "", captcha_token: str = "", client_ip: str = "") -> Dict:
+def google_login(google_token: str, referral_code: str = "", captcha_token: str = "", client_ip: str = "", terms_accepted: bool = False) -> Dict:
     """Authenticate via Google OAuth. Creates account if new, logs in if existing."""
     # Verify the Google ID token
     try:
@@ -1176,7 +1701,7 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
         # Existing user - log them in
         if not existing["is_active"]:
             conn.close()
-            return {"success": False, "error": "Account has been suspended"}
+            return {"success": False, "error": "Account has been suspended. Please check your email for details.", "suspended": True}
 
         now = datetime.now().isoformat()
         # Auto-verify if logging in with Google, update IP
@@ -1210,12 +1735,18 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
                 "is_admin": bool(existing["is_admin"]),
                 "created_at": existing["created_at"],
                 "profile_complete": bool(existing["security_question"] and existing["security_answer_hash"]),
+                "terms_accepted": bool(existing["terms_accepted_at"]),
                 "staff_role": existing["staff_role"],
                 "role_id": existing["role_id"],
                 "department": existing["department"],
             },
         }
     else:
+        # New user via Google - require terms acceptance
+        if not terms_accepted:
+            conn.close()
+            return {"success": False, "error": "You must accept the Terms of Service to create an account."}
+
         # New user via Google - require CAPTCHA
         if not verify_hcaptcha(captcha_token):
             conn.close()
@@ -1242,9 +1773,9 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
 
         conn.execute(
             """INSERT INTO users (email, password_hash, display_name, username, avatar_color,
-               referral_code, referred_by, created_at, email_verified, full_name)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
-            (email, password_hash, display_name, username, avatar_color, ref_code, referred_by, now, google_full_name),
+               referral_code, referred_by, created_at, email_verified, full_name, terms_accepted_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+            (email, password_hash, display_name, username, avatar_color, ref_code, referred_by, now, google_full_name, now),
         )
         conn.commit()
 
@@ -1270,6 +1801,7 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
                 "is_admin": bool(user["is_admin"]),
                 "created_at": user["created_at"],
                 "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+                "terms_accepted": bool(user["terms_accepted_at"]),
                 "staff_role": user["staff_role"],
                 "role_id": user["role_id"],
                 "department": user["department"],
@@ -1435,7 +1967,7 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
 
     if not user["is_active"]:
         conn.close()
-        return {"success": False, "error": "Account has been suspended"}
+        return {"success": False, "error": "Account has been suspended. Please check your email for details.", "suspended": True}
 
     if not _verify_password(password, user["password_hash"]):
         conn.close()
@@ -1510,6 +2042,7 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
             "is_admin": bool(user["is_admin"]),
             "created_at": user["created_at"],
             "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+            "terms_accepted": bool(user["terms_accepted_at"]),
             "staff_role": user["staff_role"],
             "role_id": user["role_id"],
             "department": user["department"],
@@ -1584,6 +2117,7 @@ def verify_email(email: str, code: str) -> Dict:
             "is_admin": bool(user["is_admin"]),
             "created_at": user["created_at"],
             "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+            "terms_accepted": bool(user["terms_accepted_at"]),
             "staff_role": user["staff_role"],
             "role_id": user["role_id"],
             "department": user["department"],
@@ -1657,13 +2191,30 @@ def get_user_profile(user_id: int) -> Optional[Dict]:
         "security_question": user["security_question"],
         "has_security_answer": bool(user["security_answer_hash"]),
         "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+        "terms_accepted": bool(user["terms_accepted_at"]),
         "staff_role": user["staff_role"],
         "role_id": user["role_id"],
         "department": user["department"],
+        "whop_user_id": user["whop_user_id"] if "whop_user_id" in user.keys() else None,
+        "mpesa_phone": user["mpesa_phone"] if "mpesa_phone" in user.keys() else None,
         "sensitive_actions_restricted": not sensitive_check["allowed"],
         "sensitive_actions_message": sensitive_check.get("message", ""),
         "sensitive_actions_remaining_seconds": sensitive_check.get("remaining_seconds", 0),
     }
+
+
+def accept_terms(user_id: int) -> Dict:
+    """Record that a user has accepted the Terms of Service."""
+    conn = _get_db()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "User not found"}
+    now = datetime.now().isoformat()
+    conn.execute("UPDATE users SET terms_accepted_at = ? WHERE id = ?", (now, user_id))
+    conn.commit()
+    conn.close()
+    return {"success": True, "terms_accepted_at": now}
 
 
 def get_public_profile(username: str) -> Optional[Dict]:
@@ -1683,6 +2234,23 @@ def get_public_profile(username: str) -> Optional[Dict]:
         "referral_code": user["referral_code"],
         "created_at": user["created_at"],
     }
+
+
+def update_mpesa_phone(user_id: int, phone: str) -> Dict:
+    """Save/update user's M-Pesa phone number. Normalizes to 254XXXXXXXXX format."""
+    phone = phone.strip().replace(" ", "").replace("-", "")
+    # Normalize: +254... → 254..., 07... → 2547..., 01... → 2541...
+    if phone.startswith("+"):
+        phone = phone[1:]
+    if phone.startswith("0") and len(phone) == 10:
+        phone = "254" + phone[1:]
+    if not phone.startswith("254") or len(phone) != 12 or not phone.isdigit():
+        return {"success": False, "error": "Invalid phone. Use format: 254XXXXXXXXX or 07XXXXXXXX"}
+    conn = _get_db()
+    conn.execute("UPDATE users SET mpesa_phone = ? WHERE id = ?", (phone, user_id))
+    conn.commit()
+    conn.close()
+    return {"success": True, "mpesa_phone": phone}
 
 
 def update_avatar_url(user_id: int, avatar_url: str) -> Dict:
@@ -1763,6 +2331,7 @@ def list_all_users() -> List[Dict]:
         "created_at": r["created_at"],
         "last_login": r["last_login"],
         "login_count": r["login_count"],
+        "country": r["country"],
     } for r in rows]
 
 
@@ -1784,10 +2353,14 @@ def admin_reset_password(user_id: int, new_password: str) -> Dict:
     return {"success": True, "message": f"Password reset for {user['email']}"}
 
 
-def toggle_user_active(user_id: int, is_active: bool) -> bool:
+def toggle_user_active(user_id: int, is_active: bool, reason: str = None) -> bool:
     """Activate or deactivate a user (admin only)."""
     conn = _get_db()
-    conn.execute("UPDATE users SET is_active = ? WHERE id = ?", (1 if is_active else 0, user_id))
+    if is_active:
+        conn.execute("UPDATE users SET is_active = 1, suspension_reason = NULL, suspended_at = NULL WHERE id = ?", (user_id,))
+    else:
+        now = datetime.now().isoformat()
+        conn.execute("UPDATE users SET is_active = 0, suspension_reason = ?, suspended_at = ? WHERE id = ?", (reason, now, user_id))
     conn.commit()
     conn.close()
     return True
@@ -1811,9 +2384,25 @@ def get_user_tier_and_status(user_id: int) -> Optional[Dict]:
     return {"tier": row["tier"], "is_active": bool(row["is_active"])}
 
 
+def has_used_trial(user_id: int) -> bool:
+    """Check if user has already used their free trial."""
+    conn = _get_db()
+    row = conn.execute("SELECT has_used_trial FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return bool(row and row["has_used_trial"])
+
+
+def mark_trial_used(user_id: int):
+    """Mark that a user has used their free trial."""
+    conn = _get_db()
+    conn.execute("UPDATE users SET has_used_trial = 1 WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
 def set_user_tier(user_id: int, tier: str) -> bool:
-    """Set user tier: 'free' or 'pro' (admin only)."""
-    if tier not in ("free", "pro"):
+    """Set user tier: 'free', 'pro', or 'trial' (admin only)."""
+    if tier not in ("free", "pro", "trial"):
         return False
     conn = _get_db()
     conn.execute("UPDATE users SET tier = ? WHERE id = ?", (tier, user_id))
@@ -1849,7 +2438,8 @@ def get_user_stats() -> Dict:
 # --- Personal Info & Account Deletion ---
 
 def update_personal_info(user_id: int, full_name: str = None, date_of_birth: str = None,
-                         security_question: str = None, security_answer: str = None) -> Dict:
+                         security_question: str = None, security_answer: str = None,
+                         country: str = None) -> Dict:
     """Update user's personal information fields."""
     conn = _get_db()
     user = conn.execute("SELECT id, security_question FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -1894,6 +2484,10 @@ def update_personal_info(user_id: int, full_name: str = None, date_of_birth: str
         else:
             updates.append("security_answer_hash = ?")
             params.append(None)
+
+    if country is not None:
+        updates.append("country = ?")
+        params.append(country.strip() or None)
 
     if not updates:
         conn.close()

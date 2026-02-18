@@ -15,6 +15,7 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
   const sub = userProfile.subscription
   const wallet = userProfile.wallet
   const userBalance = userProfile.user_balance
+  const tracking = userProfile.tracking
   const balanceAdjustments = userProfile.balance_adjustments || []
   const transactions = userProfile.transactions || []
   const withdrawals = userProfile.withdrawals || []
@@ -89,6 +90,42 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
             <div className="user-detail-row"><span>Security Question</span><strong>{userProfile.security_question ? 'Set' : 'Not set'}</strong></div>
           </div>
         </div>
+
+        {/* Device & Analytics */}
+        {tracking && tracking.has_tracking && (
+          <div className="user-detail-section">
+            <h4>Device & Analytics</h4>
+            <div className="user-detail-grid">
+              <div className="user-detail-row"><span>Country (IP)</span><strong>{tracking.latest?.country_ip || 'Unknown'}</strong></div>
+              <div className="user-detail-row"><span>Country (Profile)</span><strong>{userProfile.country || 'Not set'}</strong></div>
+              <div className="user-detail-row">
+                <span>Cookie Consent</span>
+                <strong className={tracking.cookie_consent ? 'text-green' : 'text-red'}>
+                  {tracking.cookie_consent === true ? 'Accepted' : tracking.cookie_consent === false ? 'Declined' : 'Unknown'}
+                </strong>
+              </div>
+              <div className="user-detail-row">
+                <span>Device Type</span>
+                <strong>{tracking.latest?.device_type === 'mobile' ? 'Phone' : tracking.latest?.device_type === 'tablet' ? 'Tablet' : tracking.latest?.device_type === 'desktop' ? 'Desktop' : '-'}</strong>
+              </div>
+              <div className="user-detail-row"><span>Browser</span><strong>{tracking.latest?.browser || '-'}</strong></div>
+              <div className="user-detail-row"><span>Operating System</span><strong>{tracking.latest?.os || '-'}</strong></div>
+              <div className="user-detail-row"><span>Traffic Source</span><strong>{tracking.first_visit?.source || 'Direct'}</strong></div>
+              {tracking.first_visit?.referrer && (
+                <div className="user-detail-row"><span>Original Referrer</span><strong className="tracking-referrer">{tracking.first_visit.referrer}</strong></div>
+              )}
+              <div className="user-detail-row"><span>IP Address</span><strong>{tracking.latest?.ip_address || '-'}</strong></div>
+              <div className="user-detail-row"><span>Total Sessions</span><strong>{tracking.total_sessions}</strong></div>
+              <div className="user-detail-row"><span>Total Page Views</span><strong>{tracking.total_pageviews}</strong></div>
+              {tracking.first_visit?.timestamp && (
+                <div className="user-detail-row"><span>First Visit</span><strong>{new Date(tracking.first_visit.timestamp).toLocaleDateString()}</strong></div>
+              )}
+              {tracking.latest?.last_seen && (
+                <div className="user-detail-row"><span>Last Seen</span><strong>{new Date(tracking.latest.last_seen).toLocaleString()}</strong></div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Account Balance */}
         <div className="user-detail-section">

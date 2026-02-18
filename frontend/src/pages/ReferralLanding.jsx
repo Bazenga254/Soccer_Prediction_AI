@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 export default function ReferralLanding() {
+  const { t } = useTranslation()
   const { username } = useParams()
   const navigate = useNavigate()
   const [referrer, setReferrer] = useState(null)
@@ -35,7 +37,7 @@ export default function ReferralLanding() {
         <div className="access-gate-container">
           <div className="access-gate-header">
             <div className="gate-logo"><span className="gate-icon">&#9917;</span></div>
-            <h1>Loading...</h1>
+            <h1>{t('common.loading')}</h1>
           </div>
         </div>
       </div>
@@ -47,8 +49,8 @@ export default function ReferralLanding() {
       <div className="access-gate-container">
         <div className="access-gate-header">
           <div className="gate-logo"><span className="gate-icon">&#9917;</span></div>
-          <h1>Spark AI Prediction</h1>
-          <p className="gate-subtitle">Smart Match Analysis & Predictions</p>
+          <h1>{t('auth.sparkAIPrediction')}</h1>
+          <p className="gate-subtitle">{t('auth.smartAnalysis')}</p>
         </div>
 
         {referrer ? (
@@ -63,14 +65,14 @@ export default function ReferralLanding() {
               )}
             </div>
             <p className="referral-landing-text">
-              <strong>{referrer.display_name}</strong> invited you to join Spark AI Prediction!
+              {t('referral.invitedToJoin', { name: referrer.display_name })}
             </p>
-            <p className="referral-landing-sub">Redirecting to sign up...</p>
+            <p className="referral-landing-sub">{t('referral.redirectingSignup')}</p>
           </div>
         ) : (
           <div className="referral-landing-card">
-            <p className="referral-landing-text">Invalid referral link</p>
-            <p className="referral-landing-sub">Redirecting to home...</p>
+            <p className="referral-landing-text">{t('referral.invalidReferralLink')}</p>
+            <p className="referral-landing-sub">{t('referral.redirectingHome')}</p>
           </div>
         )}
       </div>

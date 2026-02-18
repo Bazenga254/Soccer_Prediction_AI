@@ -9,6 +9,7 @@ import asyncio
 import time
 from datetime import datetime
 from typing import Optional, Dict, List
+import pricing_config
 
 DB_PATH = "community.db"
 
@@ -26,7 +27,7 @@ _active_users: Dict[int, tuple] = {}
 ACTIVE_TIMEOUT = 300  # 5 minutes
 
 
-def _send_notif_email(user_id: int, notif_type: str, title: str, message: str, metadata: dict = None):
+def _send_notif_email(user_id: int, notif_type: str, title: str, message: str, metadata: dict = None, from_email: str = ""):
     """Send an email notification for important events. Runs in background thread to avoid blocking."""
     import threading
 
@@ -42,6 +43,7 @@ def _send_notif_email(user_id: int, notif_type: str, title: str, message: str, m
                     title=title,
                     message=message,
                     metadata=metadata,
+                    from_email=from_email,
                 )
         except Exception as e:
             print(f"[WARN] Failed to send notification email to user {user_id}: {e}")
@@ -92,6 +94,12 @@ def cleanup_inactive_users():
     stale = [uid for uid, (ts, *_) in _active_users.items() if ts < cutoff]
     for uid in stale:
         del _active_users[uid]
+
+
+def remove_active_users(user_ids: list):
+    """Immediately remove specific users from active tracking (for bot deactivation)."""
+    for uid in user_ids:
+        _active_users.pop(uid, None)
 
 
 def get_notification_signal(user_id: int) -> int:
@@ -156,7 +164,7 @@ def _signal_support(user_id: int, msg_id: int):
 
 
 def _get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
@@ -431,6 +439,8 @@ def init_community_db():
         "ALTER TABLE support_messages ADD COLUMN conversation_id INTEGER DEFAULT NULL",
         "ALTER TABLE community_predictions ADD COLUMN competition_code TEXT DEFAULT ''",
         "ALTER TABLE community_predictions ADD COLUMN is_live_bet INTEGER DEFAULT 0",
+        "ALTER TABLE community_predictions ADD COLUMN view_count INTEGER DEFAULT 0",
+        "ALTER TABLE community_predictions ADD COLUMN click_count INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(col_sql)
@@ -508,6 +518,43 @@ def create_withdrawal_notification(user_id: int, amount: float, currency: str = 
         message=f"Your withdrawal of ${amount:.2f} {currency} has been processed successfully.",
         metadata={"amount": amount, "currency": currency},
     )
+
+
+# ==================== CREATOR WALLET ====================
+
+def adjust_creator_wallet(user_id: int, amount_usd: float, reason: str = "") -> Dict:
+    """Credit or debit a creator's wallet balance.
+
+    Used for referral commissions and any manual adjustments.
+    Positive amount = credit, negative = debit.
+    """
+    conn = _get_db()
+    now = datetime.now().isoformat()
+
+    # Ensure wallet row exists
+    conn.execute("""
+        INSERT INTO creator_wallets (user_id, balance_usd, balance_kes, total_earned_usd, total_earned_kes, total_sales, updated_at)
+        VALUES (?, 0, 0, 0, 0, 0, ?)
+        ON CONFLICT(user_id) DO NOTHING
+    """, (user_id, now))
+
+    # Update balance
+    conn.execute("""
+        UPDATE creator_wallets SET
+            balance_usd = balance_usd + ?,
+            total_earned_usd = CASE WHEN ? > 0 THEN total_earned_usd + ? ELSE total_earned_usd END,
+            updated_at = ?
+        WHERE user_id = ?
+    """, (amount_usd, amount_usd, amount_usd, now, user_id))
+    conn.commit()
+
+    row = conn.execute("SELECT * FROM creator_wallets WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+
+    return {
+        "balance_usd": row["balance_usd"] if row else 0,
+        "total_earned_usd": row["total_earned_usd"] if row else 0,
+    }
 
 
 # ==================== USER SUSPENSION ====================
@@ -622,11 +669,14 @@ def follow_user(follower_id: int, following_id: int) -> Dict:
         "SELECT COUNT(*) as c FROM user_follows WHERE following_id = ?", (following_id,)
     ).fetchone()["c"]
 
-    # Get follower's display name for the notification
-    follower_row = conn.execute(
-        "SELECT display_name, avatar_color FROM community_predictions WHERE user_id = ? LIMIT 1",
+    # Get follower's display name from users table
+    uconn = sqlite3.connect("users.db")
+    uconn.row_factory = sqlite3.Row
+    follower_row = uconn.execute(
+        "SELECT display_name, avatar_color FROM users WHERE id = ?",
         (follower_id,),
     ).fetchone()
+    uconn.close()
     conn.close()
 
     follower_name = follower_row["display_name"] if follower_row else "Someone"
@@ -848,6 +898,8 @@ def get_public_predictions(page: int = 1, per_page: int = 20, user_id: int = Non
     offset = (page - 1) * per_page
 
     where = "WHERE cp.visibility = 'public'"
+    # Only show predictions for matches that haven't been played yet
+    where += " AND cp.match_finished = 0"
     params_count = []
     params_query = []
     if user_id is not None:
@@ -893,7 +945,12 @@ def get_public_predictions(page: int = 1, per_page: int = 20, user_id: int = Non
         for ar in acc_rows:
             finished = ar["finished"] or 0
             correct = ar["correct"] or 0
-            accuracy_map[ar["user_id"]] = round((correct / finished) * 100, 1) if finished >= 3 else None
+            accuracy_map[ar["user_id"]] = {
+                "accuracy": round((correct / finished) * 100, 1) if finished >= 3 else None,
+                "wins": correct,
+                "losses": finished - correct,
+                "total_finished": finished,
+            }
 
     # Get reaction counts for all predictions in results
     pred_ids = [r["id"] for r in rows]
@@ -958,7 +1015,9 @@ def get_public_predictions(page: int = 1, per_page: int = 20, user_id: int = Non
             "username": r["username"],
             "display_name": r["display_name"],
             "avatar_color": r["avatar_color"],
-            "predictor_accuracy": accuracy_map.get(r["user_id"]),
+            "predictor_accuracy": (accuracy_map.get(r["user_id"]) or {}).get("accuracy"),
+            "predictor_wins": (accuracy_map.get(r["user_id"]) or {}).get("wins", 0),
+            "predictor_losses": (accuracy_map.get(r["user_id"]) or {}).get("losses", 0),
             "fixture_id": r["fixture_id"],
             "team_a_name": r["team_a_name"],
             "team_b_name": r["team_b_name"],
@@ -1013,7 +1072,7 @@ def get_live_bet_predictions(viewer_id: int = None, limit: int = 50) -> Dict:
             COUNT(DISTINCT pr.id) as rating_count
         FROM community_predictions cp
         LEFT JOIN prediction_ratings pr ON pr.prediction_id = cp.id
-        WHERE cp.visibility = 'public' AND cp.is_live_bet = 1
+        WHERE cp.visibility = 'public' AND cp.is_live_bet = 1 AND cp.match_finished = 0
         GROUP BY cp.id
         ORDER BY cp.created_at DESC
         LIMIT ?
@@ -1539,6 +1598,273 @@ def get_top_predictors(limit: int = 10) -> List[Dict]:
     } for r in rows]
 
 
+def get_unfinished_prediction_info() -> dict:
+    """Get dates and team-pair keys from unfinished community predictions.
+    Returns {"dates": ["20260215", ...], "team_keys": {"47-34", "39-42", ...}}"""
+    conn = _get_db()
+    rows = conn.execute("""
+        SELECT DISTINCT fixture_id FROM community_predictions WHERE match_finished = 0
+    """).fetchall()
+    conn.close()
+
+    dates = set()
+    team_keys = set()
+    for r in rows:
+        fid = r["fixture_id"] or ""
+        parts = fid.split("-")
+        if len(parts) >= 3:
+            date_part = parts[-1]
+            team_key = f"{parts[0]}-{parts[1]}"
+            if len(date_part) == 8 and date_part.isdigit():
+                dates.add(date_part)
+            team_keys.add(team_key)
+    return {"dates": list(dates), "team_keys": team_keys}
+
+
+def get_unfinished_prediction_dates() -> List[str]:
+    """Get unique dates (YYYYMMDD) from unfinished community predictions."""
+    return get_unfinished_prediction_info()["dates"]
+
+
+def check_and_update_finished_predictions(finished_fixtures: list) -> dict:
+    """Check finished fixtures against community predictions and update results.
+
+    For each finished fixture, finds matching predictions (by fixture_id),
+    determines if the prediction was correct, updates the DB, and notifies
+    followers of successful predictions.
+    """
+    conn = _get_db()
+    now = datetime.now()
+
+    updated = 0
+    correct_count = 0
+    incorrect_count = 0
+    notified_followers = 0
+    notifications_to_send = []
+
+    for fixture in finished_fixtures:
+        home_team = fixture.get("home_team", {})
+        away_team = fixture.get("away_team", {})
+        goals = fixture.get("goals", {})
+
+        home_id = home_team.get("id")
+        away_id = away_team.get("id")
+        home_goals = goals.get("home") or 0
+        away_goals = goals.get("away") or 0
+
+        if not home_id or not away_id:
+            continue
+
+        # Match on team pair (home_id-away_id) regardless of date suffix
+        team_pair = f"{home_id}-{away_id}"
+
+        rows = conn.execute("""
+            SELECT id, user_id, display_name, predicted_result, team_a_name, team_b_name, fixture_id
+            FROM community_predictions
+            WHERE fixture_id LIKE ? AND match_finished = 0
+        """, (f"{team_pair}-%",)).fetchall()
+
+        if not rows:
+            continue
+
+        # Determine actual result
+        if home_goals > away_goals:
+            actual_result = "Home Win"
+        elif away_goals > home_goals:
+            actual_result = "Away Win"
+        else:
+            actual_result = "Draw"
+
+        home_name = home_team.get("name", "")
+        away_name = away_team.get("name", "")
+        total_goals = home_goals + away_goals
+        both_scored = home_goals > 0 and away_goals > 0
+        score_text = f"{home_goals}-{away_goals}"
+
+        for row in rows:
+            predicted = row["predicted_result"] or ""
+
+            # Skip live bets — their format doesn't match standard results
+            if predicted.startswith("[LIVE]"):
+                result_correct = None  # Can't determine
+                conn.execute("""
+                    UPDATE community_predictions
+                    SET match_finished = 1, actual_result = ?, updated_at = ?
+                    WHERE id = ?
+                """, (actual_result, now.isoformat(), row["id"]))
+                updated += 1
+                continue
+
+            # Parse predicted_result format: "Category: Outcome"
+            result_correct = 0
+            if ": " in predicted:
+                category, outcome = predicted.split(": ", 1)
+                category = category.strip().upper()
+
+                if category == "1X2":
+                    if outcome == "Draw":
+                        result_correct = 1 if actual_result == "Draw" else 0
+                    elif outcome.endswith(" Win"):
+                        # e.g. "Newcastle Win" — check if it's home or away team
+                        team_name = outcome.replace(" Win", "").strip()
+                        team_a = (row["team_a_name"] or "").strip()
+                        team_b = (row["team_b_name"] or "").strip()
+                        if team_name.lower() == team_a.lower() or team_name.lower() in home_name.lower():
+                            result_correct = 1 if actual_result == "Home Win" else 0
+                        elif team_name.lower() == team_b.lower() or team_name.lower() in away_name.lower():
+                            result_correct = 1 if actual_result == "Away Win" else 0
+                    else:
+                        result_correct = 1 if predicted == actual_result else 0
+
+                elif category == "BTTS":
+                    if outcome.lower() == "yes":
+                        result_correct = 1 if both_scored else 0
+                    elif outcome.lower() == "no":
+                        result_correct = 1 if not both_scored else 0
+
+                elif category in ("OVER/UNDER", "OVER_UNDER"):
+                    if "over" in outcome.lower():
+                        try:
+                            threshold = float(outcome.lower().replace("over", "").strip())
+                            result_correct = 1 if total_goals > threshold else 0
+                        except ValueError:
+                            pass
+                    elif "under" in outcome.lower():
+                        try:
+                            threshold = float(outcome.lower().replace("under", "").strip())
+                            result_correct = 1 if total_goals < threshold else 0
+                        except ValueError:
+                            pass
+                else:
+                    # Unknown category — fallback
+                    result_correct = 1 if predicted == actual_result else 0
+            else:
+                # No category prefix — direct comparison
+                result_correct = 1 if predicted == actual_result else 0
+
+            conn.execute("""
+                UPDATE community_predictions
+                SET match_finished = 1, result_correct = ?, actual_result = ?, updated_at = ?
+                WHERE id = ?
+            """, (result_correct, actual_result, now.isoformat(), row["id"]))
+            updated += 1
+
+            match_name = f"{row['team_a_name']} vs {row['team_b_name']}"
+
+            if result_correct:
+                correct_count += 1
+                # Queue notifications to send after DB is closed
+                notifications_to_send.append({
+                    "user_id": row["user_id"],
+                    "display_name": row["display_name"],
+                    "prediction_id": row["id"],
+                    "match_name": match_name,
+                    "actual_result": actual_result,
+                    "score_text": score_text,
+                })
+            else:
+                incorrect_count += 1
+
+    conn.commit()
+    conn.close()
+
+    # Send notifications after DB connection is closed to avoid lock conflicts
+    for notif in notifications_to_send:
+        try:
+            create_notification(
+                user_id=notif["user_id"],
+                notif_type="prediction_result",
+                title="Your Prediction Was Correct! \u2705",
+                message=f"Congratulations for predicting {notif['match_name']} successfully! Result: {notif['actual_result']} ({notif['score_text']}).",
+                metadata={
+                    "prediction_id": notif["prediction_id"],
+                    "match": notif["match_name"],
+                    "actual_result": notif["actual_result"],
+                    "score": notif["score_text"],
+                    "result_correct": True,
+                },
+            )
+
+            follower_ids = get_follower_ids(notif["user_id"])
+            for fid in follower_ids:
+                create_notification(
+                    user_id=fid,
+                    notif_type="prediction_result",
+                    title="Prediction Successful! \u2705",
+                    message=f"Congratulations! {notif['display_name']} correctly predicted {notif['match_name']}. Result: {notif['actual_result']} ({notif['score_text']}).",
+                    metadata={
+                        "prediction_id": notif["prediction_id"],
+                        "match": notif["match_name"],
+                        "poster_id": notif["user_id"],
+                        "poster_name": notif["display_name"],
+                        "actual_result": notif["actual_result"],
+                        "result_correct": True,
+                    },
+                )
+                notified_followers += 1
+        except Exception as e:
+            print(f"[Predictions] Notification error: {e}")
+
+    return {
+        "updated": updated,
+        "correct": correct_count,
+        "incorrect": incorrect_count,
+        "notified_followers": notified_followers,
+    }
+
+
+def get_user_prediction_stats(user_id: int) -> dict:
+    """Get win/loss/pending stats and recent history for a user."""
+    conn = _get_db()
+    row = conn.execute("""
+        SELECT
+            COUNT(*) as total_predictions,
+            SUM(CASE WHEN match_finished = 1 AND result_correct = 1 THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN match_finished = 1 AND result_correct = 0 THEN 1 ELSE 0 END) as losses,
+            SUM(CASE WHEN match_finished = 0 THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN match_finished = 1 THEN 1 ELSE 0 END) as finished
+        FROM community_predictions
+        WHERE user_id = ? AND visibility = 'public'
+    """, (user_id,)).fetchone()
+
+    history = conn.execute("""
+        SELECT team_a_name, team_b_name, predicted_result, actual_result,
+               result_correct, created_at, updated_at
+        FROM community_predictions
+        WHERE user_id = ? AND visibility = 'public' AND match_finished = 1
+        ORDER BY updated_at DESC
+        LIMIT 20
+    """, (user_id,)).fetchall()
+    conn.close()
+
+    total = row["total_predictions"] or 0
+    wins = row["wins"] or 0
+    losses = row["losses"] or 0
+    pending = row["pending"] or 0
+    finished = row["finished"] or 0
+    win_pct = round((wins / finished) * 100, 1) if finished > 0 else 0
+
+    return {
+        "user_id": user_id,
+        "total_predictions": total,
+        "wins": wins,
+        "losses": losses,
+        "pending": pending,
+        "finished": finished,
+        "win_percentage": win_pct,
+        "recent_history": [
+            {
+                "match": f"{h['team_a_name']} vs {h['team_b_name']}",
+                "predicted": h["predicted_result"],
+                "actual": h["actual_result"],
+                "correct": bool(h["result_correct"]),
+                "date": h["created_at"],
+            }
+            for h in history
+        ],
+    }
+
+
 def search_users(query: str, limit: int = 10) -> List[Dict]:
     """Search community users by username or display_name."""
     query = query.strip()
@@ -1664,6 +1990,19 @@ def delete_comment(comment_id: int) -> Dict:
 
 # ==================== PAID PREDICTIONS ====================
 
+def get_prediction(prediction_id: int) -> Optional[Dict]:
+    """Get basic prediction info by ID (for payment flow)."""
+    conn = _get_db()
+    pred = conn.execute(
+        "SELECT id, user_id, is_paid, price_usd, team_a_name, team_b_name FROM community_predictions WHERE id = ?",
+        (prediction_id,)
+    ).fetchone()
+    conn.close()
+    if not pred:
+        return None
+    return dict(pred)
+
+
 def purchase_prediction(prediction_id: int, buyer_id: int, payment_method: str = "", payment_ref: str = "") -> Dict:
     """Purchase access to a paid prediction."""
     conn = _get_db()
@@ -1702,8 +2041,9 @@ def purchase_prediction(prediction_id: int, buyer_id: int, payment_method: str =
         VALUES (?, ?, ?, ?, 'USD', ?, ?, ?)
     """, (prediction_id, buyer_id, seller_id, price, payment_method, payment_ref, now))
 
-    # Credit seller wallet (70% to creator, 30% platform fee)
-    creator_share = round(price * 0.70, 2)
+    # Credit seller wallet (dynamic creator share, rest is platform fee)
+    share_rate = pricing_config.get("creator_sale_share", 0.70)
+    creator_share = round(price * share_rate, 2)
     conn.execute("""
         INSERT INTO creator_wallets (user_id, balance_usd, total_earned_usd, total_sales, updated_at)
         VALUES (?, ?, ?, 1, ?)
@@ -1714,8 +2054,69 @@ def purchase_prediction(prediction_id: int, buyer_id: int, payment_method: str =
             updated_at = ?
     """, (seller_id, creator_share, creator_share, now, creator_share, creator_share, now))
 
+    # Check if this is the seller's first sale
+    first_sale_count = conn.execute(
+        "SELECT COUNT(*) as cnt FROM prediction_purchases WHERE seller_id = ?",
+        (seller_id,)
+    ).fetchone()["cnt"]
+
+    # Get prediction details for notification
+    pred_info = conn.execute(
+        "SELECT team_a_name, team_b_name FROM community_predictions WHERE id = ?",
+        (prediction_id,)
+    ).fetchone()
+    match_name = f"{pred_info['team_a_name']} vs {pred_info['team_b_name']}" if pred_info else "a prediction"
+
     conn.commit()
     conn.close()
+
+    # Send sale notification + email to seller
+    import os
+    payment_email = os.environ.get("ZOHO_PAYMENT_EMAIL", "")
+
+    is_first = (first_sale_count == 1)
+    if is_first:
+        notif_title = "Congratulations on Your First Sale! \U0001f389\U0001f680\U0001f31f"
+        notif_msg = (
+            f"You just made your very first sale on Spark AI! "
+            f"Someone purchased your prediction for {match_name} "
+            f"and you earned ${creator_share:.2f}. "
+            f"This is just the beginning — keep sharing great predictions!"
+        )
+        email_msg = (
+            f"\U0001f389\U0001f680\U0001f31f <strong>Congratulations on your very first sale!</strong><br><br>"
+            f"Someone just purchased your prediction for <strong>{match_name}</strong> "
+            f"and you earned <strong>${creator_share:.2f}</strong>!<br><br>"
+            f"This is a huge milestone — you're now officially earning on Spark AI. "
+            f"Keep sharing amazing predictions and watch your earnings grow! \U0001f4b0"
+        )
+    else:
+        notif_title = "New Sale! \U0001f4b0"
+        notif_msg = (
+            f"Someone purchased your prediction for {match_name}. "
+            f"You earned ${creator_share:.2f}. Total sales: {first_sale_count}."
+        )
+        email_msg = (
+            f"\U0001f4b0 <strong>Congratulations on your sale!</strong><br><br>"
+            f"Someone just purchased your prediction for <strong>{match_name}</strong> "
+            f"and you earned <strong>${creator_share:.2f}</strong>.<br><br>"
+            f"Total sales: <strong>{first_sale_count}</strong>. Keep it up! \U0001f525"
+        )
+
+    create_notification(
+        user_id=seller_id,
+        notif_type="prediction_sale",
+        title=notif_title,
+        message=notif_msg,
+        metadata={"prediction_id": prediction_id, "amount": creator_share, "match": match_name, "first_sale": is_first},
+    )
+    _send_notif_email(
+        user_id=seller_id,
+        notif_type="prediction_sale",
+        title=notif_title,
+        message=email_msg,
+        from_email=payment_email,
+    )
 
     return {"success": True, "price_paid": price, "creator_share": creator_share}
 
@@ -1773,29 +2174,47 @@ def get_creator_dashboard(user_id: int) -> Dict:
         "total_sales": wallet["total_sales"] if wallet else 0,
     }
 
-    # User's paid predictions with purchase counts
+    # All predictions with full analytics
     preds = conn.execute("""
         SELECT cp.*,
             (SELECT COUNT(*) FROM prediction_purchases pp WHERE pp.prediction_id = cp.id) as purchase_count,
-            (SELECT COALESCE(SUM(pp.price_amount), 0) FROM prediction_purchases pp WHERE pp.prediction_id = cp.id) as total_revenue
+            (SELECT COALESCE(SUM(pp.price_amount), 0) FROM prediction_purchases pp WHERE pp.prediction_id = cp.id) as total_revenue,
+            (SELECT COUNT(*) FROM prediction_comments pc WHERE pc.prediction_id = cp.id) as comment_count,
+            (SELECT COALESCE(AVG(pr.rating), 0) FROM prediction_ratings pr WHERE pr.prediction_id = cp.id) as avg_rating,
+            (SELECT COUNT(*) FROM prediction_ratings pr WHERE pr.prediction_id = cp.id) as rating_count,
+            (SELECT COALESCE(SUM(CASE WHEN reaction = 'like' THEN 1 ELSE 0 END), 0) FROM prediction_reactions prx WHERE prx.prediction_id = cp.id) as likes,
+            (SELECT COALESCE(SUM(CASE WHEN reaction = 'dislike' THEN 1 ELSE 0 END), 0) FROM prediction_reactions prx WHERE prx.prediction_id = cp.id) as dislikes,
+            (SELECT COUNT(*) FROM prediction_chats pch WHERE pch.prediction_id = cp.id) as chat_count
         FROM community_predictions cp
-        WHERE cp.user_id = ? AND cp.is_paid = 1
+        WHERE cp.user_id = ?
         ORDER BY cp.created_at DESC
     """, (user_id,)).fetchall()
 
-    paid_predictions = [{
+    all_predictions = [{
         "id": r["id"],
         "team_a_name": r["team_a_name"],
         "team_b_name": r["team_b_name"],
         "competition": r["competition"],
         "predicted_result": r["predicted_result"],
-        "price_usd": r["price_usd"],
+        "is_paid": bool(r["is_paid"]),
+        "price_usd": r["price_usd"] or 0,
         "purchase_count": r["purchase_count"],
         "total_revenue": round(r["total_revenue"], 2),
+        "view_count": r["view_count"] or 0,
+        "click_count": r["click_count"] or 0,
+        "comment_count": r["comment_count"] or 0,
+        "avg_rating": round(r["avg_rating"] or 0, 1),
+        "rating_count": r["rating_count"] or 0,
+        "likes": r["likes"] or 0,
+        "dislikes": r["dislikes"] or 0,
+        "chat_count": r["chat_count"] or 0,
         "match_finished": bool(r["match_finished"]),
         "result_correct": r["result_correct"],
         "created_at": r["created_at"],
     } for r in preds]
+
+    # Backward compat: paid_predictions subset
+    paid_predictions = [p for p in all_predictions if p["is_paid"]]
 
     # Recent sales
     sales = conn.execute("""
@@ -1823,14 +2242,157 @@ def get_creator_dashboard(user_id: int) -> Dict:
     except Exception:
         ref_stats = {"total_referred": 0, "pro_referred": 0, "referrals": []}
 
+    total_rating_count = sum(p["rating_count"] for p in all_predictions)
+    analytics_summary = {
+        "total_predictions": len(all_predictions),
+        "total_views": sum(p["view_count"] for p in all_predictions),
+        "total_clicks": sum(p["click_count"] for p in all_predictions),
+        "total_likes": sum(p["likes"] for p in all_predictions),
+        "total_dislikes": sum(p["dislikes"] for p in all_predictions),
+        "total_comments": sum(p["comment_count"] for p in all_predictions),
+        "total_ratings": total_rating_count,
+        "avg_rating_overall": round(
+            sum(p["avg_rating"] * p["rating_count"] for p in all_predictions) / max(1, total_rating_count), 1
+        ),
+    }
+
     return {
         "wallet": wallet_data,
+        "all_predictions": all_predictions,
         "paid_predictions": paid_predictions,
         "recent_sales": recent_sales,
+        "analytics_summary": analytics_summary,
         "referral_stats": {
             "total_referred": ref_stats.get("total_referred", 0),
             "pro_referred": ref_stats.get("pro_referred", 0),
             "referral_code": ref_stats.get("referral_code", ""),
+        },
+    }
+
+
+def increment_view_count(prediction_ids: list) -> Dict:
+    """Batch increment view_count (impressions) for predictions shown in feed."""
+    if not prediction_ids:
+        return {"success": True, "updated": 0}
+    conn = _get_db()
+    ph = ",".join("?" * len(prediction_ids))
+    conn.execute(
+        f"UPDATE community_predictions SET view_count = COALESCE(view_count, 0) + 1 WHERE id IN ({ph})",
+        prediction_ids
+    )
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
+
+def increment_click_count(prediction_id: int) -> Dict:
+    """Increment click_count when a user clicks/expands a prediction."""
+    conn = _get_db()
+    conn.execute(
+        "UPDATE community_predictions SET click_count = COALESCE(click_count, 0) + 1 WHERE id = ?",
+        (prediction_id,)
+    )
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
+
+def get_creator_analytics_admin() -> Dict:
+    """Admin: get all creator analytics with abnormal activity detection."""
+    conn = _get_db()
+
+    creators = conn.execute("""
+        SELECT
+            cp.user_id,
+            cp.username,
+            cp.display_name,
+            cp.avatar_color,
+            COUNT(*) as prediction_count,
+            SUM(COALESCE(cp.view_count, 0)) as total_views,
+            SUM(COALESCE(cp.click_count, 0)) as total_clicks,
+            (SELECT COUNT(*) FROM prediction_comments pc2
+             WHERE pc2.prediction_id IN (SELECT id FROM community_predictions WHERE user_id = cp.user_id)) as total_comments,
+            (SELECT COUNT(*) FROM prediction_reactions pr2
+             WHERE pr2.prediction_id IN (SELECT id FROM community_predictions WHERE user_id = cp.user_id)
+             AND pr2.reaction = 'like') as total_likes,
+            (SELECT COUNT(*) FROM prediction_reactions pr3
+             WHERE pr3.prediction_id IN (SELECT id FROM community_predictions WHERE user_id = cp.user_id)
+             AND pr3.reaction = 'dislike') as total_dislikes,
+            (SELECT COALESCE(AVG(prr.rating), 0) FROM prediction_ratings prr
+             WHERE prr.prediction_id IN (SELECT id FROM community_predictions WHERE user_id = cp.user_id)) as avg_rating,
+            (SELECT COUNT(*) FROM prediction_purchases pp
+             WHERE pp.prediction_id IN (SELECT id FROM community_predictions WHERE user_id = cp.user_id)) as total_purchases,
+            (SELECT COALESCE(SUM(pp2.price_amount), 0) FROM prediction_purchases pp2
+             WHERE pp2.prediction_id IN (SELECT id FROM community_predictions WHERE user_id = cp.user_id)) as total_revenue
+        FROM community_predictions cp
+        GROUP BY cp.user_id
+        ORDER BY total_views DESC
+    """).fetchall()
+
+    # Get wallet info
+    wallet_map = {}
+    wallets = conn.execute("SELECT * FROM creator_wallets").fetchall()
+    for w in wallets:
+        wallet_map[w["user_id"]] = {
+            "balance_usd": w["balance_usd"],
+            "total_earned_usd": w["total_earned_usd"],
+            "total_sales": w["total_sales"],
+        }
+
+    conn.close()
+
+    result = []
+    for c in creators:
+        views = c["total_views"] or 0
+        clicks = c["total_clicks"] or 0
+        engagement = (c["total_comments"] or 0) + (c["total_likes"] or 0) + (c["total_dislikes"] or 0)
+        purchases = c["total_purchases"] or 0
+
+        # Abnormal activity flags
+        flags = []
+        if clicks > 50 and engagement == 0:
+            flags.append("high_clicks_no_engagement")
+        if views > 20 and clicks > 0 and (clicks / views) > 0.8:
+            flags.append("suspicious_click_ratio")
+        if purchases > 10:
+            flags.append("review_purchase_volume")
+        if views > 200 and engagement == 0:
+            flags.append("possible_bot_views")
+
+        wallet = wallet_map.get(c["user_id"], {"balance_usd": 0, "total_earned_usd": 0, "total_sales": 0})
+
+        result.append({
+            "user_id": c["user_id"],
+            "username": c["username"],
+            "display_name": c["display_name"],
+            "avatar_color": c["avatar_color"],
+            "prediction_count": c["prediction_count"],
+            "total_views": views,
+            "total_clicks": clicks,
+            "total_comments": c["total_comments"] or 0,
+            "total_likes": c["total_likes"] or 0,
+            "total_dislikes": c["total_dislikes"] or 0,
+            "avg_rating": round(c["avg_rating"] or 0, 1),
+            "total_purchases": purchases,
+            "total_revenue": round(c["total_revenue"] or 0, 2),
+            "wallet": wallet,
+            "click_through_rate": round((clicks / max(1, views)) * 100, 1),
+            "engagement_rate": round((engagement / max(1, views)) * 100, 1),
+            "flags": flags,
+            "has_flags": len(flags) > 0,
+        })
+
+    # Sort flagged creators first
+    result.sort(key=lambda x: (-len(x["flags"]), -x["total_views"]))
+
+    return {
+        "creators": result,
+        "summary": {
+            "total_creators": len(result),
+            "flagged_creators": sum(1 for c in result if c["has_flags"]),
+            "total_views_all": sum(c["total_views"] for c in result),
+            "total_clicks_all": sum(c["total_clicks"] for c in result),
+            "total_revenue_all": round(sum(c["total_revenue"] for c in result), 2),
         },
     }
 
@@ -1841,7 +2403,7 @@ def get_paid_predictions_feed(page: int = 1, per_page: int = 20, viewer_id: int 
     offset = (page - 1) * per_page
 
     total = conn.execute(
-        "SELECT COUNT(*) as c FROM community_predictions WHERE visibility = 'public' AND is_paid = 1"
+        "SELECT COUNT(*) as c FROM community_predictions WHERE visibility = 'public' AND is_paid = 1 AND match_finished = 0"
     ).fetchone()["c"]
 
     # For paid feed, we need to join comments for ranking too
@@ -1856,7 +2418,7 @@ def get_paid_predictions_feed(page: int = 1, per_page: int = 20, viewer_id: int 
         FROM community_predictions cp
         LEFT JOIN prediction_ratings pr ON pr.prediction_id = cp.id
         LEFT JOIN prediction_comments pc ON pc.prediction_id = cp.id
-        WHERE cp.visibility = 'public' AND cp.is_paid = 1
+        WHERE cp.visibility = 'public' AND cp.is_paid = 1 AND cp.match_finished = 0
         GROUP BY cp.id
         {order_clause}
         LIMIT ? OFFSET ?
@@ -1887,7 +2449,12 @@ def get_paid_predictions_feed(page: int = 1, per_page: int = 20, viewer_id: int 
         for ar in acc_rows:
             finished = ar["finished"] or 0
             correct = ar["correct"] or 0
-            accuracy_map[ar["user_id"]] = round((correct / finished) * 100, 1) if finished >= 3 else None
+            accuracy_map[ar["user_id"]] = {
+                "accuracy": round((correct / finished) * 100, 1) if finished >= 3 else None,
+                "wins": correct,
+                "losses": finished - correct,
+                "total_finished": finished,
+            }
 
     # Get reaction counts
     pred_ids = [r["id"] for r in rows]
@@ -1937,7 +2504,9 @@ def get_paid_predictions_feed(page: int = 1, per_page: int = 20, viewer_id: int 
             "username": r["username"],
             "display_name": r["display_name"],
             "avatar_color": r["avatar_color"],
-            "predictor_accuracy": accuracy_map.get(r["user_id"]),
+            "predictor_accuracy": (accuracy_map.get(r["user_id"]) or {}).get("accuracy"),
+            "predictor_wins": (accuracy_map.get(r["user_id"]) or {}).get("wins", 0),
+            "predictor_losses": (accuracy_map.get(r["user_id"]) or {}).get("losses", 0),
             "fixture_id": r["fixture_id"],
             "team_a_name": r["team_a_name"],
             "team_b_name": r["team_b_name"],
@@ -2024,6 +2593,22 @@ def get_user_notifications(user_id: int, limit: int = 30) -> Dict:
         "notifications": notifications,
         "unread_count": unread_count,
     }
+
+
+def mark_single_notification_read(user_id: int, notification_id: int) -> Dict:
+    """Mark a single notification as read."""
+    conn = _get_db()
+    conn.execute(
+        "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ? AND is_read = 0",
+        (notification_id, user_id)
+    )
+    conn.commit()
+    unread = conn.execute(
+        "SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND is_read = 0",
+        (user_id,)
+    ).fetchone()["c"]
+    conn.close()
+    return {"success": True, "unread_count": unread}
 
 
 def mark_notifications_read(user_id: int) -> Dict:

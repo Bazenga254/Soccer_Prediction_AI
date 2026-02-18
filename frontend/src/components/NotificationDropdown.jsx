@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 const NOTIF_CONFIG = {
@@ -14,6 +15,9 @@ const NOTIF_CONFIG = {
   broadcast: { icon: '\uD83D\uDCE2', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
   broadcast_rejected: { icon: '\u274C', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
   keepalive_prompt: { icon: '\u23F0', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+  prediction_result: { icon: '\u2705', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
+  prediction_sale: { icon: '\uD83C\uDF89', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
+  referral_commission: { icon: '\uD83D\uDCB0', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
 }
 
 export default function NotificationDropdown() {
@@ -22,9 +26,11 @@ export default function NotificationDropdown() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(false)
   const [bellShake, setBellShake] = useState(false)
+  const [expandedId, setExpandedId] = useState(null)
   const dropdownRef = useRef(null)
   const eventSourceRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
+  const { t } = useTranslation()
 
   // Connect to SSE for real-time notifications
   const connectSSE = useCallback(() => {
@@ -88,6 +94,7 @@ export default function NotificationDropdown() {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setIsOpen(false)
+        setExpandedId(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -120,6 +127,7 @@ export default function NotificationDropdown() {
   const handleOpen = () => {
     if (!isOpen) {
       fetchNotifications()
+      setExpandedId(null)
     }
     setIsOpen(!isOpen)
   }
@@ -131,6 +139,30 @@ export default function NotificationDropdown() {
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
     } catch (err) {
       console.error('Failed to mark notifications read:', err)
+    }
+  }
+
+  const handleNotificationClick = async (n) => {
+    // Toggle expand
+    if (expandedId === n.id) {
+      setExpandedId(null)
+      return
+    }
+    setExpandedId(n.id)
+
+    // Mark as read if unread
+    if (!n.is_read) {
+      try {
+        const res = await axios.post(`/api/user/notifications/${n.id}/read`)
+        setNotifications(prev => prev.map(item =>
+          item.id === n.id ? { ...item, is_read: true } : item
+        ))
+        if (res.data.unread_count !== undefined) {
+          setUnreadCount(res.data.unread_count)
+        }
+      } catch (err) {
+        // Silently fail
+      }
     }
   }
 
@@ -146,24 +178,15 @@ export default function NotificationDropdown() {
     return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
   }
 
-  const renderNotification = (n) => {
+  const renderAvatar = (n) => {
     const config = NOTIF_CONFIG[n.type] || NOTIF_CONFIG.comment
     const meta = n.metadata || {}
 
     // Comment type shows commenter avatar
     if (n.type === 'comment' && meta.commenter_avatar) {
       return (
-        <div key={n.id} className={`notification-item ${n.is_read ? '' : 'unread'}`}>
-          <div className="notification-avatar" style={{ background: meta.commenter_avatar }}>
-            {(meta.commenter_name || '?')[0].toUpperCase()}
-          </div>
-          <div className="notification-content">
-            <p className="notification-text">{n.title}</p>
-            <p className="notification-message">{n.message}</p>
-            {meta.match && <p className="notification-match">{meta.match}</p>}
-            <span className="notification-time">{timeAgo(n.created_at)}</span>
-          </div>
-          {!n.is_read && <span className="unread-dot" />}
+        <div className="notification-avatar" style={{ background: meta.commenter_avatar }}>
+          {(meta.commenter_name || '?')[0].toUpperCase()}
         </div>
       )
     }
@@ -171,16 +194,8 @@ export default function NotificationDropdown() {
     // New follower - show follower avatar
     if (n.type === 'new_follower' && meta.follower_avatar) {
       return (
-        <div key={n.id} className={`notification-item ${n.is_read ? '' : 'unread'}`}>
-          <div className="notification-avatar" style={{ background: meta.follower_avatar }}>
-            {(meta.follower_name || '?')[0].toUpperCase()}
-          </div>
-          <div className="notification-content">
-            <p className="notification-text">{n.title}</p>
-            <p className="notification-message">{n.message}</p>
-            <span className="notification-time">{timeAgo(n.created_at)}</span>
-          </div>
-          {!n.is_read && <span className="unread-dot" />}
+        <div className="notification-avatar" style={{ background: meta.follower_avatar }}>
+          {(meta.follower_name || '?')[0].toUpperCase()}
         </div>
       )
     }
@@ -188,41 +203,62 @@ export default function NotificationDropdown() {
     // New prediction from followed user - show poster avatar
     if (n.type === 'new_prediction' && meta.poster_avatar) {
       return (
-        <div key={n.id} className={`notification-item ${n.is_read ? '' : 'unread'}`}>
-          <div className="notification-avatar" style={{ background: meta.poster_avatar }}>
-            {(meta.poster_name || '?')[0].toUpperCase()}
-          </div>
-          <div className="notification-content">
-            <p className="notification-text">{n.title}</p>
-            <p className="notification-message">{n.message}</p>
-            {meta.match && <p className="notification-match">{meta.match}</p>}
-            <span className="notification-time">{timeAgo(n.created_at)}</span>
-          </div>
-          {!n.is_read && <span className="unread-dot" />}
+        <div className="notification-avatar" style={{ background: meta.poster_avatar }}>
+          {(meta.poster_name || '?')[0].toUpperCase()}
         </div>
       )
     }
 
     // All other types use icon
     return (
-      <div key={n.id} className={`notification-item ${n.is_read ? '' : 'unread'}`}>
-        <div className="notification-type-icon" style={{ background: config.bg, color: config.color }}>
-          <span>{config.icon}</span>
+      <div className="notification-type-icon" style={{ background: config.bg, color: config.color }}>
+        <span>{config.icon}</span>
+      </div>
+    )
+  }
+
+  const renderNotification = (n) => {
+    const isExpanded = expandedId === n.id
+    const meta = n.metadata || {}
+
+    return (
+      <div
+        key={n.id}
+        className={`notification-item ${n.is_read ? '' : 'unread'} ${isExpanded ? 'expanded' : ''}`}
+        onClick={() => handleNotificationClick(n)}
+      >
+        <div className="notification-item-row">
+          {renderAvatar(n)}
+          <div className="notification-content">
+            <p className="notification-text">{n.title}</p>
+            {!isExpanded && (
+              <p className="notification-message notification-message-truncated">{n.message}</p>
+            )}
+            <span className="notification-time">{timeAgo(n.created_at)}</span>
+          </div>
+          {!n.is_read && <span className="unread-dot" />}
+          <span className={`notification-chevron ${isExpanded ? 'open' : ''}`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
         </div>
-        <div className="notification-content">
-          <p className="notification-text">{n.title}</p>
-          <p className="notification-message">{n.message}</p>
-          {meta.match && <p className="notification-match">{meta.match}</p>}
-          <span className="notification-time">{timeAgo(n.created_at)}</span>
-        </div>
-        {!n.is_read && <span className="unread-dot" />}
+        {isExpanded && (
+          <div className="notification-expanded">
+            <p className="notification-expanded-message">{n.message}</p>
+            {meta.match && <p className="notification-match">{meta.match}</p>}
+            <span className="notification-expanded-time">
+              {new Date(n.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+        )}
       </div>
     )
   }
 
   return (
     <div className="notification-dropdown-wrapper" ref={dropdownRef}>
-      <button className={`notification-bell-btn ${bellShake ? 'bell-shake' : ''}`} onClick={handleOpen} title="Notifications">
+      <button className={`notification-bell-btn ${bellShake ? 'bell-shake' : ''}`} onClick={handleOpen} title={t('notifications.title')}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
@@ -235,9 +271,9 @@ export default function NotificationDropdown() {
       {isOpen && (
         <div className="notification-dropdown">
           <div className="notification-dropdown-header">
-            <span className="notification-dropdown-title">Notifications</span>
+            <span className="notification-dropdown-title">{t('notifications.title')}</span>
             {unreadCount > 0 && (
-              <button className="mark-read-btn" onClick={handleMarkRead}>Mark all read</button>
+              <button className="mark-read-btn" onClick={handleMarkRead}>{t('notifications.markAllRead')}</button>
             )}
           </div>
 
@@ -246,7 +282,7 @@ export default function NotificationDropdown() {
               <div className="notification-loading">Loading...</div>
             ) : notifications.length === 0 ? (
               <div className="notification-empty">
-                <p>No notifications yet</p>
+                <p>{t('notifications.noNotifications')}</p>
               </div>
             ) : (
               notifications.map(n => renderNotification(n))

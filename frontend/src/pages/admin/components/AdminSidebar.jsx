@@ -29,6 +29,10 @@ const ALL_TABS = [
   { id: 'predictions', icon: '⚽', label: 'Predictions', module: 'predictions' },
   { id: 'sales', icon: '💰', label: 'Sales & Revenue', module: 'sales' },
   { id: 'settings', icon: '⚙️', label: 'Settings', module: 'settings' },
+  { id: 'pricing', icon: '💲', label: 'Pricing', module: 'settings' },
+  { id: 'bots', icon: '🤖', label: 'Bot Accounts', module: 'bots' },
+  { id: 'analytics', icon: '📈', label: 'Creator Analytics', module: 'community' },
+  { id: 'docs', icon: '📚', label: 'Documentation', module: 'dashboard' },
 ]
 
 export default function AdminSidebar({ activeTab, setActiveTab }) {

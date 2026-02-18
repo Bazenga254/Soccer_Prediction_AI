@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 const ROLE_COLORS = {
@@ -20,6 +21,7 @@ function formatRoleName(role) {
 }
 
 export default function InviteRegistration() {
+  const { t } = useTranslation()
   const { token } = useParams()
   const navigate = useNavigate()
 
@@ -64,12 +66,12 @@ export default function InviteRegistration() {
     setSubmitError(null)
 
     if (!email.trim() || !password.trim() || !displayName.trim()) {
-      setSubmitError('All fields are required.')
+      setSubmitError(t('invite.allFieldsRequired'))
       return
     }
 
     if (password.length < 6) {
-      setSubmitError('Password must be at least 6 characters.')
+      setSubmitError(t('invite.passwordMinLength'))
       return
     }
 
@@ -103,7 +105,7 @@ export default function InviteRegistration() {
         <div className="invite-container">
           <div className="invite-loading">
             <div className="invite-spinner" />
-            <p>Validating your invite...</p>
+            <p>{t('invite.validating')}</p>
           </div>
         </div>
       </div>
@@ -117,13 +119,13 @@ export default function InviteRegistration() {
         <div className="invite-container">
           <div className="invite-error-card">
             <div className="invite-error-icon">!</div>
-            <h2 className="invite-error-title">Invalid Invite</h2>
+            <h2 className="invite-error-title">{t('invite.invalidInvite')}</h2>
             <p className="invite-error-message">{validationError}</p>
             <p className="invite-error-help">
-              Contact your manager for a new invite link.
+              {t('invite.contactManager')}
             </p>
             <a href="/login" className="invite-btn invite-btn-secondary">
-              Go to Login
+              {t('invite.goToLogin')}
             </a>
           </div>
         </div>
@@ -140,9 +142,9 @@ export default function InviteRegistration() {
         <div className="invite-form-card">
           {/* Header */}
           <div className="invite-header">
-            <div className="invite-logo">Spark AI</div>
-            <h1 className="invite-title">You've been invited to join Spark AI</h1>
-            <p className="invite-subtitle">Complete your registration to get started.</p>
+            <div className="invite-logo">{t('invite.sparkAI')}</div>
+            <h1 className="invite-title">{t('invite.invitedToJoin')}</h1>
+            <p className="invite-subtitle">{t('invite.completeRegistration')}</p>
           </div>
 
           {/* Role & Department Badge */}
@@ -166,7 +168,7 @@ export default function InviteRegistration() {
             </div>
             {inviteData?.created_by_name && (
               <p className="invite-invited-by">
-                Invited by: <strong>{inviteData.created_by_name}</strong>
+                {t('invite.invitedByLabel')} <strong>{inviteData.created_by_name}</strong>
               </p>
             )}
           </div>
@@ -175,13 +177,13 @@ export default function InviteRegistration() {
           <form className="invite-form" onSubmit={handleSubmit}>
             <div className="invite-form-group">
               <label className="invite-label" htmlFor="invite-display-name">
-                Display Name
+                {t('invite.displayName')}
               </label>
               <input
                 id="invite-display-name"
                 type="text"
                 className="invite-input"
-                placeholder="Your full name"
+                placeholder={t('invite.yourFullName')}
                 value={displayName}
                 onChange={e => setDisplayName(e.target.value)}
                 required
@@ -192,13 +194,13 @@ export default function InviteRegistration() {
 
             <div className="invite-form-group">
               <label className="invite-label" htmlFor="invite-email">
-                Email Address
+                {t('invite.emailAddress')}
               </label>
               <input
                 id="invite-email"
                 type="email"
                 className="invite-input"
-                placeholder="you@example.com"
+                placeholder={t('invite.emailPlaceholder')}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
@@ -209,14 +211,14 @@ export default function InviteRegistration() {
 
             <div className="invite-form-group">
               <label className="invite-label" htmlFor="invite-password">
-                Password
+                {t('invite.password')}
               </label>
               <div className="invite-password-wrapper">
                 <input
                   id="invite-password"
                   type={showPassword ? 'text' : 'password'}
                   className="invite-input"
-                  placeholder="Minimum 6 characters"
+                  placeholder={t('invite.minCharacters')}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
@@ -230,7 +232,7 @@ export default function InviteRegistration() {
                   onClick={() => setShowPassword(prev => !prev)}
                   tabIndex={-1}
                 >
-                  {showPassword ? 'Hide' : 'Show'}
+                  {showPassword ? t('invite.hide') : t('invite.show')}
                 </button>
               </div>
             </div>
@@ -244,14 +246,14 @@ export default function InviteRegistration() {
               className="invite-btn invite-btn-primary"
               disabled={submitting}
             >
-              {submitting ? 'Creating Account...' : 'Create Account'}
+              {submitting ? t('invite.creatingAccount') : t('invite.createAccount')}
             </button>
           </form>
 
           <div className="invite-footer">
             <p>
-              Already have an account?{' '}
-              <a href="/login" className="invite-link">Sign in</a>
+              {t('invite.alreadyHaveAccount')}{' '}
+              <a href="/login" className="invite-link">{t('invite.signIn')}</a>
             </p>
           </div>
         </div>

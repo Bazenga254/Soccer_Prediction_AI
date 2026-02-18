@@ -74,6 +74,7 @@ def _parse_fixtures(fixtures_data: List[Dict]) -> List[Dict]:
         league = fixture.get("league", {})
         goals = fixture.get("goals", {})
 
+        league_id = league.get("id")
         fixtures.append({
             "id": fixture_info.get("id"),
             "date": fixture_info.get("date"),
@@ -94,6 +95,9 @@ def _parse_fixtures(fixtures_data: List[Dict]) -> List[Dict]:
                 "name": league.get("name"),
                 "emblem": league.get("logo"),
                 "round": league.get("round"),
+                "id": league_id,
+                "code": _LEAGUE_ID_TO_CODE.get(league_id, ""),
+                "country": league.get("country", ""),
             },
             "goals": {
                 "home": goals.get("home"),
@@ -661,6 +665,104 @@ async def fetch_todays_fixtures() -> Optional[List[Dict]]:
 
     except Exception as e:
         print(f"Today's fixtures request failed: {type(e).__name__}: {e}")
+
+    return _get_cache(cache_key) or []
+
+
+async def fetch_all_upcoming_fixtures(days: int = 3) -> List[Dict]:
+    """
+    Fetch upcoming fixtures across ALL leagues for the next N days.
+    Uses per-day date queries (1 API call per day, cached 2 min each).
+    Filters to only not-started matches (NS, TBD).
+    """
+    today = datetime.now()
+    cache_key = f"all_upcoming_{today.strftime('%Y-%m-%d')}_{days}"
+
+    if _is_cache_valid(cache_key, 120):  # 2-min cache
+        return _get_cache(cache_key)
+
+    if not config.API_FOOTBALL_KEY:
+        return []
+
+    all_fixtures = []
+    try:
+        async with aiohttp.ClientSession() as session:
+            for d in range(days):
+                date_str = (today + timedelta(days=d)).strftime("%Y-%m-%d")
+                day_cache_key = f"all_fixtures_day_{date_str}"
+
+                # Use day-level cache (2 min for today, 10 min for future days)
+                ttl = 120 if d == 0 else 600
+                if _is_cache_valid(day_cache_key, ttl):
+                    day_fixtures = _get_cache(day_cache_key)
+                    if day_fixtures:
+                        all_fixtures.extend(day_fixtures)
+                        continue
+
+                url = f"{BASE_URL}/fixtures"
+                params = {"date": date_str}
+                print(f"API Request: GET {url} (all fixtures for {date_str})")
+
+                async with session.get(url, headers=_get_headers(), params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        errors = data.get("errors")
+                        if errors and len(errors) > 0:
+                            print(f"All fixtures API Error for {date_str}: {errors}")
+                            continue
+
+                        fixtures_data = data.get("response", [])
+                        print(f"Fixtures for {date_str}: {len(fixtures_data)}")
+                        day_fixtures = _parse_fixtures(fixtures_data)
+                        _set_cache(day_cache_key, day_fixtures)
+                        all_fixtures.extend(day_fixtures)
+
+    except Exception as e:
+        print(f"All upcoming fixtures request failed: {type(e).__name__}: {e}")
+
+    # Filter to only not-started matches and sort chronologically
+    upcoming = [f for f in all_fixtures if f.get("status") in ("NS", "TBD", None)]
+    upcoming.sort(key=lambda x: x.get("date", ""))
+
+    _set_cache(cache_key, upcoming)
+    return upcoming
+
+
+async def fetch_fixtures_by_date(date_str: str) -> Optional[List[Dict]]:
+    """
+    Fetch all fixtures for a specific date (YYYY-MM-DD).
+    Used to check results for past predictions.
+    API Endpoint: GET /fixtures?date={date}
+    """
+    cache_key = f"fixtures_{date_str}"
+    if _is_cache_valid(cache_key, 43200):  # 12-hour cache for past dates
+        return _get_cache(cache_key)
+
+    if not config.API_FOOTBALL_KEY:
+        return []
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{BASE_URL}/fixtures"
+            params = {"date": date_str}
+            print(f"API Request: GET {url} (fixtures for {date_str})")
+
+            async with session.get(url, headers=_get_headers(), params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    errors = data.get("errors")
+                    if errors and len(errors) > 0:
+                        return []
+
+                    fixtures_data = data.get("response", [])
+                    print(f"Fixtures for {date_str}: {len(fixtures_data)}")
+
+                    matches = [_parse_fixture(f) for f in fixtures_data]
+                    _set_cache(cache_key, matches)
+                    return matches
+
+    except Exception as e:
+        print(f"Fixtures by date request failed: {type(e).__name__}: {e}")
 
     return _get_cache(cache_key) or []
 

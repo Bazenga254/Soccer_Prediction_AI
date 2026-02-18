@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 export default function TrackRecord() {
+  const { t } = useTranslation()
   const [predictions, setPredictions] = useState([])
   const [accuracy, setAccuracy] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -24,6 +26,14 @@ export default function TrackRecord() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleRefresh = async () => {
+    setLoading(true)
+    try {
+      await axios.post('/api/predictions/refresh-results')
+    } catch { /* ignore */ }
+    await fetchData()
   }
 
   useEffect(() => { fetchData() }, [])
@@ -83,7 +93,7 @@ export default function TrackRecord() {
       <div className="track-record-page">
         <div className="loading-container">
           <div className="spinner"></div>
-          <p>Loading predictions...</p>
+          <p>{t('common.loading')}</p>
         </div>
       </div>
     )
@@ -92,9 +102,9 @@ export default function TrackRecord() {
   return (
     <div className="track-record-page">
       <div className="track-record-header">
-        <h1>My Predictions</h1>
+        <h1>{t('trackRecord.title')}</h1>
         <div className="track-record-actions">
-          <button className="refresh-btn" onClick={fetchData}>Refresh</button>
+          <button className="refresh-btn" onClick={handleRefresh}>{t('common.refresh')}</button>
           {predictions.length > 0 && (
             <button className="clear-all-btn" onClick={() => setShowClearConfirm(true)}>
               Clear All
@@ -110,7 +120,7 @@ export default function TrackRecord() {
             <h3>Clear All Predictions?</h3>
             <p>This will permanently delete all {predictions.length} prediction{predictions.length !== 1 ? 's' : ''} and reset your accuracy stats. This cannot be undone.</p>
             <div className="clear-confirm-actions">
-              <button className="clear-cancel-btn" onClick={() => setShowClearConfirm(false)}>Cancel</button>
+              <button className="clear-cancel-btn" onClick={() => setShowClearConfirm(false)}>{t('common.cancel')}</button>
               <button className="clear-delete-btn" onClick={handleClearAll} disabled={clearing}>
                 {clearing ? 'Clearing...' : 'Yes, Clear All'}
               </button>
@@ -124,17 +134,17 @@ export default function TrackRecord() {
         <div className="accuracy-cards">
           <div className="accuracy-card total">
             <div className="accuracy-number">{accuracy.total_predictions}</div>
-            <div className="accuracy-label">Total Predictions</div>
+            <div className="accuracy-label">{t('trackRecord.totalPredictions')}</div>
             <div className="accuracy-sub">
-              {accuracy.matches_finished} finished, {accuracy.pending} pending
+              {accuracy.matches_finished} finished, {accuracy.pending} {t('trackRecord.pending').toLowerCase()}
             </div>
           </div>
 
           <div className={`accuracy-card ${accuracy.result_accuracy.percentage >= 50 ? 'good' : 'needs-work'}`}>
             <div className="accuracy-number">{accuracy.result_accuracy.percentage}%</div>
-            <div className="accuracy-label">1X2 Accuracy</div>
+            <div className="accuracy-label">1X2 {t('trackRecord.accuracy')}</div>
             <div className="accuracy-sub">
-              {accuracy.result_accuracy.correct}/{accuracy.result_accuracy.total} correct
+              {accuracy.result_accuracy.correct}/{accuracy.result_accuracy.total} {t('trackRecord.correct').toLowerCase()}
             </div>
           </div>
 
@@ -142,15 +152,15 @@ export default function TrackRecord() {
             <div className="accuracy-number">{accuracy.over25_accuracy.percentage}%</div>
             <div className="accuracy-label">Over/Under 2.5</div>
             <div className="accuracy-sub">
-              {accuracy.over25_accuracy.correct}/{accuracy.over25_accuracy.total} correct
+              {accuracy.over25_accuracy.correct}/{accuracy.over25_accuracy.total} {t('trackRecord.correct').toLowerCase()}
             </div>
           </div>
 
           <div className={`accuracy-card ${accuracy.btts_accuracy.percentage >= 50 ? 'good' : 'needs-work'}`}>
             <div className="accuracy-number">{accuracy.btts_accuracy.percentage}%</div>
-            <div className="accuracy-label">BTTS Accuracy</div>
+            <div className="accuracy-label">BTTS {t('trackRecord.accuracy')}</div>
             <div className="accuracy-sub">
-              {accuracy.btts_accuracy.correct}/{accuracy.btts_accuracy.total} correct
+              {accuracy.btts_accuracy.correct}/{accuracy.btts_accuracy.total} {t('trackRecord.correct').toLowerCase()}
             </div>
           </div>
         </div>
@@ -161,7 +171,7 @@ export default function TrackRecord() {
         <h2>Prediction History</h2>
         {predictions.length === 0 ? (
           <div className="no-predictions">
-            <p>No predictions yet. Analyze some matches to start building your prediction history!</p>
+            <p>{t('trackRecord.noPredictions')}</p>
           </div>
         ) : (
           <div className="predictions-table">
@@ -179,7 +189,7 @@ export default function TrackRecord() {
               return (
                 <div key={pred.fixture_id} className={`pred-table-row ${pred.match_finished ? (pred.result_correct ? 'correct' : 'wrong') : 'pending'}`}>
                   <span className="col-date">
-                    {new Date(pred.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                    {new Date(pred.match_date || pred.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
                   </span>
                   <span className="col-match">
                     <span className="match-teams-text">{pred.team_a_name} vs {pred.team_b_name}</span>
@@ -235,7 +245,7 @@ export default function TrackRecord() {
                         <span className="status-wrong">LOSS</span>
                       )
                     ) : (
-                      <span className="status-pending">Pending</span>
+                      <span className="status-pending">{t('trackRecord.pending')}</span>
                     )}
                   </span>
                 </div>

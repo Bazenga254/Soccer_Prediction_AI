@@ -1,19 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
 import axios from 'axios'
 import { isSoundEnabled, setSoundEnabled } from '../sounds'
 
-const SECURITY_QUESTIONS = [
-  "What is your mother's maiden name?",
-  "What was your first pet's name?",
-  "What city were you born in?",
-  "What is your favorite movie?",
-  "What was the name of your first school?",
-  "What is your childhood nickname?",
-]
-
 export default function Profile() {
+  const { t } = useTranslation()
   const { user, updateUser, refreshProfile, logout } = useAuth()
   const navigate = useNavigate()
   const [editingUsername, setEditingUsername] = useState(false)
@@ -22,6 +15,7 @@ export default function Profile() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [referralStats, setReferralStats] = useState(null)
+  const [commissionRate, setCommissionRate] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [copied, setCopied] = useState(false)
   const fileInputRef = useRef(null)
@@ -51,6 +45,9 @@ export default function Profile() {
       } catch { /* ignore */ }
     }
     fetchReferralStats()
+    axios.get('/api/pricing').then(res => {
+      setCommissionRate(res.data?.commissions?.referral_rate)
+    }).catch(() => {})
   }, [])
 
   if (!user) return null
@@ -76,7 +73,7 @@ export default function Profile() {
       if (res.data.success) {
         updateUser({ username: res.data.username, display_name: res.data.display_name })
         setEditingUsername(false)
-        setSuccess('Username updated!')
+        setSuccess(t('profile.usernameUpdated'))
         setTimeout(() => setSuccess(''), 3000)
       }
     } catch (err) {
@@ -89,13 +86,13 @@ export default function Profile() {
     if (!file) return
 
     if (file.size > 2 * 1024 * 1024) {
-      setError('Image must be smaller than 2MB')
+      setError(t('profile.imageSize'))
       setTimeout(() => setError(''), 3000)
       return
     }
 
     if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
-      setError('Only JPEG, PNG, GIF, and WebP images are allowed')
+      setError(t('profile.imageType'))
       setTimeout(() => setError(''), 3000)
       return
     }
@@ -110,7 +107,7 @@ export default function Profile() {
       })
       if (res.data.success) {
         updateUser({ avatar_url: res.data.avatar_url })
-        setSuccess('Avatar updated!')
+        setSuccess(t('profile.avatarUpdated'))
         setTimeout(() => setSuccess(''), 3000)
       }
     } catch (err) {
@@ -127,7 +124,7 @@ export default function Profile() {
       const res = await axios.delete('/api/user/avatar')
       if (res.data.success) {
         updateUser({ avatar_url: null })
-        setSuccess('Avatar removed!')
+        setSuccess(t('profile.avatarRemoved'))
         setTimeout(() => setSuccess(''), 3000)
       }
     } catch (err) {
@@ -147,7 +144,7 @@ export default function Profile() {
       if (securityAnswer.trim()) payload.security_answer = securityAnswer
 
       if (Object.keys(payload).length === 0) {
-        setError('No changes to save')
+        setError(t('profile.noChanges'))
         setTimeout(() => setError(''), 3000)
         setSavingPersonal(false)
         return
@@ -156,7 +153,7 @@ export default function Profile() {
       await axios.put('/api/user/personal-info', payload)
       await refreshProfile()
       setSecurityAnswer('')
-      setSuccess('Personal information updated!')
+      setSuccess(t('profile.personalInfoUpdated'))
       setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update personal info')
@@ -169,11 +166,11 @@ export default function Profile() {
   const handleDeleteAccount = async () => {
     setDeleteError('')
     if (deleteConfirmText !== 'DELETE') {
-      setDeleteError('Please type DELETE to confirm')
+      setDeleteError(t('profile.pleaseTypeDelete'))
       return
     }
     if (!deletePassword) {
-      setDeleteError('Please enter your password')
+      setDeleteError(t('profile.pleaseEnterPassword'))
       return
     }
     setDeleting(true)
@@ -200,7 +197,7 @@ export default function Profile() {
   return (
     <div className="profile-page">
       <div className="profile-container">
-        <h2 className="profile-title">My Profile</h2>
+        <h2 className="profile-title">{t('profile.title')}</h2>
 
         {error && <div className="profile-error">{error}</div>}
         {success && <div className="profile-success">{success}</div>}
@@ -253,13 +250,13 @@ export default function Profile() {
           <div className="profile-header-info">
             <div className="profile-display-name">{user.display_name}</div>
             <div className="profile-username">@{user.username}</div>
-            <span className={`tier-badge ${user.tier}`}>{user.tier === 'pro' ? 'PRO' : 'FREE'}</span>
+            <span className={`tier-badge ${user.tier}`}>{user.tier === 'pro' ? 'PRO' : user.tier === 'trial' ? 'TRIAL' : 'FREE'}</span>
           </div>
         </div>
 
         {/* Edit Username */}
         <div className="profile-field">
-          <label>Username</label>
+          <label>{t('profile.username')}</label>
           {editingUsername ? (
             <div className="profile-edit-row">
               <div className="username-input-wrap">
@@ -276,24 +273,24 @@ export default function Profile() {
                 />
                 {usernameAvailable !== null && (
                   <span className={`username-status ${usernameAvailable ? 'available' : 'taken'}`}>
-                    {usernameAvailable ? 'Available' : 'Taken'}
+                    {usernameAvailable ? t('common.available') : t('common.taken')}
                   </span>
                 )}
               </div>
-              <button className="save-btn" onClick={saveUsername} disabled={usernameAvailable === false}>Save</button>
-              <button className="cancel-btn" onClick={() => setEditingUsername(false)}>Cancel</button>
+              <button className="save-btn" onClick={saveUsername} disabled={usernameAvailable === false}>{t('common.save')}</button>
+              <button className="cancel-btn" onClick={() => setEditingUsername(false)}>{t('common.cancel')}</button>
             </div>
           ) : (
             <div className="profile-value-row">
               <span>@{user.username}</span>
-              <button className="edit-btn" onClick={() => { setEditingUsername(true); setNewUsername(user.username) }}>Edit</button>
+              <button className="edit-btn" onClick={() => { setEditingUsername(true); setNewUsername(user.username) }}>{t('common.edit')}</button>
             </div>
           )}
         </div>
 
         {/* Email (read-only) */}
         <div className="profile-field">
-          <label>Email</label>
+          <label>{t('profile.email')}</label>
           <div className="profile-value-row">
             <span>{user.email}</span>
           </div>
@@ -301,23 +298,23 @@ export default function Profile() {
 
         {/* Personal Information */}
         <div className="profile-personal-info">
-          <h3 className="profile-section-title">Personal Information</h3>
-          <p className="profile-section-desc">This information helps us verify your identity for support requests.</p>
+          <h3 className="profile-section-title">{t('profile.personalInfo')}</h3>
+          <p className="profile-section-desc">{t('profile.personalInfoDesc')}</p>
 
           <div className="personal-info-form">
             <div className="personal-info-field">
-              <label>Full Name</label>
+              <label>{t('profile.fullName')}</label>
               <input
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Enter your full name"
+                placeholder={t('profile.enterFullName')}
                 maxLength={100}
               />
             </div>
 
             <div className="personal-info-field">
-              <label>Date of Birth</label>
+              <label>{t('profile.dateOfBirth')}</label>
               <input
                 type="date"
                 value={dateOfBirth}
@@ -326,29 +323,32 @@ export default function Profile() {
             </div>
 
             <div className="personal-info-field">
-              <label>Security Question {user.security_question && <span className="security-set-badge">Set</span>}</label>
+              <label>{t('profile.securityQuestion')} {user.security_question && <span className="security-set-badge">{t('profile.set')}</span>}</label>
               <select
                 value={securityQuestion}
                 onChange={(e) => setSecurityQuestion(e.target.value)}
                 disabled={!!user.security_question}
               >
-                <option value="">Select a security question</option>
-                {SECURITY_QUESTIONS.map(q => (
-                  <option key={q} value={q}>{q}</option>
-                ))}
+                <option value="">{t('profile.selectSecurityQuestion')}</option>
+                <option value={t('auth.secQ1')}>{t('auth.secQ1')}</option>
+                <option value={t('auth.secQ2')}>{t('auth.secQ2')}</option>
+                <option value={t('auth.secQ3')}>{t('auth.secQ3')}</option>
+                <option value={t('auth.secQ4')}>{t('auth.secQ4')}</option>
+                <option value={t('auth.secQ5')}>{t('auth.secQ5')}</option>
+                <option value={t('auth.secQ6')}>{t('auth.secQ6')}</option>
               </select>
               {user.security_question && (
-                <p className="security-question-disclaimer">Your security question cannot be changed once set, not even by an admin. This is for your account protection.</p>
+                <p className="security-question-disclaimer">{t('profile.securityQuestionDisclaimer')}</p>
               )}
             </div>
 
             <div className="personal-info-field">
-              <label>Security Answer {user.has_security_answer && <span className="security-set-badge">Set</span>}</label>
+              <label>{t('profile.securityAnswer')} {user.has_security_answer && <span className="security-set-badge">{t('profile.set')}</span>}</label>
               <input
                 type="text"
                 value={securityAnswer}
                 onChange={(e) => setSecurityAnswer(e.target.value)}
-                placeholder={user.has_security_answer ? 'Enter new answer to change' : 'Enter your answer'}
+                placeholder={user.has_security_answer ? t('profile.enterNewAnswer') : t('auth.enterYourAnswer')}
                 maxLength={200}
               />
             </div>
@@ -358,18 +358,18 @@ export default function Profile() {
               onClick={savePersonalInfo}
               disabled={savingPersonal}
             >
-              {savingPersonal ? 'Saving...' : 'Save Personal Info'}
+              {savingPersonal ? t('common.saving') : t('profile.savePersonalInfo')}
             </button>
           </div>
         </div>
 
         {/* Preferences */}
         <div className="profile-preferences">
-          <h3 className="profile-section-title">Preferences</h3>
+          <h3 className="profile-section-title">{t('profile.preferences')}</h3>
           <div className="preference-row">
             <div className="preference-info">
-              <span className="preference-label">Sound Notifications</span>
-              <span className="preference-desc">Play a sound when new messages arrive in support chat</span>
+              <span className="preference-label">{t('profile.soundNotifications')}</span>
+              <span className="preference-desc">{t('profile.soundDesc')}</span>
             </div>
             <button
               className={`sound-toggle ${soundOn ? 'on' : 'off'}`}
@@ -387,14 +387,14 @@ export default function Profile() {
 
         {/* Referral System */}
         <div className="profile-field">
-          <label>Referral Program</label>
+          <label>{t('profile.referralProgram')}</label>
           <div className="referral-card">
             <div className="referral-code-section">
-              <span className="referral-label">Your Referral Link</span>
+              <span className="referral-label">{t('profile.yourReferralLink')}</span>
               <div className="referral-code-row">
                 <span className="referral-link-display">{referralLink}</span>
                 <button className={`copy-referral-btn${copied ? ' copied' : ''}`} onClick={copyReferralLink}>
-                  {copied ? 'Copied!' : 'Copy'}
+                  {copied ? t('common.copied') : t('common.copy')}
                 </button>
               </div>
             </div>
@@ -402,21 +402,21 @@ export default function Profile() {
             <div className="referral-stats-row">
               <div className="referral-stat">
                 <span className="referral-stat-value">{referralStats?.total_referred || 0}</span>
-                <span className="referral-stat-label">Referrals</span>
+                <span className="referral-stat-label">{t('profile.referrals')}</span>
               </div>
               <div className="referral-stat">
                 <span className="referral-stat-value">{referralStats?.pro_referred || 0}</span>
-                <span className="referral-stat-label">Pro Signups</span>
+                <span className="referral-stat-label">{t('profile.proSignups')}</span>
               </div>
               <div className="referral-stat">
-                <span className="referral-stat-value">30%</span>
-                <span className="referral-stat-label">Commission</span>
+                <span className="referral-stat-value">{commissionRate ? `${Math.round(commissionRate * 100)}%` : '30%'}</span>
+                <span className="referral-stat-label">{t('profile.commission')}</span>
               </div>
             </div>
 
             {referralStats?.referrals?.length > 0 && (
               <div className="referral-list">
-                <span className="referral-list-title">Your Referrals</span>
+                <span className="referral-list-title">{t('profile.yourReferrals')}</span>
                 {referralStats.referrals.map(r => (
                   <div key={r.id} className="referral-list-item">
                     <span className="referral-list-name">{r.display_name}</span>
@@ -428,14 +428,14 @@ export default function Profile() {
             )}
 
             <p className="referral-hint">
-              Share your unique link with friends. Earn 30% lifetime commission on every Pro subscription from your referrals. Commission paid weekly on Fridays.
+              {t('profile.referralHint')}
             </p>
           </div>
         </div>
 
         {/* Account Info */}
         <div className="profile-field">
-          <label>Member Since</label>
+          <label>{t('profile.memberSince')}</label>
           <div className="profile-value-row">
             <span>{new Date(user.created_at).toLocaleDateString()}</span>
           </div>
@@ -443,15 +443,15 @@ export default function Profile() {
 
         {/* Danger Zone */}
         <div className="profile-danger-zone">
-          <h3 className="danger-zone-title">Danger Zone</h3>
+          <h3 className="danger-zone-title">{t('profile.dangerZone')}</h3>
           <p className="danger-zone-desc">
-            Once you delete your account, there is no going back. All your data, predictions, and community posts will be permanently removed.
+            {t('profile.dangerZoneDesc')}
           </p>
           <button className="delete-account-btn" onClick={() => setShowDeleteModal(true)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
             </svg>
-            Delete Account
+            {t('profile.deleteAccount')}
           </button>
         </div>
       </div>
@@ -460,29 +460,29 @@ export default function Profile() {
       {showDeleteModal && (
         <div className="delete-modal-overlay" onClick={() => setShowDeleteModal(false)}>
           <div className="delete-modal" onClick={(e) => e.stopPropagation()}>
-            <h3 className="delete-modal-title">Delete Account</h3>
+            <h3 className="delete-modal-title">{t('profile.deleteAccountTitle')}</h3>
             <div className="delete-modal-warning">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                 <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
-              <p>This action is <strong>permanent</strong> and cannot be undone. All your data will be deleted.</p>
+              <p dangerouslySetInnerHTML={{ __html: t('profile.deleteWarning') }} />
             </div>
 
             {deleteError && <div className="delete-modal-error">{deleteError}</div>}
 
             <div className="delete-modal-field">
-              <label>Enter your password to confirm</label>
+              <label>{t('profile.enterPasswordConfirm')}</label>
               <input
                 type="password"
                 value={deletePassword}
                 onChange={(e) => setDeletePassword(e.target.value)}
-                placeholder="Your password"
+                placeholder={t('profile.yourPassword')}
               />
             </div>
 
             <div className="delete-modal-field">
-              <label>Type <strong>DELETE</strong> to confirm</label>
+              <label dangerouslySetInnerHTML={{ __html: t('profile.typeDelete') }} />
               <input
                 type="text"
                 value={deleteConfirmText}
@@ -493,14 +493,14 @@ export default function Profile() {
 
             <div className="delete-modal-actions">
               <button className="delete-modal-cancel" onClick={() => { setShowDeleteModal(false); setDeletePassword(''); setDeleteConfirmText(''); setDeleteError('') }}>
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 className="delete-modal-confirm"
                 onClick={handleDeleteAccount}
                 disabled={deleting || deleteConfirmText !== 'DELETE' || !deletePassword}
               >
-                {deleting ? 'Deleting...' : 'Permanently Delete Account'}
+                {deleting ? t('profile.deleting') : t('profile.permanentlyDelete')}
               </button>
             </div>
           </div>

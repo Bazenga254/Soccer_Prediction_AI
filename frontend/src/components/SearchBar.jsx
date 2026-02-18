@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 export default function SearchBar() {
@@ -11,6 +12,7 @@ export default function SearchBar() {
   const containerRef = useRef(null)
   const inputRef = useRef(null)
   const debounceRef = useRef(null)
+  const { t } = useTranslation()
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -90,7 +92,7 @@ export default function SearchBar() {
           ref={inputRef}
           type="text"
           className="search-input"
-          placeholder="Search teams or predictors..."
+          placeholder={t('search.placeholder')}
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
           onFocus={() => { if (query.trim().length >= 2) setDropdownOpen(true) }}
@@ -110,7 +112,7 @@ export default function SearchBar() {
               <span>Searching...</span>
             </div>
           ) : !hasResults ? (
-            <div className="search-empty">No results found for "{query}"</div>
+            <div className="search-empty">{t('search.noResults')} "{query}"</div>
           ) : (
             <>
               {results.matches.length > 0 && (

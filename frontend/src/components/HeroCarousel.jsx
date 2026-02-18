@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export default function HeroCarousel({ images, interval = 3000, children }) {
+  const { t } = useTranslation()
   const [currentIndex, setCurrentIndex] = useState(0)
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export default function HeroCarousel({ images, interval = 3000, children }) {
               key={i}
               className={`hero-dot ${i === currentIndex ? 'active' : ''}`}
               onClick={() => setCurrentIndex(i)}
-              aria-label={`Go to slide ${i + 1}`}
+              aria-label={t('landing.goToSlide', { number: i + 1 })}
             />
           ))}
         </div>

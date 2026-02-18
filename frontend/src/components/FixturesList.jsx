@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 const COMPETITION_NAMES = {
@@ -66,7 +67,7 @@ function FixtureCard({ fixture, onAnalyze }) {
 
         <div className="fixture-analyze-btn">
           <span>View Analysis</span>
-          <span className="arrow">→</span>
+          <span className="arrow">&rarr;</span>
         </div>
       </div>
     </div>
@@ -74,6 +75,7 @@ function FixtureCard({ fixture, onAnalyze }) {
 }
 
 export default function FixturesList({ competition: propCompetition }) {
+  const { t } = useTranslation()
   const { competitionId } = useParams()
   const competition = competitionId || propCompetition || 'PL'
   const competitionName = COMPETITION_NAMES[competition] || 'Unknown League'
@@ -110,7 +112,7 @@ export default function FixturesList({ competition: propCompetition }) {
     return (
       <div className="loading-container">
         <div className="spinner"></div>
-        <p>Loading {competitionName} fixtures...</p>
+        <p>{t('common.loading')}</p>
       </div>
     )
   }
@@ -125,7 +127,7 @@ export default function FixturesList({ competition: propCompetition }) {
   return (
     <div className="fixtures-container">
       <div className="fixtures-header">
-        <h2>{isHistorical ? 'Recent' : 'Upcoming'} {competitionName} Fixtures</h2>
+        <h2>{isHistorical ? 'Recent' : t('fixtures.upcoming')} {competitionName} Fixtures</h2>
         <p className="fixtures-subtitle">
           Click on a match to see H2H analysis and predictions
         </p>
@@ -139,7 +141,7 @@ export default function FixturesList({ competition: propCompetition }) {
       {fixtures.length === 0 ? (
         <div className="no-fixtures">
           <div className="no-fixtures-icon">📅</div>
-          <h3>No {competitionName} Matches Available</h3>
+          <h3>{t('fixtures.noFixtures')}</h3>
           <p>There are no scheduled matches in the next 14 days.</p>
           <div className="no-fixtures-reasons">
             <p className="hint">Possible reasons:</p>

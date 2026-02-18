@@ -6,6 +6,7 @@ Handles free/pro tier management, subscription tracking, and feature gating.
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
+import pricing_config
 
 DB_PATH = "users.db"  # Same DB as user_auth
 
@@ -105,7 +106,35 @@ PLANS = {
             "Monthly insights report",
         ],
     },
+    "trial_usd": {
+        "name": "3-Day Trial",
+        "price": 1.0,
+        "currency": "USD",
+        "duration_days": 3,
+        "features": [
+            "10 AI analyses per day",
+            "3 jackpot analyses per day",
+            "Unlimited AI chat usage",
+            "Unlimited game analysis",
+            "3 days access",
+        ],
+    },
+    "trial_kes": {
+        "name": "3-Day Trial",
+        "price": 100.0,
+        "currency": "KES",
+        "duration_days": 3,
+        "features": [
+            "10 AI analyses per day",
+            "3 jackpot analyses per day",
+            "Unlimited AI chat usage",
+            "Unlimited game analysis",
+            "3 days access",
+        ],
+    },
 }
+
+TRIAL_PLAN_IDS = {"trial_usd", "trial_kes"}
 
 # --- Free tier limits ---
 
@@ -125,17 +154,42 @@ PRO_LIMITS = {
     "value_betting": True,
 }
 
+TRIAL_LIMITS = {
+    "predictions_per_day": 10,
+    "jackpot_sessions_per_day": 3,
+    "community_shares_per_day": -1,
+    "show_ads": False,
+    "advanced_analytics": True,
+    "value_betting": True,
+}
+
+
+def is_trial_plan(plan_id: str) -> bool:
+    """Check if a plan ID is a trial plan."""
+    return plan_id in TRIAL_PLAN_IDS
+
 
 def get_plans() -> Dict:
-    """Return available subscription plans."""
-    return PLANS
+    """Return available subscription plans (dynamic from pricing_config)."""
+    try:
+        dynamic = pricing_config.get_plans_dict()
+        if dynamic:
+            return dynamic
+    except Exception:
+        pass
+    return PLANS  # fallback to hardcoded
 
 
 def get_tier_limits(tier: str) -> Dict:
     """Return feature limits for a tier."""
     if tier == "pro":
         return PRO_LIMITS
-    return FREE_LIMITS
+    if tier == "trial":
+        return TRIAL_LIMITS
+    try:
+        return pricing_config.get_free_limits()
+    except Exception:
+        return FREE_LIMITS
 
 
 def get_active_subscription(user_id: int) -> Optional[Dict]:
@@ -172,10 +226,19 @@ def create_subscription(
     payment_ref: str = "",
 ) -> Dict:
     """Create a new subscription for a user."""
-    if plan_id not in PLANS:
+    plans = get_plans()
+    if plan_id not in plans:
         return {"success": False, "error": "Invalid plan"}
 
-    plan = PLANS[plan_id]
+    is_trial = plan_id in TRIAL_PLAN_IDS
+
+    # Check if user already used trial
+    if is_trial:
+        import user_auth
+        if user_auth.has_used_trial(user_id):
+            return {"success": False, "error": "Trial already used"}
+
+    plan = plans[plan_id]
     conn = _get_db()
     now = datetime.now()
     expires = now + timedelta(days=plan["duration_days"])
@@ -190,8 +253,14 @@ def create_subscription(
         now.isoformat(), expires.isoformat(), now.isoformat(),
     ))
 
-    # Upgrade user tier
-    conn.execute("UPDATE users SET tier = 'pro' WHERE id = ?", (user_id,))
+    # Set tier based on plan type
+    target_tier = 'trial' if is_trial else 'pro'
+    conn.execute("UPDATE users SET tier = ? WHERE id = ?", (target_tier, user_id))
+
+    # Mark trial as used
+    if is_trial:
+        conn.execute("UPDATE users SET has_used_trial = 1 WHERE id = ?", (user_id,))
+
     conn.commit()
 
     # Log action

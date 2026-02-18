@@ -1,84 +1,151 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
+import { useCurrency } from '../context/CurrencyContext'
 import axios from 'axios'
 import MpesaPaymentModal from '../components/MpesaPaymentModal'
+import WhopCheckoutModal from '../components/WhopCheckoutModal'
 
 export default function Upgrade() {
+  const { t } = useTranslation()
   const { user } = useAuth()
+  const { currency, currencySymbol, isKenyan } = useCurrency()
   const [plans, setPlans] = useState({})
   const [subscription, setSubscription] = useState(null)
+  const [trialEligible, setTrialEligible] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [currency, setCurrency] = useState('USD')
   const [mpesaModal, setMpesaModal] = useState({ open: false, planId: '', amountKes: 0, amountUsd: 0, title: '', description: '', txType: 'subscription' })
   const [balance, setBalance] = useState(null)
-  const [depositAmount, setDepositAmount] = useState(2)
+  const [depositAmount, setDepositAmount] = useState(currency === 'KES' ? 260 : 2)
+  const [minDepositKes, setMinDepositKes] = useState(260)
+  const [whopModal, setWhopModal] = useState({ open: false, transactionType: '', planId: '', amountUsd: 0, title: '' })
+  const [pricingInfo, setPricingInfo] = useState(null)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [plansRes, statusRes, balRes] = await Promise.allSettled([
+        const [plansRes, statusRes, balRes, pricingRes] = await Promise.allSettled([
           axios.get('/api/subscription/plans'),
           axios.get('/api/subscription/status'),
           axios.get('/api/user/balance'),
+          axios.get('/api/pricing'),
         ])
         if (plansRes.status === 'fulfilled') setPlans(plansRes.value.data.plans || {})
-        if (statusRes.status === 'fulfilled') setSubscription(statusRes.value.data.subscription)
+        if (statusRes.status === 'fulfilled') {
+          setSubscription(statusRes.value.data.subscription)
+          setTrialEligible(!statusRes.value.data.has_used_trial)
+        }
         if (balRes.status === 'fulfilled') setBalance(balRes.value.data.balance)
+        if (pricingRes.status === 'fulfilled') setPricingInfo(pricingRes.value.data)
       } catch { /* ignore */ }
       setLoading(false)
     }
     fetchData()
   }, [])
 
+  const [kesRate, setKesRate] = useState(130) // KES per 1 USD
+
+  // Fetch KES exchange rate and min deposit for Kenyan users
+  useEffect(() => {
+    if (currency !== 'KES') return
+    axios.post('/api/payment/quote', { amount_usd: 1 })
+      .then(res => {
+        if (res.data.amount_kes) {
+          const rate = res.data.amount_kes
+          setKesRate(rate)
+          const kesMin = Math.ceil(2 * rate)
+          setMinDepositKes(kesMin)
+          setDepositAmount(prev => prev <= 260 ? kesMin : prev)
+        }
+      })
+      .catch(() => {})
+  }, [currency])
+
   if (loading) {
     return (
       <div className="upgrade-page">
         <div className="loading-container">
           <div className="spinner"></div>
-          <p>Loading plans...</p>
+          <p>{t('upgrade.loadingPlans')}</p>
         </div>
       </div>
     )
   }
 
   const isPro = user?.tier === 'pro'
+  const isTrial = user?.tier === 'trial'
+  const hasActiveSub = isPro || isTrial
 
   const weeklyPlan = currency === 'USD' ? plans.weekly_usd : plans.weekly_kes
   const monthlyPlan = currency === 'USD' ? plans.monthly_usd : plans.monthly_kes
-  const currencySymbol = currency === 'USD' ? '$' : 'KES '
+  const trialPlan = currency === 'USD' ? plans.trial_usd : plans.trial_kes
+
+  // Gather extra plans (not the default ones)
+  const DEFAULT_PLAN_IDS = ['weekly_usd', 'weekly_kes', 'monthly_usd', 'monthly_kes', 'trial_usd', 'trial_kes']
+  const extraPlans = Object.entries(plans)
+    .filter(([id]) => !DEFAULT_PLAN_IDS.includes(id))
+    .filter(([, plan]) => plan.currency === currency)
+
+  const matchPrice = currency === 'KES'
+    ? (pricingInfo?.pay_per_use?.match_analysis_price_kes ?? 65)
+    : (pricingInfo?.pay_per_use?.match_analysis_price_usd ?? 0.50)
+  const jackpotPrice = currency === 'KES'
+    ? (pricingInfo?.pay_per_use?.jackpot_analysis_price_kes ?? 130)
+    : (pricingInfo?.pay_per_use?.jackpot_analysis_price_usd ?? 1.00)
 
   const handleUpgrade = (planId, plan) => {
     if (plan.currency === 'KES') {
+      const periodLabel = plan.duration_days === 3 ? '3 days' : plan.duration_days === 7 ? 'week' : 'month'
       setMpesaModal({
         open: true,
         planId,
         amountKes: plan.price,
         amountUsd: 0,
         title: `Subscribe to ${plan.name}`,
-        description: `KES ${plan.price.toLocaleString()} / ${plan.duration_days === 7 ? 'week' : 'month'}`,
+        description: `KES ${plan.price.toLocaleString()} / ${periodLabel}`,
         txType: 'subscription',
       })
     } else {
-      // USD plans — switch to KES tab for M-Pesa payment
-      setCurrency('KES')
+      // USD plans — open Whop checkout for card payment
+      setWhopModal({
+        open: true,
+        transactionType: 'subscription',
+        planId,
+        amountUsd: plan.price,
+        title: `Subscribe to ${plan.name}`,
+      })
     }
   }
 
   const handleDeposit = () => {
-    if (depositAmount < 2) return
-    setMpesaModal({
-      open: true,
-      planId: 'balance_topup',
-      amountKes: 0,
-      amountUsd: depositAmount,
-      title: 'Deposit to Balance',
-      description: `$${depositAmount.toFixed(2)} Pay on the Go deposit`,
-      txType: 'balance_topup',
-    })
+    if (isKenyan) {
+      if (depositAmount < minDepositKes) return
+      setMpesaModal({
+        open: true,
+        planId: 'balance_topup',
+        amountKes: depositAmount,
+        amountUsd: 0,
+        title: 'Deposit to Balance',
+        description: `KES ${depositAmount.toLocaleString()} Pay on the Go deposit`,
+        txType: 'balance_topup',
+      })
+    } else {
+      if (depositAmount < 2) return
+      setMpesaModal({
+        open: true,
+        planId: 'balance_topup',
+        amountKes: 0,
+        amountUsd: depositAmount,
+        title: 'Deposit to Balance',
+        description: `$${depositAmount.toFixed(2)} Pay on the Go deposit`,
+        txType: 'balance_topup',
+      })
+    }
   }
 
   const handlePaymentSuccess = async () => {
     setMpesaModal({ open: false, planId: '', amountKes: 0, amountUsd: 0, title: '', description: '', txType: 'subscription' })
+    setWhopModal({ open: false, transactionType: '', planId: '', amountUsd: 0, title: '' })
     try {
       const [statusRes, balRes] = await Promise.allSettled([
         axios.get('/api/subscription/status'),
@@ -96,129 +163,96 @@ export default function Upgrade() {
       {isPro && subscription && (
         <div className="active-sub-banner">
           <div className="sub-banner-content">
-            <span className="sub-banner-badge">PRO ACTIVE</span>
+            <span className="sub-banner-badge">{t('upgrade.proActive')}</span>
             <span className="sub-banner-text">
-              Your subscription expires on {new Date(subscription.expires_at).toLocaleDateString()}
-              ({subscription.days_remaining} days remaining)
+              {t('upgrade.expiresOn', { date: new Date(subscription.expires_at).toLocaleDateString(), days: subscription.days_remaining })}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Trial active banner */}
+      {isTrial && subscription && (
+        <div className="active-sub-banner trial-banner">
+          <div className="sub-banner-content">
+            <span className="sub-banner-badge trial">TRIAL ACTIVE</span>
+            <span className="sub-banner-text">
+              Your trial expires on {new Date(subscription.expires_at).toLocaleDateString()} ({subscription.days_remaining} days remaining). Upgrade to continue!
             </span>
           </div>
         </div>
       )}
 
       <div className="upgrade-header">
-        <h2>{isPro ? 'Manage Subscription' : 'Upgrade to Pro'}</h2>
+        <h2>{hasActiveSub ? t('upgrade.manageSub') : t('upgrade.title')}</h2>
         <p className="upgrade-subtitle">
-          {isPro
-            ? 'You have full access to all features'
-            : 'Unlock advanced analytics, unlimited predictions, and ad-free experience'}
+          {hasActiveSub
+            ? (isTrial ? 'You are on a 3-day trial. Upgrade to a full plan for unlimited access!' : t('upgrade.fullAccess'))
+            : t('upgrade.unlockFeatures')}
         </p>
-      </div>
-
-      {/* Currency Toggle */}
-      <div className="currency-toggle">
-        <button
-          className={`currency-btn ${currency === 'USD' ? 'active' : ''}`}
-          onClick={() => setCurrency('USD')}
-        >
-          USD ($)
-        </button>
-        <button
-          className={`currency-btn ${currency === 'KES' ? 'active' : ''}`}
-          onClick={() => setCurrency('KES')}
-        >
-          KES (Ksh)
-        </button>
       </div>
 
       {/* Plan Cards */}
       <div className="plans-grid">
         {/* Free Plan */}
-        <div className={`plan-card ${!isPro ? 'current' : ''}`}>
+        <div className={`plan-card ${!hasActiveSub ? 'current' : ''}`}>
           <div className="plan-header">
-            <h3 className="plan-name">Free</h3>
+            <h3 className="plan-name">{t('upgrade.freePlan')}</h3>
             <div className="plan-price">
               <span className="price-amount">{currencySymbol}0</span>
-              <span className="price-period">forever</span>
+              <span className="price-period">{t('upgrade.forever')}</span>
             </div>
           </div>
           <ul className="plan-features">
-            <li className="feature-item">3 match analyses per 24h</li>
-            <li className="feature-item">2 jackpot analyses, then 1 per 72h</li>
-            <li className="feature-item">10 AI chat prompts</li>
-            <li className="feature-item">Basic H2H statistics</li>
-            <li className="feature-item">1 community share per day</li>
-            <li className="feature-item disabled">Advanced analytics</li>
-            <li className="feature-item disabled">Value betting insights</li>
-            <li className="feature-item disabled">Ad-free experience</li>
+            <li className="feature-item">{t('upgrade.freeFeature1')}</li>
+            <li className="feature-item">{t('upgrade.freeFeature2')}</li>
+            <li className="feature-item">{t('upgrade.freeFeature3')}</li>
+            <li className="feature-item">{t('upgrade.freeFeature4')}</li>
+            <li className="feature-item">{t('upgrade.freeFeature5')}</li>
+            <li className="feature-item disabled">{t('upgrade.advancedAnalytics')}</li>
+            <li className="feature-item disabled">{t('upgrade.valueBetting')}</li>
+            <li className="feature-item disabled">{t('upgrade.adFree')}</li>
           </ul>
-          {!isPro && (
-            <div className="plan-current-badge">Current Plan</div>
+          {!hasActiveSub && (
+            <div className="plan-current-badge">{t('upgrade.currentPlan')}</div>
           )}
         </div>
 
-        {/* Pay on the Go */}
-        {!isPro && (
-          <div className="plan-card paygo">
-            <div className="plan-ribbon paygo-ribbon">Flexible</div>
+        {/* Trial Plan - between Free and Pro Weekly */}
+        {trialEligible && !hasActiveSub && trialPlan && (
+          <div className="plan-card trial">
+            <div className="plan-ribbon trial-ribbon">Try for {currencySymbol}{trialPlan.price}!</div>
             <div className="plan-header">
-              <h3 className="plan-name">Pay on the Go</h3>
+              <h3 className="plan-name">3-Day Trial</h3>
               <div className="plan-price">
-                <span className="price-amount">From $2</span>
-                <span className="price-period">deposit</span>
-              </div>
-            </div>
-            <div className="paygo-pricing">
-              <div className="paygo-price-item">
-                <span className="paygo-price-label">Match Analysis</span>
-                <span className="paygo-price-value">$0.50</span>
-              </div>
-              <div className="paygo-price-item">
-                <span className="paygo-price-label">Jackpot Analysis</span>
-                <span className="paygo-price-value">$1.00</span>
+                <span className="price-amount">
+                  {currencySymbol}{trialPlan.price}
+                </span>
+                <span className="price-period">/ 3 days</span>
               </div>
             </div>
             <ul className="plan-features">
-              <li className="feature-item included">Unlock any analysis instantly</li>
-              <li className="feature-item included">Pay only when you need it</li>
-              <li className="feature-item included">No commitment or expiry</li>
-              <li className="feature-item included">Deposit any amount ($2 min)</li>
-              <li className="feature-item included">Balance never expires</li>
+              {(trialPlan.features || []).map((f, i) => (
+                <li key={i} className="feature-item included">{f}</li>
+              ))}
             </ul>
-            {balance && balance.balance_usd > 0 && (
-              <div className="paygo-balance">
-                Balance: <strong>${balance.balance_usd.toFixed(2)}</strong>
-              </div>
-            )}
-            <div className="paygo-deposit-row">
-              <div className="paygo-input-group">
-                <span className="paygo-input-prefix">$</span>
-                <input
-                  type="number"
-                  min="2"
-                  step="1"
-                  value={depositAmount}
-                  onChange={e => setDepositAmount(Math.max(2, Number(e.target.value)))}
-                  className="paygo-input"
-                />
-              </div>
-              <button className="paygo-deposit-btn" onClick={handleDeposit}>
-                Deposit via M-Pesa
-              </button>
-            </div>
+            <button className="plan-upgrade-btn trial-btn" onClick={() => handleUpgrade(currency === 'USD' ? 'trial_usd' : 'trial_kes', trialPlan)}>
+              {currency === 'KES' ? `Start Trial - KES ${trialPlan.price}` : `Start 3-Day Trial - $${trialPlan.price}`}
+            </button>
           </div>
         )}
 
         {/* Weekly Plan */}
         {weeklyPlan && (
           <div className={`plan-card pro ${isPro ? 'current' : 'recommended'}`}>
-            {!isPro && <div className="plan-ribbon">Popular</div>}
+            {!hasActiveSub && <div className="plan-ribbon">{t('upgrade.popular')}</div>}
             <div className="plan-header">
-              <h3 className="plan-name">Pro Weekly</h3>
+              <h3 className="plan-name">{t('upgrade.proWeekly')}</h3>
               <div className="plan-price">
                 <span className="price-amount">
                   {currencySymbol}{weeklyPlan.price}
                 </span>
-                <span className="price-period">/ week</span>
+                <span className="price-period">{t('upgrade.perWeek')}</span>
               </div>
             </div>
             <ul className="plan-features">
@@ -227,10 +261,10 @@ export default function Upgrade() {
               ))}
             </ul>
             {isPro ? (
-              <div className="plan-current-badge pro">Active</div>
+              <div className="plan-current-badge pro">{t('common.active')}</div>
             ) : (
               <button className="plan-upgrade-btn" onClick={() => handleUpgrade(currency === 'USD' ? 'weekly_usd' : 'weekly_kes', weeklyPlan)}>
-                {currency === 'KES' ? 'Pay with M-Pesa' : 'Upgrade Now'}
+                {currency === 'KES' ? t('upgrade.payWithMpesa') : t('upgrade.upgradeNow')}
               </button>
             )}
           </div>
@@ -239,14 +273,14 @@ export default function Upgrade() {
         {/* Monthly Plan */}
         {monthlyPlan && (
           <div className="plan-card pro-monthly">
-            <div className="plan-save-tag">Save 20%</div>
+            <div className="plan-save-tag">{t('upgrade.save20')}</div>
             <div className="plan-header">
-              <h3 className="plan-name">Pro Monthly</h3>
+              <h3 className="plan-name">{t('upgrade.proMonthly')}</h3>
               <div className="plan-price">
                 <span className="price-amount">
                   {currencySymbol}{monthlyPlan.price}
                 </span>
-                <span className="price-period">/ month</span>
+                <span className="price-period">{t('upgrade.perMonth')}</span>
               </div>
             </div>
             <ul className="plan-features">
@@ -255,29 +289,138 @@ export default function Upgrade() {
               ))}
             </ul>
             {isPro ? (
-              <div className="plan-current-badge pro">Active</div>
+              <div className="plan-current-badge pro">{t('common.active')}</div>
             ) : (
               <button className="plan-upgrade-btn monthly" onClick={() => handleUpgrade(currency === 'USD' ? 'monthly_usd' : 'monthly_kes', monthlyPlan)}>
-                {currency === 'KES' ? 'Pay with M-Pesa' : 'Upgrade Now'}
+                {currency === 'KES' ? t('upgrade.payWithMpesa') : t('upgrade.upgradeNow')}
               </button>
             )}
           </div>
         )}
+
+        {/* Extra Plans (admin-created) */}
+        {extraPlans.map(([planId, plan]) => (
+          <div key={planId} className="plan-card pro-extra">
+            <div className="plan-header">
+              <h3 className="plan-name">{plan.name}</h3>
+              <div className="plan-price">
+                <span className="price-amount">
+                  {plan.currency === 'KES' ? 'KES ' : '$'}{plan.price}
+                </span>
+                <span className="price-period">
+                  {plan.duration_days === 1 ? '/ day' : plan.duration_days === 7 ? '/ week' : plan.duration_days === 30 ? '/ month' : `/ ${plan.duration_days} days`}
+                </span>
+              </div>
+            </div>
+            <ul className="plan-features">
+              {(plan.features || []).map((f, i) => (
+                <li key={i} className="feature-item included">{f}</li>
+              ))}
+            </ul>
+            {isPro ? (
+              <div className="plan-current-badge pro">{t('common.active')}</div>
+            ) : (
+              <button className="plan-upgrade-btn" onClick={() => handleUpgrade(planId, plan)}>
+                {plan.currency === 'KES' ? t('upgrade.payWithMpesa') : t('upgrade.upgradeNow')}
+              </button>
+            )}
+          </div>
+        ))}
       </div>
 
+      {/* Pay on the Go - separate section */}
+      {!hasActiveSub && (
+        <div className="paygo-section">
+          <div className="plan-card paygo">
+            <div className="plan-ribbon paygo-ribbon">{t('upgrade.flexible')}</div>
+            <div className="plan-header">
+              <h3 className="plan-name">{t('upgrade.payOnTheGo')}</h3>
+              <div className="plan-price">
+                <span className="price-amount">{isKenyan ? `From KES ${minDepositKes.toLocaleString()}` : t('upgrade.fromDeposit')}</span>
+                <span className="price-period">{t('upgrade.deposit')}</span>
+              </div>
+            </div>
+            <div className="paygo-pricing">
+              <div className="paygo-price-item">
+                <span className="paygo-price-label">{t('upgrade.matchAnalysis')}</span>
+                <span className="paygo-price-value">{currencySymbol}{matchPrice.toFixed(2)}</span>
+              </div>
+              <div className="paygo-price-item">
+                <span className="paygo-price-label">{t('upgrade.jackpotAnalysis')}</span>
+                <span className="paygo-price-value">{currencySymbol}{jackpotPrice.toFixed(2)}</span>
+              </div>
+            </div>
+            <ul className="plan-features">
+              <li className="feature-item included">{t('upgrade.unlockAnalysis')}</li>
+              <li className="feature-item included">{t('upgrade.payWhenNeeded')}</li>
+              <li className="feature-item included">{t('upgrade.noCommitment')}</li>
+              <li className="feature-item included">{isKenyan ? `Deposit any amount (KES ${minDepositKes.toLocaleString()} min)` : t('upgrade.depositMin')}</li>
+              <li className="feature-item included">{t('upgrade.balanceNoExpiry')}</li>
+            </ul>
+            {balance && ((balance.balance_usd || 0) > 0 || (balance.balance_kes || 0) > 0) && (
+              <div className="paygo-balance">
+                {t('upgrade.balance')}: <strong>
+                  {isKenyan
+                    ? `KES ${(Math.round((balance.balance_usd || 0) * kesRate) + Math.round(balance.balance_kes || 0)).toLocaleString()}`
+                    : `$${(balance.balance_usd || 0).toFixed(2)}`
+                  }
+                </strong>
+              </div>
+            )}
+            <div className="paygo-deposit-row">
+              <div className="paygo-input-group">
+                <span className="paygo-input-prefix">{currencySymbol}</span>
+                <input
+                  type="number"
+                  min={isKenyan ? minDepositKes : 2}
+                  step={isKenyan ? 10 : 1}
+                  value={depositAmount}
+                  onChange={e => setDepositAmount(Math.max(isKenyan ? minDepositKes : 2, Number(e.target.value)))}
+                  className="paygo-input"
+                />
+              </div>
+              <button className="paygo-deposit-btn" onClick={handleDeposit}>
+                {t('upgrade.depositViaMpesa')}
+              </button>
+              {!isKenyan && (
+                <button className="paygo-deposit-btn card" onClick={() => {
+                  if (depositAmount < 2) return
+                  setWhopModal({
+                    open: true,
+                    transactionType: 'balance_topup',
+                    planId: '',
+                    amountUsd: depositAmount,
+                    title: `Deposit $${depositAmount.toFixed(2)} to Balance`,
+                  })
+                }}>
+                  {t('upgrade.depositViaCard')}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment Methods Info */}
-      {!isPro && (
+      {!isPro && !isTrial && (
         <div className="payment-methods-info">
-          <h3>Payment Methods</h3>
+          <h3>{t('upgrade.paymentMethods')}</h3>
           <div className="payment-methods-grid">
             <div className="payment-method active">
               <span className="pm-icon">📱</span>
               <span className="pm-name">M-Pesa</span>
-              <span className="pm-note">Pay with M-Pesa</span>
+              <span className="pm-note">{t('upgrade.payWithMpesaNote')}</span>
             </div>
+            {!isKenyan && (
+              <div className="payment-method active">
+                <span className="pm-icon">💳</span>
+                <span className="pm-name">{t('upgrade.cardPayment')}</span>
+                <span className="pm-note">{t('upgrade.cardPaymentNote')}</span>
+              </div>
+            )}
           </div>
           <p className="payment-note">
-            Select a KES plan above and pay instantly via M-Pesa STK Push.
+            {t('upgrade.paymentMethodsNote')}
           </p>
         </div>
       )}
@@ -294,57 +437,67 @@ export default function Upgrade() {
         description={mpesaModal.description}
       />
 
+      <WhopCheckoutModal
+        isOpen={whopModal.open}
+        onClose={() => setWhopModal({ ...whopModal, open: false })}
+        onSuccess={handlePaymentSuccess}
+        transactionType={whopModal.transactionType}
+        planId={whopModal.planId}
+        amountUsd={whopModal.amountUsd}
+        title={whopModal.title}
+      />
+
       {/* Pro vs Free comparison */}
       <div className="comparison-section">
-        <h3>Free vs Pay on the Go vs Pro</h3>
+        <h3>{t('upgrade.comparisonTitle')}</h3>
         <div className="comparison-table wide">
           <div className="comparison-header">
-            <span>Feature</span>
-            <span>Free</span>
-            <span>Pay on the Go</span>
-            <span>Pro</span>
+            <span>{t('upgrade.feature')}</span>
+            <span>{t('upgrade.freePlan')}</span>
+            <span>{t('upgrade.payOnTheGo')}</span>
+            <span>{t('common.pro')}</span>
           </div>
           <div className="comparison-row">
-            <span>Match Analysis</span>
-            <span>3 per 24h</span>
-            <span>$0.50 each</span>
-            <span className="pro-value">Unlimited</span>
+            <span>{t('upgrade.matchAnalysis')}</span>
+            <span>{t('upgrade.threePer24h')}</span>
+            <span>{t('upgrade.perEach050')}</span>
+            <span className="pro-value">{t('upgrade.unlimited')}</span>
           </div>
           <div className="comparison-row">
-            <span>Jackpot Analysis</span>
-            <span>2, then 1/72h</span>
-            <span>$1.00 each</span>
-            <span className="pro-value">Unlimited</span>
+            <span>{t('upgrade.jackpotAnalysis')}</span>
+            <span>{t('upgrade.twoThen172h')}</span>
+            <span>{t('upgrade.perEach100')}</span>
+            <span className="pro-value">{t('upgrade.unlimited')}</span>
           </div>
           <div className="comparison-row">
-            <span>AI Chat Prompts</span>
-            <span>10 total</span>
-            <span>10 total</span>
-            <span className="pro-value">Unlimited</span>
+            <span>{t('upgrade.aiChatPrompts')}</span>
+            <span>{t('upgrade.total10')}</span>
+            <span>{t('upgrade.total10')}</span>
+            <span className="pro-value">{t('upgrade.unlimited')}</span>
           </div>
           <div className="comparison-row">
-            <span>Advanced Analytics</span>
+            <span>{t('upgrade.advancedAnalytics')}</span>
             <span className="no-value">-</span>
             <span className="no-value">-</span>
-            <span className="pro-value">Yes</span>
+            <span className="pro-value">{t('common.yes')}</span>
           </div>
           <div className="comparison-row">
-            <span>Value Betting</span>
+            <span>{t('upgrade.valueBetting')}</span>
             <span className="no-value">-</span>
             <span className="no-value">-</span>
-            <span className="pro-value">Yes</span>
+            <span className="pro-value">{t('common.yes')}</span>
           </div>
           <div className="comparison-row">
-            <span>Advertisements</span>
-            <span>Yes</span>
-            <span>Yes</span>
-            <span className="pro-value">None</span>
+            <span>{t('upgrade.advertisements')}</span>
+            <span>{t('common.yes')}</span>
+            <span>{t('common.yes')}</span>
+            <span className="pro-value">{t('upgrade.none')}</span>
           </div>
           <div className="comparison-row">
-            <span>Priority Support</span>
+            <span>{t('upgrade.prioritySupport')}</span>
             <span className="no-value">-</span>
             <span className="no-value">-</span>
-            <span className="pro-value">Yes</span>
+            <span className="pro-value">{t('common.yes')}</span>
           </div>
         </div>
       </div>

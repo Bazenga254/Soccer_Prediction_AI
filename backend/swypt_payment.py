@@ -84,6 +84,18 @@ def init_payment_db():
         CREATE INDEX IF NOT EXISTS idx_wr_status ON withdrawal_requests(status);
     """)
     conn.commit()
+
+    # Add columns via migration (for existing installs)
+    for col_sql in [
+        "ALTER TABLE withdrawal_requests ADD COLUMN withdrawal_method TEXT DEFAULT 'mpesa'",
+        "ALTER TABLE withdrawal_requests ADD COLUMN whop_transfer_id TEXT DEFAULT ''",
+        "ALTER TABLE withdrawal_requests ADD COLUMN whop_user_id TEXT DEFAULT ''",
+    ]:
+        try:
+            conn.execute(col_sql)
+        except Exception:
+            pass  # Column already exists
+    conn.commit()
     conn.close()
 
 
@@ -400,6 +412,14 @@ def _complete_transaction(transaction_id: int) -> Dict:
             payment_method="mpesa",
             payment_ref=tx["swypt_order_id"],
         )
+        # Process referral commission
+        try:
+            import whop_payment
+            whop_payment._process_referral_commission(
+                tx["user_id"], tx["reference_id"], "mpesa",
+                amount_usd=tx["amount_usd"] or 0, transaction_type="subscription")
+        except Exception as e:
+            logger.error(f"Referral commission error (mpesa sub): {e}")
     elif tx["transaction_type"] == "prediction_purchase":
         # Unlock the prediction
         result = community.purchase_prediction(
@@ -408,6 +428,13 @@ def _complete_transaction(transaction_id: int) -> Dict:
             payment_method="mpesa",
             payment_ref=tx["swypt_order_id"],
         )
+        try:
+            import whop_payment
+            whop_payment._process_referral_commission(
+                tx["user_id"], tx["reference_id"], "mpesa",
+                amount_usd=tx["amount_usd"] or 0, transaction_type="prediction_purchase")
+        except Exception as e:
+            logger.error(f"Referral commission error (mpesa pred): {e}")
     elif tx["transaction_type"] == "balance_topup":
         # Credit user's account balance
         amount_usd = tx["amount_usd"] or 0
@@ -418,6 +445,13 @@ def _complete_transaction(transaction_id: int) -> Dict:
             reason="Pay on the Go deposit via M-Pesa",
             adjustment_type="topup",
         )
+        try:
+            import whop_payment
+            whop_payment._process_referral_commission(
+                tx["user_id"], "balance_topup", "mpesa",
+                amount_usd=amount_usd, transaction_type="balance_topup")
+        except Exception as e:
+            logger.error(f"Referral commission error (mpesa topup): {e}")
         result = {"success": True}
     else:
         result = {"success": True}
@@ -440,10 +474,31 @@ def _complete_transaction(transaction_id: int) -> Dict:
 
 # ==================== OFF-RAMP (WITHDRAWALS) ====================
 
-def request_withdrawal(user_id: int, amount_usd: float, phone: str) -> Dict:
+def request_withdrawal(user_id: int, amount_usd: float, phone: str = "", withdrawal_method: str = "mpesa") -> Dict:
     """Create a withdrawal request. Deducts balance immediately."""
     if amount_usd < MINIMUM_WITHDRAWAL_USD:
         return {"success": False, "error": f"Minimum withdrawal is ${MINIMUM_WITHDRAWAL_USD:.2f}"}
+
+    whop_user_id = ""
+
+    if withdrawal_method == "whop":
+        # Check user has Whop account linked
+        import sqlite3 as _sq
+        users_conn = _sq.connect("users.db")
+        users_conn.row_factory = _sq.Row
+        user_row = users_conn.execute(
+            "SELECT whop_user_id FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+        users_conn.close()
+        if not user_row or not user_row["whop_user_id"]:
+            return {"success": False, "error": "No Whop account linked. Make a card payment first to enable USD withdrawals."}
+        whop_user_id = user_row["whop_user_id"]
+        phone = ""
+    elif withdrawal_method == "mpesa":
+        if not phone:
+            return {"success": False, "error": "Phone number required for M-Pesa withdrawal"}
+    else:
+        return {"success": False, "error": "Invalid withdrawal method"}
 
     conn = _get_db()
 
@@ -468,8 +523,7 @@ def request_withdrawal(user_id: int, amount_usd: float, phone: str) -> Dict:
     now = datetime.now().isoformat()
 
     # Estimate KES amount (approximate — admin will use current rate)
-    # Use a rough estimate of 130 KES per USD
-    estimated_kes = round(amount_usd * 130, 2)
+    estimated_kes = round(amount_usd * 130, 2) if withdrawal_method == "mpesa" else 0.0
 
     # Deduct balance
     conn.execute("""
@@ -481,9 +535,11 @@ def request_withdrawal(user_id: int, amount_usd: float, phone: str) -> Dict:
     # Create withdrawal request
     cursor = conn.execute("""
         INSERT INTO withdrawal_requests
-            (user_id, amount_usd, amount_kes, exchange_rate, phone_number, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
-    """, (user_id, amount_usd, estimated_kes, 130.0, phone, now, now))
+            (user_id, amount_usd, amount_kes, exchange_rate, phone_number,
+             withdrawal_method, whop_user_id, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    """, (user_id, amount_usd, estimated_kes, 130.0, phone,
+          withdrawal_method, whop_user_id, now, now))
     request_id = cursor.lastrowid
 
     conn.commit()
@@ -499,7 +555,7 @@ def request_withdrawal(user_id: int, amount_usd: float, phone: str) -> Dict:
 
 
 def approve_withdrawal(request_id: int, admin_notes: str = "") -> Dict:
-    """Admin approves a withdrawal request."""
+    """Admin approves a withdrawal request. For Whop, auto-triggers transfer."""
     conn = _get_db()
     req = conn.execute(
         "SELECT * FROM withdrawal_requests WHERE id = ?", (request_id,)
@@ -513,15 +569,51 @@ def approve_withdrawal(request_id: int, admin_notes: str = "") -> Dict:
         return {"success": False, "error": f"Request is already {req['status']}"}
 
     now = datetime.now().isoformat()
-    conn.execute("""
-        UPDATE withdrawal_requests
-        SET status = 'approved', admin_notes = ?, updated_at = ?
-        WHERE id = ?
-    """, (admin_notes, now, request_id))
-    conn.commit()
-    conn.close()
+    method = req["withdrawal_method"] if "withdrawal_method" in req.keys() else "mpesa"
 
-    return {"success": True, "message": "Withdrawal approved"}
+    if method == "whop":
+        conn.close()
+        # Auto-trigger Whop transfer
+        import whop_payment
+        transfer_result = whop_payment.create_transfer(
+            destination_id=req["whop_user_id"],
+            amount_usd=req["amount_usd"],
+            notes=f"Earnings withdrawal #{request_id}",
+            idempotence_key=f"wd_{request_id}_{req['user_id']}",
+        )
+        conn = _get_db()
+        if transfer_result["success"]:
+            transfer_id = transfer_result.get("transfer_id", "")
+            conn.execute("""
+                UPDATE withdrawal_requests
+                SET status = 'completed', admin_notes = ?, whop_transfer_id = ?,
+                    updated_at = ?, completed_at = ?
+                WHERE id = ?
+            """, (f"Auto-transferred via Whop. {admin_notes}".strip(),
+                  transfer_id, now, now, request_id))
+            conn.commit()
+            conn.close()
+            return {"success": True, "message": "Whop transfer completed automatically", "auto_completed": True}
+        else:
+            error_msg = transfer_result.get("error", "Unknown error")
+            conn.execute("""
+                UPDATE withdrawal_requests
+                SET status = 'approved', admin_notes = ?, updated_at = ?
+                WHERE id = ?
+            """, (f"Whop transfer failed: {error_msg}. {admin_notes}".strip(), now, request_id))
+            conn.commit()
+            conn.close()
+            return {"success": True, "message": f"Approved but transfer failed: {error_msg}. You can retry.", "transfer_failed": True}
+    else:
+        # M-Pesa — just mark approved (admin sends manually)
+        conn.execute("""
+            UPDATE withdrawal_requests
+            SET status = 'approved', admin_notes = ?, updated_at = ?
+            WHERE id = ?
+        """, (admin_notes, now, request_id))
+        conn.commit()
+        conn.close()
+        return {"success": True, "message": "Withdrawal approved"}
 
 
 def complete_withdrawal(request_id: int) -> Dict:
@@ -536,6 +628,48 @@ def complete_withdrawal(request_id: int) -> Dict:
     conn.commit()
     conn.close()
     return {"success": True, "message": "Withdrawal completed"}
+
+
+def retry_whop_transfer(request_id: int) -> Dict:
+    """Retry a failed Whop transfer for an approved withdrawal."""
+    conn = _get_db()
+    req = conn.execute(
+        "SELECT * FROM withdrawal_requests WHERE id = ?", (request_id,)
+    ).fetchone()
+    conn.close()
+
+    if not req:
+        return {"success": False, "error": "Withdrawal request not found"}
+
+    method = req["withdrawal_method"] if "withdrawal_method" in req.keys() else "mpesa"
+    if method != "whop":
+        return {"success": False, "error": "Not a Whop withdrawal"}
+    if req["status"] == "completed":
+        return {"success": False, "error": "Already completed"}
+
+    import whop_payment
+    now = datetime.now().isoformat()
+    transfer_result = whop_payment.create_transfer(
+        destination_id=req["whop_user_id"],
+        amount_usd=req["amount_usd"],
+        notes=f"Earnings withdrawal #{request_id} (retry)",
+        idempotence_key=f"wd_{request_id}_{req['user_id']}_r{now[:10]}",
+    )
+
+    conn = _get_db()
+    if transfer_result["success"]:
+        transfer_id = transfer_result.get("transfer_id", "")
+        conn.execute("""
+            UPDATE withdrawal_requests
+            SET status = 'completed', whop_transfer_id = ?, updated_at = ?, completed_at = ?
+            WHERE id = ?
+        """, (transfer_id, now, now, request_id))
+        conn.commit()
+        conn.close()
+        return {"success": True, "message": "Whop transfer completed", "transfer_id": transfer_id}
+    else:
+        conn.close()
+        return {"success": False, "error": transfer_result.get("error", "Transfer failed")}
 
 
 def reject_withdrawal(request_id: int, admin_notes: str = "") -> Dict:
@@ -663,6 +797,7 @@ def _wd_to_dict(row) -> Dict:
     """Convert a withdrawal_requests row to dict."""
     if not row:
         return {}
+    keys = row.keys()
     return {
         "id": row["id"],
         "user_id": row["user_id"],
@@ -675,4 +810,7 @@ def _wd_to_dict(row) -> Dict:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "completed_at": row["completed_at"],
+        "withdrawal_method": row["withdrawal_method"] if "withdrawal_method" in keys else "mpesa",
+        "whop_transfer_id": row["whop_transfer_id"] if "whop_transfer_id" in keys else "",
+        "whop_user_id": row["whop_user_id"] if "whop_user_id" in keys else "",
     }

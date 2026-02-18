@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 function formatDate(dateStr) {
@@ -182,6 +183,7 @@ export default function MyAnalysis() {
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState(null)
   const [loadingSession, setLoadingSession] = useState(null)
+  const { t } = useTranslation()
 
   useEffect(() => {
     axios.get('/api/jackpot/history')
@@ -234,15 +236,14 @@ export default function MyAnalysis() {
   return (
     <div className="my-analysis-page">
       <div className="my-analysis-header">
-        <h2>{'\u{1F4CA}'} My Analysis</h2>
+        <h2>{'\u{1F4CA}'} {t('myAnalysis.title')}</h2>
         <p className="my-analysis-subtitle">Your saved jackpot analysis reports</p>
       </div>
 
       {sessions.length === 0 ? (
         <div className="my-analysis-empty">
           <div className="my-analysis-empty-icon">{'\u{1F4CB}'}</div>
-          <h3>No analyses yet</h3>
-          <p>Go to the Jackpot Analyzer to create your first analysis!</p>
+          <h3>{t('myAnalysis.noAnalysis')}</h3>
           <Link to="/jackpot" className="my-analysis-cta">
             {'\u{1F3AF}'} Start Analyzing
           </Link>

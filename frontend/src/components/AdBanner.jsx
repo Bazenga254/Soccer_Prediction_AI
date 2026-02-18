@@ -19,7 +19,7 @@ export default function AdBanner({ format = 'banner', slot = '', className = '' 
   const adRef = useRef(null)
 
   // Don't show ads to pro users
-  if (user?.tier === 'pro') return null
+  if (user?.tier === 'pro' || user?.tier === 'trial') return null
 
   const formatClass = `ad-${format}`
 

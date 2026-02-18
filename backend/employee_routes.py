@@ -5,12 +5,13 @@ All /api/employee/* endpoints with RBAC integration.
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import user_auth
 import admin_rbac
 import activity_logger
 import employee_portal
 import community
+import bot_manager
 
 employee_router = APIRouter(prefix="/api/employee", tags=["employee"])
 
@@ -51,6 +52,8 @@ class ModerateRequest(BaseModel):
 
 class SuspendRequest(BaseModel):
     is_active: bool
+    reason: Optional[str] = None
+    custom_note: Optional[str] = None
 
 
 # ─── Auth Helper ───
@@ -383,12 +386,23 @@ async def emp_suspend_user(user_id: int, body: SuspendRequest, authorization: st
     if target_level <= 0:
         raise HTTPException(status_code=403, detail="Cannot suspend the owner")
 
-    user_auth.toggle_user_active(user_id, body.is_active)
+    user_auth.toggle_user_active(user_id, body.is_active, reason=body.reason)
     if not body.is_active:
         community.handle_user_suspension(user_id)
 
+        # Send suspension email to user in background
+        import threading
+        user_info = user_auth.get_user_email_by_id(user_id)
+        if user_info and user_info.get("email"):
+            threading.Thread(
+                target=user_auth.send_suspension_email,
+                args=(user_info["email"], user_info.get("display_name", ""), body.reason or "other", body.custom_note or ""),
+                daemon=True,
+            ).start()
+
     action = "activate_user" if body.is_active else "suspend_user"
-    activity_logger.log_action(emp["user_id"], action, "users", "user", target_id=user_id)
+    activity_logger.log_action(emp["user_id"], action, "users", "user", target_id=user_id,
+                               details={"reason": body.reason, "custom_note": body.custom_note})
     return {"success": True}
 
 
@@ -425,3 +439,131 @@ async def emp_revoke_invite(invite_id: int, authorization: str = Header(None)):
     result = employee_portal.revoke_invite(invite_id)
     activity_logger.log_action(emp["user_id"], "revoke_invite", "employees", target_id=invite_id)
     return result
+
+
+# ═══════════════════════════════════════════════════════════
+#  BOT MANAGEMENT (Employee)
+# ═══════════════════════════════════════════════════════════
+
+class EmployeeBotToggleRequest(BaseModel):
+    bot_ids: List[int]
+    activate: bool
+
+class EmployeeBotActionRequest(BaseModel):
+    bot_id: int
+    action: str
+    target_id: str = ""
+    message: str = ""
+    reaction: str = ""
+
+class EmployeeBotBatchActionRequest(BaseModel):
+    bot_ids: List[int]
+    action: str
+    target_id: str = ""
+    message: str = ""
+    reaction: str = ""
+
+
+@employee_router.get("/bots")
+async def emp_list_bots(is_active: int = None, authorization: str = Header(None)):
+    """Get bots assigned to the current employee."""
+    emp = _require_employee(authorization)
+    return bot_manager.get_employee_bots(emp["user_id"], is_active=is_active)
+
+
+@employee_router.post("/bots/toggle")
+async def emp_toggle_bots(body: EmployeeBotToggleRequest, authorization: str = Header(None)):
+    """Activate or deactivate assigned bots."""
+    emp = _require_employee(authorization)
+    # Verify all bots are assigned to this employee
+    for bid in body.bot_ids:
+        bot = bot_manager._get_bot(bid, required_assignee=emp["user_id"])
+        if not bot:
+            raise HTTPException(status_code=403, detail=f"Bot {bid} is not assigned to you")
+    if body.activate:
+        return bot_manager.activate_bots(body.bot_ids)
+    else:
+        return bot_manager.deactivate_bots(body.bot_ids)
+
+
+@employee_router.post("/bots/toggle-all")
+async def emp_toggle_all_bots(body: dict, authorization: str = Header(None)):
+    """Activate or deactivate all bots assigned to this employee."""
+    emp = _require_employee(authorization)
+    bots_data = bot_manager.get_employee_bots(emp["user_id"])
+    bot_ids = [b["id"] for b in bots_data.get("bots", [])]
+    if not bot_ids:
+        return {"success": True, "affected": 0}
+    activate = body.get("activate", True)
+    if activate:
+        return bot_manager.activate_bots(bot_ids)
+    else:
+        return bot_manager.deactivate_bots(bot_ids)
+
+
+@employee_router.post("/bots/action")
+async def emp_bot_action(body: EmployeeBotActionRequest, authorization: str = Header(None)):
+    """Make an assigned bot perform an action."""
+    emp = _require_employee(authorization)
+    result = bot_manager.execute_bot_action(
+        body.bot_id, body.action, body.target_id, body.message, body.reaction,
+        required_assignee=emp["user_id"]
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Bot action failed"))
+    return result
+
+
+@employee_router.post("/bots/batch-action")
+async def emp_bot_batch_action(body: EmployeeBotBatchActionRequest, authorization: str = Header(None)):
+    """Make multiple assigned bots perform the same action."""
+    emp = _require_employee(authorization)
+    result = bot_manager.execute_batch_action(
+        body.bot_ids, body.action, body.target_id, body.message, body.reaction,
+        required_assignee=emp["user_id"]
+    )
+    return result
+
+
+@employee_router.get("/bots/users-search")
+async def emp_bots_user_search(search: str = "", limit: int = 20, authorization: str = Header(None)):
+    """Search real users for bot targeting."""
+    _require_employee(authorization)
+    return {"users": bot_manager.get_real_users(search, limit)}
+
+
+@employee_router.get("/bots/live-matches")
+async def emp_bots_live_matches(authorization: str = Header(None)):
+    """Get live matches for bot chat targeting."""
+    _require_employee(authorization)
+    import football_api
+    live_matches = await football_api.fetch_live_matches() or []
+    todays = await football_api.fetch_todays_fixtures() or []
+    live_ids = {m["id"] for m in live_matches}
+    for match in todays:
+        if match["id"] not in live_ids:
+            live_matches.append(match)
+    matches = []
+    for m in live_matches:
+        home = m.get("home_team", {})
+        away = m.get("away_team", {})
+        matches.append({
+            "id": m.get("id"),
+            "match_key": str(m.get("id")),
+            "home_team": home.get("name", "Unknown"),
+            "away_team": away.get("name", "Unknown"),
+            "score": f"{m.get('home_score', 0)}-{m.get('away_score', 0)}",
+            "status": m.get("status", "NS"),
+            "minute": m.get("minute", ""),
+            "league": m.get("league", {}).get("name", ""),
+        })
+    live_statuses = {"1H", "2H", "HT", "ET", "LIVE"}
+    matches.sort(key=lambda x: (0 if x["status"] in live_statuses else 1, x["league"]))
+    return {"matches": matches, "count": len(matches)}
+
+
+@employee_router.get("/bots/predictions")
+async def emp_bots_predictions(page: int = 1, search: str = "", authorization: str = Header(None)):
+    """Get community predictions for bot interaction."""
+    _require_employee(authorization)
+    return bot_manager.get_predictions_for_bots(page=page, search=search)

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 import { COMPETITIONS } from '../components/Header'
 
@@ -192,6 +193,7 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
   const [fixtures, setFixtures] = useState([])
   const [loadingFixtures, setLoadingFixtures] = useState(false)
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   useEffect(() => {
     setLoadingFixtures(true)
@@ -233,7 +235,7 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
     <>
       <div className="jackpot-header">
         <div className="jackpot-header-icon">{'\u{1F3AF}'}</div>
-        <h2>Jackpot Analyzer</h2>
+        <h2>{t('jackpot.title')}</h2>
         <p>Select matches from different leagues for AI-powered multi-match analysis</p>
         {tier === 'free' && (
           <div className="jackpot-tier-notice">
@@ -340,7 +342,7 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
             onClick={onStartAnalysis}
             disabled={selectedMatches.length < 2}
           >
-            {'\u{1F52E}'} Analyze {selectedMatches.length} Match{selectedMatches.length !== 1 ? 'es' : ''}
+            {'\u{1F52E}'} {t('jackpot.analyze')} {selectedMatches.length} Match{selectedMatches.length !== 1 ? 'es' : ''}
           </button>
           {selectedMatches.length < 2 && (
             <p className="jackpot-min-hint">Select at least 2 matches to analyze</p>
@@ -353,10 +355,11 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
 
 
 function AnalysisPhase({ totalMatches }) {
+  const { t } = useTranslation()
   return (
     <div className="jackpot-analyzing">
       <div className="jackpot-analyzing-spinner"></div>
-      <h3>Analyzing Your Jackpot</h3>
+      <h3>{t('jackpot.analyzing')}</h3>
       <p>Our AI is analyzing {totalMatches} matches...</p>
       <p className="jackpot-analyzing-sub">Checking H2H records, team form, injuries, coaching data, goals patterns, and more</p>
     </div>
@@ -781,11 +784,12 @@ function MatchResultCard({ result, index }) {
 function ResultsPhase({ results, combinations, onReset }) {
   const completed = results.filter(r => r.status === 'completed').length
   const failed = results.filter(r => r.status === 'failed').length
+  const { t } = useTranslation()
 
   return (
     <div className="jackpot-results">
       <div className="jackpot-results-header">
-        <h2>{'\u{1F3AF}'} Jackpot Analysis Complete</h2>
+        <h2>{'\u{1F3AF}'} {t('jackpot.results')}</h2>
         <p>{completed} match{completed !== 1 ? 'es' : ''} analyzed
           {failed > 0 ? `, ${failed} failed` : ''}
         </p>
@@ -836,6 +840,7 @@ export default function JackpotAnalyzer() {
   const [balancePaid, setBalancePaid] = useState(false)
   const [lockedUntil, setLockedUntil] = useState(null)
   const [isLocked, setIsLocked] = useState(false)
+  const { t } = useTranslation()
 
   // Fetch tier limits on mount
   useEffect(() => {

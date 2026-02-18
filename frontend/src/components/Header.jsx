@@ -1,11 +1,13 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 import NotificationDropdown from './NotificationDropdown'
 import MessagesDropdown from './MessagesDropdown'
 import EarningsDropdown from './EarningsDropdown'
 import UserMenuDropdown from './UserMenuDropdown'
 import SearchBar from './SearchBar'
+import LanguageSelector from './LanguageSelector'
 import sparkLogo from '../assets/spark-ai-logo.png'
 
 const COMPETITIONS = [
@@ -81,6 +83,7 @@ const COMPETITIONS = [
 export { COMPETITIONS }
 
 export default function Header({ user, logout }) {
+  const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
   const [activeUsers, setActiveUsers] = useState(0)
@@ -92,20 +95,20 @@ export default function Header({ user, logout }) {
 
   // Group competitions by region for the search dropdown
   const REGIONS = [
-    { label: 'Top Leagues', ids: ['PL', 'PD', 'BL1', 'SA', 'FL1'] },
-    { label: 'Europe', ids: ['ELC', 'DED', 'PPL', 'SPL', 'BPL', 'TSL', 'SSL', 'ABL', 'GSL', 'DSL', 'SWA', 'NOE', 'CFL', 'EPL', 'HNL', 'SRS', 'ROL', 'UPL', 'RPL'] },
-    { label: 'South America', ids: ['BSA', 'ALP', 'COL', 'CHL', 'URU', 'PAR', 'PER', 'ECU'] },
-    { label: 'North America', ids: ['MLS', 'LMX'] },
-    { label: 'Africa', ids: ['EGY', 'ZAF', 'MAR', 'ALG', 'TUN', 'NGA', 'KEN', 'GHA'] },
-    { label: 'Asia & Oceania', ids: ['JPN', 'KOR', 'SAU', 'CHN', 'IND', 'AUS', 'THA', 'UAE'] },
-    { label: 'Continental', ids: ['CL', 'EL', 'ECL', 'CLI', 'CAF', 'AFC', 'EC', 'WC', 'CA', 'ACN'] },
+    { label: t('nav.topLeagues'), ids: ['PL', 'PD', 'BL1', 'SA', 'FL1'] },
+    { label: t('nav.europe'), ids: ['ELC', 'DED', 'PPL', 'SPL', 'BPL', 'TSL', 'SSL', 'ABL', 'GSL', 'DSL', 'SWA', 'NOE', 'CFL', 'EPL', 'HNL', 'SRS', 'ROL', 'UPL', 'RPL'] },
+    { label: t('nav.southAmerica'), ids: ['BSA', 'ALP', 'COL', 'CHL', 'URU', 'PAR', 'PER', 'ECU'] },
+    { label: t('nav.northAmerica'), ids: ['MLS', 'LMX'] },
+    { label: t('nav.africa'), ids: ['EGY', 'ZAF', 'MAR', 'ALG', 'TUN', 'NGA', 'KEN', 'GHA'] },
+    { label: t('nav.asiaOceania'), ids: ['JPN', 'KOR', 'SAU', 'CHN', 'IND', 'AUS', 'THA', 'UAE'] },
+    { label: t('nav.continental'), ids: ['CL', 'EL', 'ECL', 'CLI', 'CAF', 'AFC', 'EC', 'WC', 'CA', 'ACN'] },
   ]
 
   const compMap = Object.fromEntries(COMPETITIONS.map(c => [c.id, c]))
 
   const filteredRegions = leagueQuery.trim()
     ? [{
-        label: 'Search Results',
+        label: t('nav.searchResults'),
         ids: COMPETITIONS
           .filter(c =>
             c.name.toLowerCase().includes(leagueQuery.toLowerCase()) ||
@@ -191,6 +194,7 @@ export default function Header({ user, logout }) {
             <EarningsDropdown />
             <NotificationDropdown />
             <MessagesDropdown />
+            <LanguageSelector />
             <UserMenuDropdown user={user} logout={logout} />
           </div>
         )}
@@ -203,28 +207,28 @@ export default function Header({ user, logout }) {
           className={`competition-tab live-tab ${isLivePage ? 'active' : ''}`}
         >
           <span className="live-indicator"></span>
-          <span className="comp-name">Live Scores</span>
+          <span className="comp-name">{t('nav.liveScores')}</span>
         </Link>
         <Link
           to="/predictions"
           className={`competition-tab ${isPredictions ? 'active' : ''}`}
         >
           <span className="comp-flag">{'\u{1F465}'}</span>
-          <span className="comp-name">Predictions</span>
+          <span className="comp-name">{t('nav.predictions')}</span>
         </Link>
         <Link
           to="/jackpot"
           className={`competition-tab jackpot-tab ${isJackpot ? 'active' : ''}`}
         >
           <span className="comp-flag">{'\u{1F3AF}'}</span>
-          <span className="comp-name">Jackpot Analyzer</span>
+          <span className="comp-name">{t('nav.jackpot')}</span>
         </Link>
         <Link
           to="/my-analysis"
           className={`competition-tab ${isMyAnalysis ? 'active' : ''}`}
         >
           <span className="comp-flag">{'\u{1F4CA}'}</span>
-          <span className="comp-name">My Analysis</span>
+          <span className="comp-name">{t('nav.myAnalysis')}</span>
         </Link>
       </nav>
 
@@ -269,7 +273,7 @@ export default function Header({ user, logout }) {
                   ref={leagueInputRef}
                   type="text"
                   className="league-search-input"
-                  placeholder="Search leagues..."
+                  placeholder={t('nav.searchLeagues')}
                   value={leagueQuery}
                   onChange={e => setLeagueQuery(e.target.value)}
                   onKeyDown={e => {
@@ -299,7 +303,7 @@ export default function Header({ user, logout }) {
                   )
                 })}
                 {leagueQuery && filteredRegions[0]?.ids.length === 0 && (
-                  <div className="league-search-empty">No leagues found</div>
+                  <div className="league-search-empty">{t('nav.noLeaguesFound')}</div>
                 )}
               </div>
             </div>

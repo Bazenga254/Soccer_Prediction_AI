@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
 import LiveChatPopup from '../components/LiveChatPopup'
 import axios from 'axios'
@@ -46,6 +47,8 @@ function playGoalSound() {
 }
 
 export default function LiveScores() {
+  const { t } = useTranslation()
+  const { user } = useAuth()
   const [liveMatches, setLiveMatches] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -63,6 +66,12 @@ export default function LiveScores() {
   const [recentGoalIds, setRecentGoalIds] = useState(new Set())
   const prevGoalsRef = useRef({})
   const navigate = useNavigate()
+
+  // Upcoming matches state
+  const [upcomingMatches, setUpcomingMatches] = useState([])
+  const [upcomingLoading, setUpcomingLoading] = useState(true)
+  const [upcomingPage, setUpcomingPage] = useState(1)
+  const [activeView, setActiveView] = useState('live') // 'live' | 'upcoming'
 
   const toggleFavorite = (matchId) => {
     setFavorites(prev => {
@@ -151,6 +160,23 @@ export default function LiveScores() {
     return () => clearInterval(interval)
   }, [fetchLiveMatches])
 
+  // Fetch upcoming matches
+  useEffect(() => {
+    const fetchUpcoming = async () => {
+      setUpcomingLoading(true)
+      try {
+        const res = await axios.get('/api/fixtures/upcoming-all?days=3')
+        console.log('[LiveScores] Upcoming fixtures loaded:', res.data.fixtures?.length || 0)
+        setUpcomingMatches(res.data.fixtures || [])
+      } catch (err) {
+        console.error('[LiveScores] Upcoming fetch error:', err)
+        setUpcomingMatches([])
+      }
+      setUpcomingLoading(false)
+    }
+    fetchUpcoming()
+  }, [])
+
   // Auto-refresh stats for expanded live match every 60s
   useEffect(() => {
     if (!expandedMatch) return
@@ -173,8 +199,8 @@ export default function LiveScores() {
   const getMatchStatus = (status, elapsed) => {
     switch (status) {
       case '1H': case '2H': case 'LIVE': return `${elapsed}'`
-      case 'HT': return 'HT'
-      case 'FT': return 'FT'
+      case 'HT': return t('liveScores.halfTime')
+      case 'FT': return t('liveScores.fullTime')
       case 'ET': return `ET ${elapsed}'`
       case 'AET': return 'AET'
       case 'P': case 'PEN': return 'PEN'
@@ -246,7 +272,7 @@ export default function LiveScores() {
       <div className="live-scores-page">
         <div className="loading-container">
           <div className="spinner"></div>
-          <p>Loading live matches...</p>
+          <p>{t('common.loading')}</p>
         </div>
       </div>
     )
@@ -257,39 +283,51 @@ export default function LiveScores() {
 
   return (
     <div className="live-scores-page">
-      <div className="live-scores-header">
-        <h1>
+      {/* Tab switcher */}
+      <div className="ls-view-tabs">
+        <button className={`ls-view-tab ${activeView === 'live' ? 'active' : ''}`} onClick={() => setActiveView('live')}>
           <span className="live-dot"></span>
-          Live Scores
-        </h1>
-        <div className="header-actions">
-          <div className="live-stats-bar">
-            {liveCount > 0 && <span className="live-stat live">{liveCount} Live</span>}
-            {finishedCount > 0 && <span className="live-stat finished">{finishedCount} FT</span>}
-          </div>
-          {lastUpdate && (
-            <span className="last-update-time">
-              {lastUpdate.toLocaleTimeString()}
-            </span>
-          )}
-          <button className="refresh-btn" onClick={() => fetchLiveMatches(false)}>
-            Refresh
-          </button>
-        </div>
+          {t('liveScores.title')}
+          {liveCount > 0 && <span className="ls-tab-badge live">{liveCount}</span>}
+        </button>
+        <button className={`ls-view-tab ${activeView === 'upcoming' ? 'active' : ''}`} onClick={() => setActiveView('upcoming')}>
+          Upcoming Matches
+          {!upcomingLoading && upcomingMatches.length > 0 && <span className="ls-tab-badge">{upcomingMatches.length}</span>}
+        </button>
       </div>
 
-      {error && (
-        <div className="error-banner">
-          {error}
-          <button className="retry-btn" onClick={() => fetchLiveMatches(true)}>Try Again</button>
-        </div>
-      )}
+      {/* === LIVE SCORES VIEW === */}
+      {activeView === 'live' && (
+        <>
+          <div className="live-scores-header">
+            <div className="header-actions">
+              <div className="live-stats-bar">
+                {liveCount > 0 && <span className="live-stat live">{liveCount} {t('fixtures.live')}</span>}
+                {finishedCount > 0 && <span className="live-stat finished">{finishedCount} {t('liveScores.fullTime')}</span>}
+              </div>
+              {lastUpdate && (
+                <span className="last-update-time">
+                  {lastUpdate.toLocaleTimeString()}
+                </span>
+              )}
+              <button className="refresh-btn" onClick={() => fetchLiveMatches(false)}>
+                {t('common.refresh')}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <div className="error-banner">
+              {error}
+              <button className="retry-btn" onClick={() => fetchLiveMatches(true)}>Try Again</button>
+            </div>
+          )}
 
       {!error && liveMatches.length === 0 ? (
         <div className="no-live-matches">
           <div className="no-matches-icon">⚽</div>
-          <h2>No Matches Today</h2>
-          <p>There are no live or finished matches to display right now.</p>
+          <h2>{t('liveScores.noLiveMatches')}</h2>
+          <p>{t('liveScores.checkBackLater')}</p>
           <p className="hint-text">
             Live matches from ALL leagues worldwide are shown when games are being played.
           </p>
@@ -360,7 +398,7 @@ export default function LiveScores() {
                           </span>
                         </div>
 
-                        <div className="match-row-arrow">›</div>
+                        <div className="match-row-arrow">&rsaquo;</div>
                       </div>
 
                       {/* Expanded analysis panel */}
@@ -485,7 +523,7 @@ export default function LiveScores() {
                               ) : (
                                 <div className="stats-unavailable">
                                   {isStatsLoading ? (
-                                    <><div className="spinner" style={{ width: 20, height: 20, margin: '0 auto 8px' }}></div><p>Loading statistics...</p></>
+                                    <><div className="spinner" style={{ width: 20, height: 20, margin: '0 auto 8px' }}></div><p>{t('common.loading')}</p></>
                                   ) : (
                                     <p>Statistics not yet available for this match.</p>
                                   )}
@@ -646,6 +684,126 @@ export default function LiveScores() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+        </>
+      )}
+
+      {/* === UPCOMING MATCHES VIEW === */}
+      {activeView === 'upcoming' && (
+        <div className="upcoming-section-livescores">
+          {upcomingLoading ? (
+            <div className="loading-container" style={{ padding: '24px 0' }}>
+              <div className="spinner"></div>
+              <p>Loading upcoming matches...</p>
+            </div>
+          ) : upcomingMatches.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#64748b' }}>
+              <p>No upcoming matches found.</p>
+            </div>
+          ) : (() => {
+            const allSorted = [...upcomingMatches].sort((a, b) => new Date(a.date) - new Date(b.date))
+            const UPCOMING_PER_PAGE = 15
+            const totalUpcomingPages = Math.max(1, Math.ceil(allSorted.length / UPCOMING_PER_PAGE))
+            const paged = allSorted.slice((upcomingPage - 1) * UPCOMING_PER_PAGE, upcomingPage * UPCOMING_PER_PAGE)
+            const groups = {}
+            paged.forEach(f => {
+              const d = f.date.split('T')[0]
+              if (!groups[d]) groups[d] = []
+              groups[d].push(f)
+            })
+            const sortedDates = Object.keys(groups).sort()
+
+            return (
+              <>
+                <div className="upcoming-fixtures-list">
+                  {sortedDates.map(date => (
+                    <div key={date} className="upcoming-date-group">
+                      <div className="upcoming-date-header">
+                        <span>{new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                        <span className="upcoming-date-count">{groups[date].length} {groups[date].length !== 1 ? 'matches' : 'match'}</span>
+                      </div>
+                      <div className="upcoming-fixtures-grid">
+                        {groups[date].map(fixture => {
+                          const isPro = user?.tier === 'pro' || user?.tier === 'trial'
+                          const compCode = fixture.competition?.code || 'PL'
+                          return (
+                            <div
+                              key={fixture.id}
+                              className={`upcoming-fixture-card ${!isPro ? 'pro-gated' : ''}`}
+                              onClick={() => {
+                                if (!isPro) {
+                                  navigate('/upgrade', { state: { from: 'upcoming' } })
+                                  return
+                                }
+                                navigate(`/match/${compCode}/${fixture.home_team.id}/${fixture.away_team.id}`, { state: { from: 'upcoming' } })
+                              }}
+                            >
+                              <div className="upcoming-fixture-time">
+                                {new Date(fixture.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                                {fixture.competition?.name && (
+                                  <span className="upcoming-fixture-league">{fixture.competition.name}</span>
+                                )}
+                              </div>
+                              <div className="upcoming-fixture-teams">
+                                <div className="upcoming-team home">
+                                  {fixture.home_team.crest && <img src={fixture.home_team.crest} alt="" className="upcoming-team-crest" />}
+                                  <span>{fixture.home_team.name}</span>
+                                </div>
+                                <span className="upcoming-vs">vs</span>
+                                <div className="upcoming-team away">
+                                  <span>{fixture.away_team.name}</span>
+                                  {fixture.away_team.crest && <img src={fixture.away_team.crest} alt="" className="upcoming-team-crest" />}
+                                </div>
+                              </div>
+                              <div className={`upcoming-analyze-btn ${!isPro ? 'pro-only' : ''}`}>
+                                {isPro ? 'Analyze' : 'Pro Only'}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {totalUpcomingPages > 1 && (() => {
+                  const maxVis = 5
+                  let s = Math.max(1, upcomingPage - Math.floor(maxVis / 2))
+                  let e = Math.min(totalUpcomingPages, s + maxVis - 1)
+                  if (e - s < maxVis - 1) s = Math.max(1, e - maxVis + 1)
+                  const pg = []
+                  for (let i = s; i <= e; i++) pg.push(i)
+                  return (
+                    <div className="upcoming-pagination">
+                      <button className="upcoming-page-btn" disabled={upcomingPage <= 1} onClick={() => setUpcomingPage(upcomingPage - 1)}>
+                        Prev
+                      </button>
+                      {s > 1 && (
+                        <>
+                          <button className="upcoming-page-btn" onClick={() => setUpcomingPage(1)}>1</button>
+                          {s > 2 && <span className="pagination-dots">...</span>}
+                        </>
+                      )}
+                      {pg.map(p => (
+                        <button key={p} className={`upcoming-page-btn ${p === upcomingPage ? 'active' : ''}`} onClick={() => setUpcomingPage(p)}>
+                          {p}
+                        </button>
+                      ))}
+                      {e < totalUpcomingPages && (
+                        <>
+                          {e < totalUpcomingPages - 1 && <span className="pagination-dots">...</span>}
+                          <button className="upcoming-page-btn" onClick={() => setUpcomingPage(totalUpcomingPages)}>{totalUpcomingPages}</button>
+                        </>
+                      )}
+                      <button className="upcoming-page-btn" disabled={upcomingPage >= totalUpcomingPages} onClick={() => setUpcomingPage(upcomingPage + 1)}>
+                        Next
+                      </button>
+                    </div>
+                  )
+                })()}
+              </>
+            )
+          })()}
         </div>
       )}
 
