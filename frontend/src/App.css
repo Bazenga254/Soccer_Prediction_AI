@@ -325,19 +325,25 @@ body {
     display: none;
   }
   .active-users-badge {
-    padding: 2px 6px;
+    padding: 2px 8px;
     margin-left: 0;
+    order: 3;
+    width: 100%;
+    justify-content: center;
   }
   .active-users-count {
-    font-size: 9px;
+    font-size: 10px;
   }
   .active-users-dot {
     width: 6px;
     height: 6px;
   }
   .header-user-controls {
-    gap: 2px;
+    gap: 4px;
     flex-shrink: 0;
+  }
+  .user-avatar-btn {
+    margin-left: 6px;
   }
   .search-input-wrapper {
     min-width: 0;
