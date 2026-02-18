@@ -1530,41 +1530,105 @@ async def pay_with_balance(request: BalancePayRequest, authorization: str = Head
     user_balance = community.get_user_balance(user_id)
     creator_wallet = community.get_creator_wallet(user_id)
 
-    # Calculate total available balance in the plan's currency
-    if plan_currency == "KES":
-        available_user = user_balance.get("balance_kes", 0)
-        available_creator = creator_wallet.get("balance_kes", 0)
-    else:
-        available_user = user_balance.get("balance_usd", 0)
-        available_creator = creator_wallet.get("balance_usd", 0)
+    user_usd = user_balance.get("balance_usd", 0)
+    user_kes = user_balance.get("balance_kes", 0)
+    creator_usd = creator_wallet.get("balance_usd", 0)
+    creator_kes = creator_wallet.get("balance_kes", 0)
 
-    total_available = available_user + available_creator
+    # Fetch exchange rate for cross-currency conversion
+    try:
+        kes_rate = (await daraja_payment._fetch_exchange_rate()) or 130.0
+    except Exception:
+        kes_rate = 130.0
+
+    # Calculate total available balance in the plan's currency (converting across currencies)
+    if plan_currency == "KES":
+        total_available = (
+            round(user_usd * kes_rate) + round(user_kes)
+            + round(creator_usd * kes_rate) + round(creator_kes)
+        )
+    else:
+        total_available = (
+            user_usd + creator_usd
+            + (user_kes + creator_kes) / kes_rate if kes_rate > 0 else 0
+        )
+
     if total_available < plan_price:
         raise HTTPException(
             status_code=400,
             detail=f"Insufficient balance. You have {plan_currency} {total_available:,.2f} but need {plan_currency} {plan_price:,.2f}"
         )
 
-    # Deduct from user balance first, then creator wallet for remainder
+    # Deduct from balances: prefer same-currency first, then cross-currency
     remaining = plan_price
-    deducted_user = 0
-    deducted_creator = 0
+    deducted_user_usd = 0
+    deducted_user_kes = 0
+    deducted_creator_usd = 0
+    deducted_creator_kes = 0
 
-    if available_user > 0:
-        deducted_user = min(available_user, remaining)
-        if plan_currency == "KES":
-            community.adjust_user_balance(user_id, 0, -deducted_user, f"Subscription: {plan['name']}", "subscription_payment", user_id, "self")
-        else:
-            community.adjust_user_balance(user_id, -deducted_user, 0, f"Subscription: {plan['name']}", "subscription_payment", user_id, "self")
-        remaining -= deducted_user
+    if plan_currency == "KES":
+        # 1. User KES first
+        if remaining > 0 and user_kes > 0:
+            take = min(user_kes, remaining)
+            deducted_user_kes = take
+            remaining -= take
+        # 2. Creator KES
+        if remaining > 0 and creator_kes > 0:
+            take = min(creator_kes, remaining)
+            deducted_creator_kes = take
+            remaining -= take
+        # 3. User USD (converted to KES)
+        if remaining > 0 and user_usd > 0:
+            kes_from_usd = round(user_usd * kes_rate)
+            take_kes = min(kes_from_usd, remaining)
+            take_usd = take_kes / kes_rate
+            deducted_user_usd = round(take_usd, 2)
+            remaining -= take_kes
+        # 4. Creator USD (converted to KES)
+        if remaining > 0 and creator_usd > 0:
+            kes_from_usd = round(creator_usd * kes_rate)
+            take_kes = min(kes_from_usd, remaining)
+            take_usd = take_kes / kes_rate
+            deducted_creator_usd = round(take_usd, 2)
+            remaining -= take_kes
+    else:
+        # USD plan: prefer USD first, then KES converted
+        # 1. User USD first
+        if remaining > 0 and user_usd > 0:
+            take = min(user_usd, remaining)
+            deducted_user_usd = take
+            remaining -= take
+        # 2. Creator USD
+        if remaining > 0 and creator_usd > 0:
+            take = min(creator_usd, remaining)
+            deducted_creator_usd = take
+            remaining -= take
+        # 3. User KES (converted to USD)
+        if remaining > 0 and user_kes > 0 and kes_rate > 0:
+            usd_from_kes = user_kes / kes_rate
+            take_usd = min(usd_from_kes, remaining)
+            take_kes = round(take_usd * kes_rate, 2)
+            deducted_user_kes = take_kes
+            remaining -= take_usd
+        # 4. Creator KES (converted to USD)
+        if remaining > 0 and creator_kes > 0 and kes_rate > 0:
+            usd_from_kes = creator_kes / kes_rate
+            take_usd = min(usd_from_kes, remaining)
+            take_kes = round(take_usd * kes_rate, 2)
+            deducted_creator_kes = take_kes
+            remaining -= take_usd
 
-    if remaining > 0 and available_creator > 0:
-        deducted_creator = min(available_creator, remaining)
-        if plan_currency == "KES":
-            community.adjust_creator_wallet(user_id, 0, -deducted_creator, f"Subscription: {plan['name']}")
-        else:
-            community.adjust_creator_wallet(user_id, -deducted_creator, 0, f"Subscription: {plan['name']}")
-        remaining -= deducted_creator
+    # Apply deductions
+    if deducted_user_usd > 0 or deducted_user_kes > 0:
+        community.adjust_user_balance(
+            user_id, -deducted_user_usd, -deducted_user_kes,
+            f"Subscription: {plan['name']}", "subscription_payment", user_id, "self"
+        )
+    if deducted_creator_usd > 0 or deducted_creator_kes > 0:
+        community.adjust_creator_wallet(
+            user_id, -deducted_creator_usd, -deducted_creator_kes,
+            f"Subscription: {plan['name']}"
+        )
 
     # Create the subscription
     ref = f"BAL-{user_id}-{int(datetime.now().timestamp())}"
@@ -1577,16 +1641,16 @@ async def pay_with_balance(request: BalancePayRequest, authorization: str = Head
 
     if not result["success"]:
         # Refund if subscription creation fails
-        if deducted_user > 0:
-            if plan_currency == "KES":
-                community.adjust_user_balance(user_id, 0, deducted_user, "Refund: subscription failed", "refund", user_id, "system")
-            else:
-                community.adjust_user_balance(user_id, deducted_user, 0, "Refund: subscription failed", "refund", user_id, "system")
-        if deducted_creator > 0:
-            if plan_currency == "KES":
-                community.adjust_creator_wallet(user_id, 0, deducted_creator, "Refund: subscription failed")
-            else:
-                community.adjust_creator_wallet(user_id, deducted_creator, 0, "Refund: subscription failed")
+        if deducted_user_usd > 0 or deducted_user_kes > 0:
+            community.adjust_user_balance(
+                user_id, deducted_user_usd, deducted_user_kes,
+                "Refund: subscription failed", "refund", user_id, "system"
+            )
+        if deducted_creator_usd > 0 or deducted_creator_kes > 0:
+            community.adjust_creator_wallet(
+                user_id, deducted_creator_usd, deducted_creator_kes,
+                "Refund: subscription failed"
+            )
         raise HTTPException(status_code=400, detail=result.get("error", "Subscription failed"))
 
     # Create notification
@@ -1620,8 +1684,10 @@ async def pay_with_balance(request: BalancePayRequest, authorization: str = Head
         "success": True,
         "expires_at": result.get("expires_at"),
         "plan": request.plan_id,
-        "deducted_user_balance": deducted_user,
-        "deducted_creator_wallet": deducted_creator,
+        "deducted_user_usd": deducted_user_usd,
+        "deducted_user_kes": deducted_user_kes,
+        "deducted_creator_usd": deducted_creator_usd,
+        "deducted_creator_kes": deducted_creator_kes,
         "payment_ref": ref,
     }
 
