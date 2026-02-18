@@ -516,54 +516,55 @@ export default function Upgrade() {
       {/* Pro vs Free comparison */}
       <div className="comparison-section">
         <h3>{t('upgrade.comparisonTitle')}</h3>
+        <p className="comparison-subtitle">See what each plan offers at a glance</p>
         <div className="comparison-table wide">
           <div className="comparison-header">
             <span>{t('upgrade.feature')}</span>
             <span>{t('upgrade.freePlan')}</span>
             <span>{t('upgrade.payOnTheGo')}</span>
-            <span>{t('common.pro')}</span>
+            <span className="pro-col-header">{t('common.pro')}</span>
           </div>
           <div className="comparison-row">
-            <span>{t('upgrade.matchAnalysis')}</span>
+            <span className="feature-label">{t('upgrade.matchAnalysis')}</span>
             <span>{t('upgrade.threePer24h')}</span>
-            <span>{t('upgrade.perEach050')}</span>
+            <span>{currencySymbol}{matchPrice} each</span>
             <span className="pro-value">{t('upgrade.unlimited')}</span>
           </div>
           <div className="comparison-row">
-            <span>{t('upgrade.jackpotAnalysis')}</span>
+            <span className="feature-label">{t('upgrade.jackpotAnalysis')}</span>
             <span>{t('upgrade.twoThen172h')}</span>
-            <span>{t('upgrade.perEach100')}</span>
+            <span>{currencySymbol}{jackpotPrice} each</span>
             <span className="pro-value">{t('upgrade.unlimited')}</span>
           </div>
           <div className="comparison-row">
-            <span>{t('upgrade.aiChatPrompts')}</span>
+            <span className="feature-label">{t('upgrade.aiChatPrompts')}</span>
             <span>{t('upgrade.total10')}</span>
             <span>{t('upgrade.total10')}</span>
             <span className="pro-value">{t('upgrade.unlimited')}</span>
           </div>
           <div className="comparison-row">
-            <span>{t('upgrade.advancedAnalytics')}</span>
-            <span className="no-value">-</span>
-            <span className="no-value">-</span>
-            <span className="pro-value">{t('common.yes')}</span>
+            <span className="feature-label">{t('upgrade.advancedAnalytics')}</span>
+            <span className="no-value">&mdash;</span>
+            <span className="no-value">&mdash;</span>
+            <span className="pro-value check-value">&#10003;</span>
           </div>
           <div className="comparison-row">
-            <span>{t('upgrade.valueBetting')}</span>
-            <span className="no-value">-</span>
-            <span className="no-value">-</span>
-            <span className="pro-value">{t('common.yes')}</span>
+            <span className="feature-label">{t('upgrade.valueBetting')}</span>
+            <span className="no-value">&mdash;</span>
+            <span className="no-value">&mdash;</span>
+            <span className="pro-value check-value">&#10003;</span>
           </div>
           <div className="comparison-row">
-            <span>{t('upgrade.advertisements')}</span>
-            <span>{t('common.yes')}</span>
-            <span>{t('common.yes')}</span>
+            <span className="feature-label">{t('upgrade.advertisements')}</span>
+            <span className="has-ads">Yes</span>
+            <span className="has-ads">Yes</span>
             <span className="pro-value">{t('upgrade.none')}</span>
           </div>
           <div className="comparison-row">
-            <span>{t('upgrade.prioritySupport')}</span>
-            <span className="no-value">-</span>
-            <span className="no-value">-</span>
-            <span className="pro-value">{t('common.yes')}</span>
+            <span className="feature-label">{t('upgrade.prioritySupport')}</span>
+            <span className="no-value">&mdash;</span>
+            <span className="no-value">&mdash;</span>
+            <span className="pro-value check-value">&#10003;</span>
           </div>
         </div>
       </div>
