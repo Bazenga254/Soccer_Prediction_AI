@@ -2945,6 +2945,7 @@ class LiveBetPrediction(BaseModel):
     prediction_value: str
     confidence: float = 0
     analysis_notes: str = ""
+    odds: float = None
 
 class LiveBetRequest(BaseModel):
     predictions: List[LiveBetPrediction]
@@ -2968,6 +2969,16 @@ async def submit_live_bet(request: LiveBetRequest, authorization: str = Header(N
     # Validate matches are actually live
     live_matches = await football_api.fetch_live_matches() or []
     live_ids = {m.get("id") for m in live_matches}
+
+    # Generate slip_id and combined odds for grouping
+    slip_id = str(uuid.uuid4())
+    odds_values = [p.odds for p in request.predictions if p.odds and p.odds > 0]
+    combined_odds = None
+    if odds_values:
+        combined_odds = 1.0
+        for o in odds_values:
+            combined_odds *= o
+        combined_odds = round(combined_odds, 2)
 
     results = []
     for pred in request.predictions:
@@ -3000,6 +3011,9 @@ async def submit_live_bet(request: LiveBetRequest, authorization: str = Header(N
             price_usd=request.price_usd if request.is_paid else 0,
             competition_code=comp_code,
             is_live_bet=True,
+            odds=pred.odds,
+            slip_id=slip_id,
+            combined_odds=combined_odds,
         )
         results.append(result)
 

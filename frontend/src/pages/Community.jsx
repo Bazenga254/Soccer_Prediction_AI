@@ -972,6 +972,7 @@ function LiveBetsTab() {
   const [confidence, setConfidence] = useState(50)
   const [submitting, setSubmitting] = useState(false)
   const [analysisNotes, setAnalysisNotes] = useState('')
+  const [liveOdds, setLiveOdds] = useState('')
   const [submitMsg, setSubmitMsg] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const formRef = useRef(null)
@@ -1009,6 +1010,7 @@ function LiveBetsTab() {
           prediction_value: predictionValue,
           confidence,
           analysis_notes: analysisNotes,
+          odds: liveOdds ? parseFloat(liveOdds) : null,
         }],
         visibility: 'public',
       })
@@ -1018,6 +1020,7 @@ function LiveBetsTab() {
         setPredictionValue('')
         setConfidence(50)
         setAnalysisNotes('')
+        setLiveOdds('')
         fetchLive()
         setTimeout(() => setSubmitMsg(''), 3000)
       }
@@ -1178,6 +1181,19 @@ function LiveBetsTab() {
               <span>{t('community.medium')}</span>
               <span>{t('community.high')}</span>
             </div>
+          </div>
+
+          <div className="live-bet-odds-row">
+            <label className="live-bet-odds-label">Odds:</label>
+            <input
+              type="number"
+              className="live-bet-odds-input"
+              placeholder="e.g. 1.50"
+              value={liveOdds}
+              onChange={e => setLiveOdds(e.target.value)}
+              min="1.01"
+              step="0.01"
+            />
           </div>
 
           <textarea

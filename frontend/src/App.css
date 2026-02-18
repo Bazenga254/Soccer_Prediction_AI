@@ -11825,6 +11825,46 @@ body {
   color: #64748b;
   margin-top: 2px;
 }
+/* Live bet odds input */
+.live-bet-odds-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.live-bet-odds-label {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.live-bet-odds-input {
+  width: 100px;
+  padding: 6px 10px;
+  background: #0f172a;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+
+.live-bet-odds-input:focus {
+  outline: none;
+  border-color: #6c5ce7;
+  box-shadow: 0 0 0 2px rgba(108, 92, 231, 0.2);
+}
+
+.live-bet-odds-input::placeholder {
+  color: #475569;
+  font-weight: 400;
+  font-size: 12px;
+}
+
 .live-bet-notes {
   width: 100%;
   background: #0f172a;
