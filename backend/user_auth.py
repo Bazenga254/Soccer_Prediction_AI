@@ -1219,6 +1219,8 @@ def send_invoice_email(
     plan_detail = ""
     if transaction_type == "subscription" and reference_id:
         plan_map = {
+            "trial_usd": "3-Day Trial (USD)",
+            "trial_kes": "3-Day Trial (KES)",
             "weekly_usd": "Pro Weekly (USD)",
             "weekly_kes": "Pro Weekly (KES)",
             "monthly_usd": "Pro Monthly (USD)",
@@ -1354,7 +1356,7 @@ def send_invoice_email(
     """
 
     subject = f"Payment Receipt #{invoice_number} - Spark AI"
-    payment_email = os.environ.get("ZOHO_PAYMENT_EMAIL", "")
+    payment_email = os.environ.get("ZOHO_PAYMENT_EMAIL", "") or os.environ.get("ZOHO_FROM_EMAIL", "")
     return _send_zoho_email(to_email, subject, html_body, from_email=payment_email)
 
 
