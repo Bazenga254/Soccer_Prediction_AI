@@ -194,29 +194,29 @@ export default function Upgrade() {
 
       {/* Plan Cards */}
       <div className="plans-grid">
-        {/* Free Plan */}
-        <div className={`plan-card ${!hasActiveSub ? 'current' : ''}`}>
-          <div className="plan-header">
-            <h3 className="plan-name">{t('upgrade.freePlan')}</h3>
-            <div className="plan-price">
-              <span className="price-amount">{currencySymbol}0</span>
-              <span className="price-period">{t('upgrade.forever')}</span>
+        {/* Free Plan - only visible after trial has been used */}
+        {!trialEligible && !hasActiveSub && (
+          <div className={`plan-card current`}>
+            <div className="plan-header">
+              <h3 className="plan-name">{t('upgrade.freePlan')}</h3>
+              <div className="plan-price">
+                <span className="price-amount">{currencySymbol}0</span>
+                <span className="price-period">{t('upgrade.forever')}</span>
+              </div>
             </div>
-          </div>
-          <ul className="plan-features">
-            <li className="feature-item">{t('upgrade.freeFeature1')}</li>
-            <li className="feature-item">{t('upgrade.freeFeature2')}</li>
-            <li className="feature-item">{t('upgrade.freeFeature3')}</li>
-            <li className="feature-item">{t('upgrade.freeFeature4')}</li>
-            <li className="feature-item">{t('upgrade.freeFeature5')}</li>
-            <li className="feature-item disabled">{t('upgrade.advancedAnalytics')}</li>
-            <li className="feature-item disabled">{t('upgrade.valueBetting')}</li>
-            <li className="feature-item disabled">{t('upgrade.adFree')}</li>
-          </ul>
-          {!hasActiveSub && (
+            <ul className="plan-features">
+              <li className="feature-item">{t('upgrade.freeFeature1')}</li>
+              <li className="feature-item">{t('upgrade.freeFeature2')}</li>
+              <li className="feature-item">{t('upgrade.freeFeature3')}</li>
+              <li className="feature-item">{t('upgrade.freeFeature4')}</li>
+              <li className="feature-item">{t('upgrade.freeFeature5')}</li>
+              <li className="feature-item disabled">{t('upgrade.advancedAnalytics')}</li>
+              <li className="feature-item disabled">{t('upgrade.valueBetting')}</li>
+              <li className="feature-item disabled">{t('upgrade.adFree')}</li>
+            </ul>
             <div className="plan-current-badge">{t('upgrade.currentPlan')}</div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Trial Plan - between Free and Pro Weekly */}
         {trialEligible && !hasActiveSub && trialPlan && (
