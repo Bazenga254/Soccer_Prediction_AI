@@ -6757,19 +6757,67 @@ body {
   }
 
   .predictions-table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-x: visible;
   }
 
   .predictions-table {
-    min-width: 520px;
+    min-width: 0;
   }
 
-  .pred-table-header,
+  .pred-table-header {
+    display: none;
+  }
+
   .pred-table-row {
-    grid-template-columns: 50px 1fr 80px 70px 90px 60px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 12px 14px;
+    align-items: center;
+  }
+
+  .pred-table-row .col-date {
     font-size: 11px;
-    padding: 8px 10px;
+    color: #64748b;
+  }
+
+  .pred-table-row .col-match {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+  }
+
+  .pred-table-row .col-pick {
+    font-size: 12px;
+  }
+
+  .pred-table-row .col-prob {
+    flex-direction: row;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .pred-table-row .col-result {
+    margin-left: auto;
+  }
+
+  .pred-table-row .col-result .enter-score {
+    gap: 5px;
+  }
+
+  .pred-table-row .col-result .score-input {
+    width: 34px;
+    padding: 5px 2px;
+    font-size: 13px;
+  }
+
+  .pred-table-row .col-result .submit-score-btn {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  .pred-table-row .col-correct {
+    margin-left: auto;
   }
 
   .track-record-actions {
