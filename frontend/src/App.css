@@ -1,8 +1,13 @@
 /* ===== LAYOUT ===== */
+body {
+  overflow-x: hidden;
+}
+
 .app {
   max-width: 1280px;
   margin: 0 auto;
   padding: 0 24px 80px;
+  overflow-x: hidden;
 }
 
 .main-content {
@@ -30,6 +35,7 @@
   position: sticky;
   top: 0;
   z-index: 100;
+  overflow-x: hidden;
 }
 
 .header-content {
@@ -294,21 +300,29 @@
     padding: 10px 12px;
   }
   .header-content {
-    gap: 8px;
+    gap: 6px;
     flex-wrap: nowrap;
+    overflow: hidden;
   }
   .logo-icon-img {
     width: 32px;
     height: 32px;
   }
   .header-logo {
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
+    min-width: 0;
   }
   .logo-text h1 {
     font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .logo-subtitle {
+    display: none;
+  }
+  .active-users-badge {
     display: none;
   }
   .header-user-controls {
@@ -1459,6 +1473,7 @@
   align-items: center;
   gap: 10px;
   flex: 1;
+  min-width: 0;
 }
 
 .fixture-team.home {
@@ -1480,6 +1495,9 @@
   font-size: 14px;
   font-weight: 600;
   color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fixture-vs {
@@ -4293,6 +4311,15 @@
   .selector-row { flex-direction: column; }
   .vs-badge { align-self: center; }
   .fixture-day-matches { grid-template-columns: 1fr; }
+  .fixture-card { padding: 14px; }
+  .fixture-teams-row { gap: 8px; }
+  .team-crest { width: 28px; height: 28px; }
+  .team-name { font-size: 13px; }
+  .fixture-analyze-btn { padding: 8px; font-size: 12px; }
+  .fixtures-header h2 { font-size: 18px; }
+  .fixtures-subtitle { font-size: 12px; }
+  .fixture-date-header { padding: 8px 12px; }
+  .date-label { font-size: 13px; }
   .match-header-teams { flex-direction: column; gap: 16px; }
   .match-header-team { justify-content: center !important; }
   .header-crest { width: 48px; height: 48px; }
