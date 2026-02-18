@@ -1190,9 +1190,49 @@ def get_live_bet_predictions(viewer_id: int = None, limit: int = 50) -> Dict:
             "dislikes": rxn["dislikes"],
             "is_live_bet": True,
             "created_at": r["created_at"],
+            "slip_id": r["slip_id"] if "slip_id" in r.keys() else None,
+            "odds": r["odds"] if "odds" in r.keys() else None,
+            "combined_odds": r["combined_odds"] if "combined_odds" in r.keys() else None,
         })
 
-    return {"predictions": predictions, "total": len(predictions)}
+    # Group predictions by slip_id
+    grouped = []
+    seen_slips = {}
+    for pred in predictions:
+        sid = pred.get("slip_id")
+        if sid and sid in seen_slips:
+            seen_slips[sid]["slip_picks"].append({
+                "id": pred["id"],
+                "team_a_name": pred.get("team_a_name", ""),
+                "team_b_name": pred.get("team_b_name", ""),
+                "fixture_id": pred.get("fixture_id", ""),
+                "competition": pred.get("competition", ""),
+                "competition_code": pred.get("competition_code", ""),
+                "predicted_result": pred.get("predicted_result", ""),
+                "predicted_result_prob": pred.get("predicted_result_prob", 0),
+                "odds": pred.get("odds"),
+                "match_finished": pred.get("match_finished", False),
+                "result_correct": pred.get("result_correct"),
+            })
+        else:
+            pred["slip_picks"] = [{
+                "id": pred["id"],
+                "team_a_name": pred.get("team_a_name", ""),
+                "team_b_name": pred.get("team_b_name", ""),
+                "fixture_id": pred.get("fixture_id", ""),
+                "competition": pred.get("competition", ""),
+                "competition_code": pred.get("competition_code", ""),
+                "predicted_result": pred.get("predicted_result", ""),
+                "predicted_result_prob": pred.get("predicted_result_prob", 0),
+                "odds": pred.get("odds"),
+                "match_finished": pred.get("match_finished", False),
+                "result_correct": pred.get("result_correct"),
+            }]
+            grouped.append(pred)
+            if sid:
+                seen_slips[sid] = pred
+
+    return {"predictions": grouped, "total": len(grouped)}
 
 
 def get_user_predictions(user_id: int) -> List[Dict]:
@@ -2593,6 +2633,9 @@ def get_paid_predictions_feed(page: int = 1, per_page: int = 20, viewer_id: int 
             "created_at": r["created_at"],
             "match_finished": bool(r["match_finished"]),
             "result_correct": r["result_correct"],
+            "slip_id": r["slip_id"] if "slip_id" in r.keys() else None,
+            "odds": r["odds"] if "odds" in r.keys() else None,
+            "combined_odds": r["combined_odds"] if "combined_odds" in r.keys() else None,
         }
 
         # Only show full prediction details if unlocked
@@ -2609,8 +2652,45 @@ def get_paid_predictions_feed(page: int = 1, per_page: int = 20, viewer_id: int 
 
         predictions.append(pred)
 
+    # Group predictions by slip_id
+    grouped = []
+    seen_slips = {}
+    for pred in predictions:
+        sid = pred.get("slip_id")
+        if sid and sid in seen_slips:
+            seen_slips[sid]["slip_picks"].append({
+                "id": pred["id"],
+                "team_a_name": pred.get("team_a_name", ""),
+                "team_b_name": pred.get("team_b_name", ""),
+                "fixture_id": pred.get("fixture_id", ""),
+                "competition": pred.get("competition", ""),
+                "competition_code": pred.get("competition_code", ""),
+                "predicted_result": pred.get("predicted_result", ""),
+                "predicted_result_prob": pred.get("predicted_result_prob", 0),
+                "odds": pred.get("odds"),
+                "match_finished": pred.get("match_finished", False),
+                "result_correct": pred.get("result_correct"),
+            })
+        else:
+            pred["slip_picks"] = [{
+                "id": pred["id"],
+                "team_a_name": pred.get("team_a_name", ""),
+                "team_b_name": pred.get("team_b_name", ""),
+                "fixture_id": pred.get("fixture_id", ""),
+                "competition": pred.get("competition", ""),
+                "competition_code": pred.get("competition_code", ""),
+                "predicted_result": pred.get("predicted_result", ""),
+                "predicted_result_prob": pred.get("predicted_result_prob", 0),
+                "odds": pred.get("odds"),
+                "match_finished": pred.get("match_finished", False),
+                "result_correct": pred.get("result_correct"),
+            }]
+            grouped.append(pred)
+            if sid:
+                seen_slips[sid] = pred
+
     return {
-        "predictions": predictions,
+        "predictions": grouped,
         "total": total,
         "page": page,
         "per_page": per_page,
