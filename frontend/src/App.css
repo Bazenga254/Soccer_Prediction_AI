@@ -12631,9 +12631,12 @@
 /* Plans Grid */
 .plans-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
   margin-bottom: 32px;
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .paygo-section {
@@ -12649,7 +12652,7 @@
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 16px;
-  padding: 24px;
+  padding: 28px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -13109,15 +13112,16 @@
   color: #475569;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 900px) {
   .plans-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .plans-grid {
     grid-template-columns: 1fr;
+    max-width: 400px;
   }
 
   .payment-methods-grid {
