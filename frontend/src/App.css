@@ -6150,7 +6150,8 @@ html, body {
 }
 
 .live-chat-popup-messages {
-  max-height: 350px;
+  max-height: 500px;
+  min-height: 300px;
   overflow-y: auto;
   padding: 12px;
   display: flex;
@@ -6235,7 +6236,8 @@ html, body {
   }
 
   .live-chat-popup-messages {
-    max-height: 280px;
+    max-height: 400px;
+    min-height: 250px;
   }
 }
 
