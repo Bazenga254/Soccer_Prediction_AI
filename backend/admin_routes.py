@@ -1312,6 +1312,57 @@ async def get_all_withdrawal_options(x_admin_password: str = Header(None),
     return {"options": daraja_payment.get_all_withdrawal_options()}
 
 
+class B2CTestRequest(BaseModel):
+    phone: str       # e.g. "254712345678"
+    amount_kes: int  # small amount like 10
+
+@admin_router.post("/b2c/test")
+async def admin_test_b2c(request: Request, body: B2CTestRequest,
+                          x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Test B2C payment with a small amount. Owner-only endpoint."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'},
+                             required_module="withdrawals", required_action="approve")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Owner access required")
+
+    if body.amount_kes < 10 or body.amount_kes > 100:
+        raise HTTPException(status_code=400, detail="Test amount must be between KES 10 and KES 100")
+
+    phone = body.phone.strip()
+    if not phone.startswith("254") or len(phone) != 12:
+        raise HTTPException(status_code=400, detail="Phone must be in 254XXXXXXXXX format (12 digits)")
+
+    # Create a temporary disbursement item for tracking
+    conn = daraja_payment._get_db()
+    now = datetime.now().isoformat()
+    conn.execute("""
+        INSERT INTO disbursement_items (batch_id, user_id, phone, amount_usd, amount_kes, exchange_rate, status, created_at)
+        VALUES (0, 0, ?, ?, ?, 1, 'pending', ?)
+    """, (phone, body.amount_kes, body.amount_kes, now))
+    conn.commit()
+    item_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+
+    result = await daraja_payment.initiate_b2c_payment(
+        phone=phone,
+        amount_kes=body.amount_kes,
+        disbursement_item_id=item_id,
+        remarks="SparkAI B2C Test",
+        occasion="Test"
+    )
+
+    _log_action(auth, "test_b2c", "withdrawals", request, "b2c_test", item_id,
+                {"phone": f"254***{phone[-4:]}", "amount_kes": body.amount_kes, "success": result.get("success")})
+
+    return {
+        "success": result.get("success", False),
+        "conversation_id": result.get("conversation_id", ""),
+        "error": result.get("error", ""),
+        "item_id": item_id,
+        "note": "Check callback logs for final status. Money should arrive within 30 seconds if successful."
+    }
+
+
 # ═══════════════════════════════════════════════════════════
 #  B2C DISBURSEMENTS (M-PESA PAYOUTS)
 # ═══════════════════════════════════════════════════════════
