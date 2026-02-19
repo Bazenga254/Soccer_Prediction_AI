@@ -10,7 +10,9 @@ import random
 import uuid
 import secrets
 import string
-from datetime import datetime
+import threading
+import time
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import community
@@ -550,3 +552,344 @@ def stop_bot_heartbeats():
     """Stop the background heartbeat loop."""
     global _bot_heartbeat_active
     _bot_heartbeat_active = False
+
+
+# ─── Staggered Queue System ───
+
+_queue_state: Dict[str, Dict] = {}
+_queue_cancel: set = set()
+_queue_lock = threading.Lock()
+
+
+def _get_community_db():
+    conn = sqlite3.connect("community.db")
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+
+def enqueue_staggered_batch(
+    bot_ids: List[int],
+    action: str,
+    target_id: str = "",
+    message: str = "",
+    reaction: str = "",
+    delay_min: int = 30,
+    delay_max: int = 40,
+    messages_list: List[str] = None,
+) -> Dict:
+    """Enqueue a batch of bot actions with staggered random delays."""
+    if not bot_ids:
+        return {"success": False, "error": "No bots specified"}
+    if delay_min < 1:
+        delay_min = 1
+    if delay_max < delay_min:
+        delay_max = delay_min
+
+    batch_id = str(uuid.uuid4())[:12]
+    now = datetime.now()
+    conn = _get_community_db()
+
+    cumulative_delay = 0
+    rows = []
+    shuffled_ids = list(bot_ids)
+    random.shuffle(shuffled_ids)
+
+    for i, bid in enumerate(shuffled_ids):
+        if i > 0:
+            cumulative_delay += random.randint(delay_min, delay_max)
+        scheduled = now + timedelta(seconds=cumulative_delay)
+        msg = message
+        if messages_list and len(messages_list) > 0:
+            msg = messages_list[i % len(messages_list)]
+        rows.append((
+            batch_id, bid, action, target_id, msg, reaction,
+            "pending", scheduled.isoformat(), now.isoformat()
+        ))
+
+    conn.executemany(
+        """INSERT INTO bot_message_queue
+           (queue_batch_id, bot_id, action, target_id, message, reaction, status, scheduled_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        rows
+    )
+    conn.commit()
+    conn.close()
+
+    estimated_duration = cumulative_delay
+    with _queue_lock:
+        _queue_state[batch_id] = {
+            "total": len(bot_ids),
+            "completed": 0,
+            "failed": 0,
+            "status": "running",
+            "action": action,
+            "target_id": target_id,
+            "started_at": now.isoformat(),
+            "estimated_duration": estimated_duration,
+        }
+
+    t = threading.Thread(target=_run_queue_worker, args=(batch_id,), daemon=True)
+    t.start()
+
+    return {
+        "success": True,
+        "batch_id": batch_id,
+        "total": len(bot_ids),
+        "estimated_duration_seconds": estimated_duration,
+    }
+
+
+def _run_queue_worker(batch_id: str):
+    """Background thread: execute queued bot actions at their scheduled times."""
+    conn = _get_community_db()
+    items = conn.execute(
+        "SELECT id, bot_id, action, target_id, message, reaction, scheduled_at "
+        "FROM bot_message_queue WHERE queue_batch_id = ? AND status = 'pending' "
+        "ORDER BY scheduled_at ASC",
+        (batch_id,)
+    ).fetchall()
+    conn.close()
+
+    for item in items:
+        # Check cancellation
+        if batch_id in _queue_cancel:
+            conn2 = _get_community_db()
+            conn2.execute(
+                "UPDATE bot_message_queue SET status = 'cancelled' "
+                "WHERE queue_batch_id = ? AND status = 'pending'",
+                (batch_id,)
+            )
+            conn2.commit()
+            conn2.close()
+            with _queue_lock:
+                if batch_id in _queue_state:
+                    _queue_state[batch_id]["status"] = "cancelled"
+            _queue_cancel.discard(batch_id)
+            return
+
+        # Wait until scheduled time
+        scheduled = datetime.fromisoformat(item["scheduled_at"])
+        wait_secs = (scheduled - datetime.now()).total_seconds()
+        if wait_secs > 0:
+            time.sleep(wait_secs)
+
+        # Check cancellation again after sleep
+        if batch_id in _queue_cancel:
+            conn2 = _get_community_db()
+            conn2.execute(
+                "UPDATE bot_message_queue SET status = 'cancelled' "
+                "WHERE queue_batch_id = ? AND status = 'pending'",
+                (batch_id,)
+            )
+            conn2.commit()
+            conn2.close()
+            with _queue_lock:
+                if batch_id in _queue_state:
+                    _queue_state[batch_id]["status"] = "cancelled"
+            _queue_cancel.discard(batch_id)
+            return
+
+        # Execute the action
+        try:
+            result = execute_bot_action(
+                item["bot_id"], item["action"], item["target_id"],
+                item["message"], item["reaction"]
+            )
+            status = "completed" if result.get("success") else "failed"
+            error = result.get("error", "") if status == "failed" else ""
+        except Exception as e:
+            status = "failed"
+            error = str(e)
+
+        # Update DB
+        conn2 = _get_community_db()
+        conn2.execute(
+            "UPDATE bot_message_queue SET status = ?, executed_at = ?, error = ? WHERE id = ?",
+            (status, datetime.now().isoformat(), error, item["id"])
+        )
+        conn2.commit()
+        conn2.close()
+
+        with _queue_lock:
+            if batch_id in _queue_state:
+                if status == "completed":
+                    _queue_state[batch_id]["completed"] += 1
+                else:
+                    _queue_state[batch_id]["failed"] += 1
+
+    # Mark batch as done
+    with _queue_lock:
+        if batch_id in _queue_state:
+            _queue_state[batch_id]["status"] = "completed"
+
+
+def get_queue_status(batch_id: str) -> Dict:
+    """Get the current status of a queue batch."""
+    with _queue_lock:
+        state = _queue_state.get(batch_id)
+    if not state:
+        return {"success": False, "error": "Queue batch not found"}
+    done = state["completed"] + state["failed"]
+    remaining = state["total"] - done
+    return {
+        "success": True,
+        "batch_id": batch_id,
+        "total": state["total"],
+        "completed": state["completed"],
+        "failed": state["failed"],
+        "remaining": remaining,
+        "status": state["status"],
+        "action": state.get("action", ""),
+        "target_id": state.get("target_id", ""),
+        "started_at": state.get("started_at", ""),
+        "estimated_duration": state.get("estimated_duration", 0),
+    }
+
+
+def cancel_queue(batch_id: str) -> Dict:
+    """Cancel a running queue batch."""
+    with _queue_lock:
+        state = _queue_state.get(batch_id)
+    if not state:
+        return {"success": False, "error": "Queue batch not found"}
+    if state["status"] != "running":
+        return {"success": False, "error": f"Queue is already {state['status']}"}
+    _queue_cancel.add(batch_id)
+    return {"success": True, "message": "Cancellation requested"}
+
+
+def get_active_queues() -> List[Dict]:
+    """Get all active/recent queue batches."""
+    with _queue_lock:
+        return [
+            {
+                "batch_id": bid,
+                "total": s["total"],
+                "completed": s["completed"],
+                "failed": s["failed"],
+                "status": s["status"],
+                "action": s.get("action", ""),
+                "target_id": s.get("target_id", ""),
+                "started_at": s.get("started_at", ""),
+                "estimated_duration": s.get("estimated_duration", 0),
+            }
+            for bid, s in _queue_state.items()
+        ]
+
+
+# ─── Bot Prediction Creation ───
+
+def create_bot_prediction(
+    bot_id: int,
+    fixture_id: str,
+    team_a_name: str,
+    team_b_name: str,
+    competition: str = "",
+    predicted_result: str = "",
+    analysis_summary: str = "",
+    predicted_over25: str = None,
+    predicted_btts: str = None,
+    odds: float = None,
+    required_assignee: int = None,
+) -> Dict:
+    """Create a community prediction as a bot."""
+    bot = _get_bot(bot_id, required_assignee=required_assignee)
+    if not bot:
+        return {"success": False, "error": "Bot not found or not assigned to you"}
+
+    result = community.share_prediction(
+        user_id=bot["id"],
+        username=bot["username"],
+        display_name=bot["display_name"],
+        avatar_color=bot["avatar_color"],
+        fixture_id=fixture_id,
+        team_a_name=team_a_name,
+        team_b_name=team_b_name,
+        competition=competition,
+        predicted_result=predicted_result,
+        predicted_result_prob=0.0,
+        predicted_over25=predicted_over25,
+        predicted_btts=predicted_btts,
+        analysis_summary=analysis_summary,
+        visibility="public",
+        is_paid=False,
+        price_usd=0,
+        odds=odds,
+    )
+    return result
+
+
+# ─── Chat Activity Monitoring ───
+
+def get_bot_chat_activity(
+    match_keys: List[str] = None,
+    limit: int = 100,
+    since_minutes: int = 60,
+) -> Dict:
+    """Get match chat messages with bot/human labels for reply monitoring."""
+    cdb = _get_community_db()
+    udb = _get_db()
+
+    # Get all bot user IDs
+    bot_ids_rows = udb.execute("SELECT id FROM users WHERE is_bot = 1").fetchall()
+    bot_id_set = {r["id"] for r in bot_ids_rows}
+    udb.close()
+
+    cutoff = (datetime.now() - timedelta(minutes=since_minutes)).isoformat()
+
+    if match_keys:
+        placeholders = ",".join("?" * len(match_keys))
+        rows = cdb.execute(
+            f"SELECT id, match_key, user_id, username, display_name, avatar_color, message, created_at "
+            f"FROM match_chats WHERE match_key IN ({placeholders}) AND created_at >= ? "
+            f"ORDER BY match_key, created_at ASC LIMIT ?",
+            (*match_keys, cutoff, limit)
+        ).fetchall()
+    else:
+        # Get matches that have bot activity
+        active_matches = cdb.execute(
+            "SELECT DISTINCT match_key FROM match_chats WHERE created_at >= ? "
+            "ORDER BY created_at DESC LIMIT 20",
+            (cutoff,)
+        ).fetchall()
+        active_keys = [r["match_key"] for r in active_matches]
+        if not active_keys:
+            cdb.close()
+            return {"conversations": []}
+        placeholders = ",".join("?" * len(active_keys))
+        rows = cdb.execute(
+            f"SELECT id, match_key, user_id, username, display_name, avatar_color, message, created_at "
+            f"FROM match_chats WHERE match_key IN ({placeholders}) AND created_at >= ? "
+            f"ORDER BY match_key, created_at ASC LIMIT ?",
+            (*active_keys, cutoff, limit)
+        ).fetchall()
+
+    cdb.close()
+
+    # Group by match_key and flag bot/human
+    from collections import defaultdict
+    grouped = defaultdict(list)
+    for r in rows:
+        is_bot = r["user_id"] in bot_id_set
+        grouped[r["match_key"]].append({
+            "id": r["id"],
+            "user_id": r["user_id"],
+            "username": r["username"],
+            "display_name": r["display_name"],
+            "avatar_color": r["avatar_color"],
+            "message": r["message"],
+            "created_at": r["created_at"],
+            "is_bot": is_bot,
+        })
+
+    conversations = []
+    for mk, msgs in grouped.items():
+        # Flag human replies (human message after a bot message)
+        last_was_bot = False
+        for msg in msgs:
+            msg["is_reply_to_bot"] = not msg["is_bot"] and last_was_bot
+            last_was_bot = msg["is_bot"]
+        conversations.append({"match_key": mk, "messages": msgs})
+
+    return {"conversations": conversations}

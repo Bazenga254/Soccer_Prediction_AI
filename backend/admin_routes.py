@@ -143,6 +143,38 @@ class BotBatchActionRequest(BaseModel):
     message: str = ""
     reaction: str = ""
 
+class BotStaggeredBatchRequest(BaseModel):
+    bot_ids: List[int]
+    action: str
+    target_id: str = ""
+    message: str = ""
+    reaction: str = ""
+    delay_min: int = 30
+    delay_max: int = 40
+    messages_list: List[str] = []
+
+class BotCreatePredictionRequest(BaseModel):
+    bot_id: int
+    fixture_id: str
+    team_a_name: str
+    team_b_name: str
+    competition: str = ""
+    predicted_result: str = ""
+    analysis_summary: str = ""
+    predicted_over25: str = None
+    predicted_btts: str = None
+    odds: float = None
+
+class BotBatchCreatePredictionRequest(BaseModel):
+    bot_ids: List[int]
+    fixture_id: str
+    team_a_name: str
+    team_b_name: str
+    competition: str = ""
+    predictions: List[dict] = []
+    delay_min: int = 30
+    delay_max: int = 40
+
 
 # ─── Auth Helpers ───
 
@@ -1742,6 +1774,131 @@ async def admin_bots_predictions(page: int = 1, search: str = "",
     if not auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return bot_manager.get_predictions_for_bots(page=page, search=search)
+
+
+# ── Staggered Queue ──
+
+@admin_router.post("/bots/staggered-batch")
+async def admin_bot_staggered_batch(request: Request, body: BotStaggeredBatchRequest,
+                                     x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Enqueue a staggered batch of bot actions with random delays."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.enqueue_staggered_batch(
+        body.bot_ids, body.action, body.target_id, body.message, body.reaction,
+        body.delay_min, body.delay_max, body.messages_list or None
+    )
+    _log_action(auth, "bot_staggered_batch", "bots", request,
+                details={"action": body.action, "count": len(body.bot_ids), "batch_id": result.get("batch_id")})
+    return result
+
+
+@admin_router.get("/bots/queue-status/{batch_id}")
+async def admin_bot_queue_status(batch_id: str,
+                                  x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get current progress of a staggered queue batch."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return bot_manager.get_queue_status(batch_id)
+
+
+@admin_router.post("/bots/queue-cancel/{batch_id}")
+async def admin_bot_queue_cancel(batch_id: str, request: Request,
+                                  x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Cancel a running staggered queue batch."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.cancel_queue(batch_id)
+    _log_action(auth, "bot_cancel_queue", "bots", request, details={"batch_id": batch_id})
+    return result
+
+
+@admin_router.get("/bots/active-queues")
+async def admin_bot_active_queues(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """List all active/recent staggered queue batches."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"queues": bot_manager.get_active_queues()}
+
+
+# ── Bot Prediction Creation ──
+
+@admin_router.post("/bots/create-prediction")
+async def admin_bot_create_prediction(request: Request, body: BotCreatePredictionRequest,
+                                       x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Create a community prediction as a bot."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = bot_manager.create_bot_prediction(
+        body.bot_id, body.fixture_id, body.team_a_name, body.team_b_name,
+        body.competition, body.predicted_result, body.analysis_summary,
+        body.predicted_over25, body.predicted_btts, body.odds
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed"))
+    _log_action(auth, "bot_create_prediction", "bots", request,
+                details={"bot_id": body.bot_id, "match": f"{body.team_a_name} vs {body.team_b_name}"})
+    return result
+
+
+@admin_router.post("/bots/batch-create-prediction")
+async def admin_bot_batch_create_prediction(request: Request, body: BotBatchCreatePredictionRequest,
+                                             x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Have multiple bots create predictions for the same match, optionally staggered."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    successes = 0
+    failures = 0
+    for i, bid in enumerate(body.bot_ids):
+        pred = body.predictions[i % len(body.predictions)] if body.predictions else {}
+        result = bot_manager.create_bot_prediction(
+            bid, body.fixture_id, body.team_a_name, body.team_b_name,
+            body.competition,
+            pred.get("predicted_result", ""),
+            pred.get("analysis_summary", ""),
+            pred.get("predicted_over25"),
+            pred.get("predicted_btts"),
+            pred.get("odds"),
+        )
+        if result.get("success"):
+            successes += 1
+        else:
+            failures += 1
+
+    _log_action(auth, "bot_batch_create_prediction", "bots", request,
+                details={"count": len(body.bot_ids), "match": f"{body.team_a_name} vs {body.team_b_name}"})
+    return {"success": True, "total": len(body.bot_ids), "successes": successes, "failures": failures}
+
+
+# ── Chat Activity Monitoring ──
+
+@admin_router.get("/bots/chat-activity")
+async def admin_bot_chat_activity(match_key: str = None, since_minutes: int = 60, limit: int = 100,
+                                   x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get bot chat conversations with reply detection for monitoring."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    match_keys = [match_key] if match_key else None
+    return bot_manager.get_bot_chat_activity(match_keys=match_keys, limit=limit, since_minutes=since_minutes)
+
+
+@admin_router.get("/bots/match-chat/{match_key}")
+async def admin_bot_match_chat(match_key: str, since_id: int = 0,
+                                x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get live match chat messages for the embedded chat viewer."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="bots", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    messages = community.get_match_chat_messages(match_key, since_id=since_id, limit=100)
+    return {"messages": messages}
 
 
 # ═══════════════════════════════════════════════════════════

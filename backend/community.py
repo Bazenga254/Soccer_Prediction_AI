@@ -428,6 +428,23 @@ def init_community_db():
             responded_at TEXT DEFAULT NULL,
             UNIQUE(conversation_id, prompted_at)
         );
+
+        CREATE TABLE IF NOT EXISTS bot_message_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            queue_batch_id TEXT NOT NULL,
+            bot_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            message TEXT DEFAULT '',
+            reaction TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            scheduled_at TEXT NOT NULL,
+            executed_at TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_bmq_batch ON bot_message_queue(queue_batch_id);
+        CREATE INDEX IF NOT EXISTS idx_bmq_status ON bot_message_queue(status, scheduled_at);
     """)
 
     # Add columns via migration for existing installs

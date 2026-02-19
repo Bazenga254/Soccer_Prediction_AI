@@ -1,6 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import axios from 'axios'
 import { useAdmin } from '../context/AdminContext'
+import BotLiveChatPanel from './bots/BotLiveChatPanel'
+import BotQueuePanel from './bots/BotQueuePanel'
+import BotReplyMonitor from './bots/BotReplyMonitor'
+import BotPredictionForm from './bots/BotPredictionForm'
+
+const BOT_VIEWS = [
+  { key: 'manage', label: 'Bot Management' },
+  { key: 'livechat', label: 'Live Chat' },
+  { key: 'queue', label: 'Message Queue' },
+  { key: 'replies', label: 'Reply Monitor' },
+  { key: 'predictions', label: 'Create Predictions' },
+]
 
 const ACTION_TYPES = [
   { value: 'match_chat', label: 'Live Chat', icon: '\u26BD', targetLabel: 'Match Key', needsMessage: true },
@@ -13,6 +25,9 @@ const ACTION_TYPES = [
 
 export default function BotsTab() {
   const { getAuthHeaders } = useAdmin()
+
+  // Sub-view navigation
+  const [botView, setBotView] = useState('manage')
 
   // Stats
   const [stats, setStats] = useState({ total: 0, active: 0, assigned: 0, unassigned: 0 })
@@ -487,10 +502,38 @@ export default function BotsTab() {
     )
   }
 
-  if (loading && bots.length === 0) return <div className="admin-loading">Loading bots...</div>
+  if (loading && bots.length === 0 && botView === 'manage') return <div className="admin-loading">Loading bots...</div>
 
   return (
     <div className="admin-tab-content">
+
+      {/* Sub-navigation */}
+      <div className="bot-view-nav">
+        {BOT_VIEWS.map(v => (
+          <button
+            key={v.key}
+            className={`bot-view-btn${botView === v.key ? ' active' : ''}`}
+            onClick={() => setBotView(v.key)}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Live Chat Panel */}
+      {botView === 'livechat' && <BotLiveChatPanel getAuthHeaders={getAuthHeaders} />}
+
+      {/* Message Queue Panel */}
+      {botView === 'queue' && <BotQueuePanel getAuthHeaders={getAuthHeaders} selectedBotIds={selectedIds} />}
+
+      {/* Reply Monitor Panel */}
+      {botView === 'replies' && <BotReplyMonitor getAuthHeaders={getAuthHeaders} />}
+
+      {/* Create Predictions Panel */}
+      {botView === 'predictions' && <BotPredictionForm getAuthHeaders={getAuthHeaders} selectedBotIds={selectedIds} />}
+
+      {/* Bot Management (existing content) */}
+      {botView === 'manage' && <>
 
       {/* Toast */}
       {toast && (
@@ -1094,6 +1137,8 @@ export default function BotsTab() {
           </div>
         </div>
       )}
+
+      </>}
     </div>
   )
 }
