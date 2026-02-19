@@ -57,7 +57,7 @@ export default function BotLiveChatPanel({ getAuthHeaders }) {
       const res = await axios.get('/api/admin/bots/live-matches', {
         headers: getAuthHeaders(),
       });
-      setLiveMatches(res.data || []);
+      setLiveMatches(res.data.matches || res.data || []);
     } catch (err) {
       console.error('Failed to fetch live matches:', err);
     } finally {
