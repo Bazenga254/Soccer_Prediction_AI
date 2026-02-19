@@ -36,6 +36,9 @@ DARAJA_PASSKEY = os.environ.get("DARAJA_PASSKEY", "")
 DARAJA_CALLBACK_URL = os.environ.get("DARAJA_CALLBACK_URL", "")
 
 # B2C (Business to Customer) configuration for disbursements
+# B2C can use a separate Daraja app with its own consumer key/secret
+DARAJA_B2C_CONSUMER_KEY = os.environ.get("DARAJA_B2C_CONSUMER_KEY", "")
+DARAJA_B2C_CONSUMER_SECRET = os.environ.get("DARAJA_B2C_CONSUMER_SECRET", "")
 DARAJA_B2C_SHORTCODE = os.environ.get("DARAJA_B2C_SHORTCODE", "600000")
 DARAJA_B2C_INITIATOR_NAME = os.environ.get("DARAJA_B2C_INITIATOR_NAME", "testapi")
 DARAJA_B2C_INITIATOR_PASSWORD = os.environ.get("DARAJA_B2C_INITIATOR_PASSWORD", "")
@@ -63,6 +66,7 @@ EXCHANGE_RATE_MARKUP = 0.06     # 6% markup — covers Daraja fees + processing
 
 # Daraja access token cache
 _daraja_token_cache = {"token": None, "expires_at": None}
+_daraja_b2c_token_cache = {"token": None, "expires_at": None}
 
 
 def _get_db():
@@ -248,6 +252,31 @@ async def _get_daraja_token() -> str:
             token = data["access_token"]
             _daraja_token_cache["token"] = token
             _daraja_token_cache["expires_at"] = datetime.now() + timedelta(seconds=3500)
+            return token
+
+
+async def _get_b2c_token() -> str:
+    """Get OAuth token for B2C app. Falls back to main token if no separate B2C credentials."""
+    if not DARAJA_B2C_CONSUMER_KEY or not DARAJA_B2C_CONSUMER_SECRET:
+        return await _get_daraja_token()
+
+    if (_daraja_b2c_token_cache["token"] and _daraja_b2c_token_cache["expires_at"]
+            and datetime.now() < _daraja_b2c_token_cache["expires_at"]):
+        return _daraja_b2c_token_cache["token"]
+
+    credentials = base64.b64encode(
+        f"{DARAJA_B2C_CONSUMER_KEY}:{DARAJA_B2C_CONSUMER_SECRET}".encode()
+    ).decode()
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            f"{DARAJA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials",
+            headers={"Authorization": f"Basic {credentials}"},
+        ) as resp:
+            data = await resp.json(content_type=None)
+            token = data["access_token"]
+            _daraja_b2c_token_cache["token"] = token
+            _daraja_b2c_token_cache["expires_at"] = datetime.now() + timedelta(seconds=3500)
             return token
 
 
@@ -1663,7 +1692,7 @@ async def initiate_b2c_payment(phone: str, amount_kes: int, disbursement_item_id
         except Exception as e:
             return {"success": False, "error": f"Security credential error: {e}"}
 
-    token = await _get_daraja_token()
+    token = await _get_b2c_token()
 
     originator_conversation_id = f"SparkAI-B2C-{uuid.uuid4().hex[:16]}"
 
