@@ -244,7 +244,7 @@ async def _get_daraja_token() -> str:
             f"{DARAJA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials",
             headers={"Authorization": f"Basic {credentials}"},
         ) as resp:
-            data = await resp.json()
+            data = await resp.json(content_type=None)
             token = data["access_token"]
             _daraja_token_cache["token"] = token
             _daraja_token_cache["expires_at"] = datetime.now() + timedelta(seconds=3500)
@@ -266,7 +266,7 @@ async def _fetch_exchange_rate() -> float:
                 "https://open.er-api.com/v6/latest/USD",
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
-                data = await resp.json()
+                data = await resp.json(content_type=None)
                 if data.get("result") == "success":
                     rate = data["rates"]["KES"]
                     _exchange_rate_cache["rate"] = rate
@@ -384,7 +384,7 @@ async def initiate_stk_push(
                     "Content-Type": "application/json",
                 },
             ) as resp:
-                data = await resp.json()
+                data = await resp.json(content_type=None)
 
                 if resp.status == 200 and data.get("ResponseCode") == "0":
                     checkout_request_id = data.get("CheckoutRequestID", "")
@@ -592,7 +592,7 @@ async def _query_stk_status(checkout_request_id: str) -> Dict:
                     "Content-Type": "application/json",
                 },
             ) as resp:
-                data = await resp.json()
+                data = await resp.json(content_type=None)
                 result_code = data.get("ResultCode")
                 if result_code == "0" or result_code == 0:
                     return {"completed": True}
@@ -1688,7 +1688,7 @@ async def initiate_b2c_payment(phone: str, amount_kes: int, disbursement_item_id
                 json=payload,
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             ) as resp:
-                data = await resp.json()
+                data = await resp.json(content_type=None)
 
                 if resp.status == 200 and data.get("ResponseCode") == "0":
                     conversation_id = data.get("ConversationID", "")
