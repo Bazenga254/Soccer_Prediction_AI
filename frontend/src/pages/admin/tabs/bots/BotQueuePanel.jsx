@@ -12,8 +12,10 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
   const [actionType, setActionType] = useState('match_chat')
   const [targetId, setTargetId] = useState('')
   const [message, setMessage] = useState('')
+  const [messageMode, setMessageMode] = useState('same') // 'same' | 'varied' | 'bulk'
   const [variedMessages, setVariedMessages] = useState(false)
   const [messagesList, setMessagesList] = useState(['', ''])
+  const [bulkText, setBulkText] = useState('')
   const [delayMin, setDelayMin] = useState(30)
   const [delayMax, setDelayMax] = useState(40)
   const [submitting, setSubmitting] = useState(false)
@@ -197,25 +199,45 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
     setFormSuccess('')
 
     if (!selectedBotIds || selectedBotIds.length === 0) {
-      setFormError('No bots selected. Select bots from the main bots list first.')
+      setFormError('No bots selected. Select bots from the bot selector above.')
       return
     }
     if (!targetId.trim()) {
       setFormError('Please select a target.')
       return
     }
-    if (variedMessages) {
+
+    // Build messages list based on mode
+    let finalMessagesList = []
+    let finalMessage = ''
+
+    if (messageMode === 'bulk') {
+      const lines = bulkText.split('\n').filter(l => l.trim())
+      if (lines.length === 0) {
+        setFormError('Please enter at least one message (one per line).')
+        return
+      }
+      if (lines.length < selectedBotIds.length) {
+        setFormError(`You have ${selectedBotIds.length} bots but only ${lines.length} messages. Add more messages or select fewer bots.`)
+        return
+      }
+      // Take exactly as many messages as bots, in order
+      finalMessagesList = lines.slice(0, selectedBotIds.length).map(l => l.trim())
+    } else if (messageMode === 'varied') {
       const validMessages = messagesList.filter(m => m.trim())
       if (validMessages.length === 0) {
         setFormError('Please enter at least one message.')
         return
       }
+      finalMessagesList = validMessages
     } else {
       if (!message.trim()) {
         setFormError('Please enter a message.')
         return
       }
+      finalMessage = message.trim()
     }
+
     if (delayMin < 0 || delayMax < 0) {
       setFormError('Delay values must be positive.')
       return
@@ -231,10 +253,10 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
         bot_ids: selectedBotIds,
         action: actionType,
         target_id: targetId.trim(),
-        message: variedMessages ? '' : message.trim(),
+        message: finalMessage,
         delay_min: Number(delayMin),
         delay_max: Number(delayMax),
-        messages_list: variedMessages ? messagesList.filter(m => m.trim()) : [],
+        messages_list: finalMessagesList,
       }
       await axios.post('/api/admin/bots/staggered-batch', body, { headers: getAuthHeaders() })
       setFormSuccess(`Queue started with ${selectedBotIds.length} bots!`)
@@ -507,26 +529,70 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
           </div>
         )}
 
-        {/* Varied messages toggle */}
+        {/* Message mode selector */}
         <div className="bot-queue-field">
-          <label className="bot-queue-label">
-            <span>Varied Messages</span>
+          <label className="bot-queue-label">Message Mode</label>
+          <div className="bot-queue-action-buttons">
             <button
-              onClick={() => setVariedMessages(!variedMessages)}
-              className={`bot-queue-toggle ${variedMessages ? 'bot-queue-toggle-on' : 'bot-queue-toggle-off'}`}
+              onClick={() => { setMessageMode('same'); setVariedMessages(false) }}
+              className={`bot-queue-action-btn ${messageMode === 'same' ? 'bot-queue-action-btn-active' : ''}`}
             >
-              {variedMessages ? 'ON' : 'OFF'}
+              Same Message
             </button>
-          </label>
+            <button
+              onClick={() => { setMessageMode('varied'); setVariedMessages(true) }}
+              className={`bot-queue-action-btn ${messageMode === 'varied' ? 'bot-queue-action-btn-active' : ''}`}
+            >
+              Varied (Cycle)
+            </button>
+            <button
+              onClick={() => { setMessageMode('bulk'); setVariedMessages(false) }}
+              className={`bot-queue-action-btn ${messageMode === 'bulk' ? 'bot-queue-action-btn-active' : ''}`}
+            >
+              Bulk Paste
+            </button>
+          </div>
           <div className="bot-queue-toggle-hint">
-            {variedMessages
-              ? 'Each bot sends a different message, cycling through the list below.'
-              : 'All bots send the same message.'}
+            {messageMode === 'same' && 'All bots send the same message.'}
+            {messageMode === 'varied' && 'Each bot sends a different message, cycling through the list below.'}
+            {messageMode === 'bulk' && 'Paste one message per line. Each line goes to one bot in order.'}
           </div>
         </div>
 
-        {/* Message input(s) */}
-        {variedMessages ? (
+        {/* Message input based on mode */}
+        {messageMode === 'bulk' ? (
+          <div className="bot-queue-field">
+            <label className="bot-queue-label">
+              Messages — one per line
+              <span className="bot-queue-bulk-counter" style={{
+                marginLeft: 8,
+                fontSize: 12,
+                color: bulkText.split('\n').filter(l => l.trim()).length === (selectedBotIds?.length || 0) ? '#2ecc71' :
+                       bulkText.split('\n').filter(l => l.trim()).length < (selectedBotIds?.length || 0) ? '#e74c3c' : '#f39c12'
+              }}>
+                {bulkText.split('\n').filter(l => l.trim()).length} / {selectedBotIds?.length || 0} messages
+              </span>
+            </label>
+            <textarea
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              className="bot-queue-textarea bot-queue-bulk-textarea"
+              placeholder={`Paste ${selectedBotIds?.length || 'your'} messages here, one per line:\nGreat match so far! ⚽\nThis team is on fire 🔥\nCome on boys! 💪\n...`}
+              rows={Math.min(Math.max(selectedBotIds?.length || 5, 5), 20)}
+            />
+            <div className="bot-queue-bulk-info">
+              {(() => {
+                const lineCount = bulkText.split('\n').filter(l => l.trim()).length
+                const botCount = selectedBotIds?.length || 0
+                if (botCount === 0) return 'Select bots first to see the message limit.'
+                if (lineCount === 0) return `Enter ${botCount} messages — one per line. Line 1 → Bot 1, Line 2 → Bot 2, etc.`
+                if (lineCount < botCount) return `Need ${botCount - lineCount} more message${botCount - lineCount > 1 ? 's' : ''}. Each bot needs its own line.`
+                if (lineCount === botCount) return `Perfect! ${lineCount} messages for ${botCount} bots.`
+                return `${lineCount} messages entered. Only the first ${botCount} will be used (one per bot).`
+              })()}
+            </div>
+          </div>
+        ) : messageMode === 'varied' ? (
           <div className="bot-queue-field">
             <label className="bot-queue-label">Messages ({messagesList.length}/10)</label>
             {messagesList.map((msg, index) => (
