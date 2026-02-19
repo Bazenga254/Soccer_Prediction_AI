@@ -7,7 +7,7 @@ const QUEUE_ACTION_TYPES = [
   { value: 'comment', label: 'Comment on Prediction', icon: '\uD83D\uDCDD' },
 ]
 
-export default function BotQueuePanel({ getAuthHeaders, selectedBotIds }) {
+export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: externalSelectedIds }) {
   // --- Create Queue Form State ---
   const [actionType, setActionType] = useState('match_chat')
   const [targetId, setTargetId] = useState('')
@@ -19,6 +19,16 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds }) {
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState('')
+
+  // --- Bot selector state ---
+  const [allBots, setAllBots] = useState([])
+  const [loadingBots, setLoadingBots] = useState(false)
+  const [localSelectedIds, setLocalSelectedIds] = useState([])
+  const [botSearch, setBotSearch] = useState('')
+  const [botSelectorOpen, setBotSelectorOpen] = useState(false)
+
+  // Merge external selections with local — local takes priority once user interacts
+  const selectedBotIds = localSelectedIds.length > 0 ? localSelectedIds : (externalSelectedIds || [])
 
   // --- Target selection data ---
   const [liveMatches, setLiveMatches] = useState([])
@@ -34,6 +44,26 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds }) {
   const [queueStatuses, setQueueStatuses] = useState({})
   const pollInterval = useRef(null)
   const queuePollInterval = useRef(null)
+
+  // --- Fetch all bots for selector ---
+  useEffect(() => {
+    const fetchBots = async () => {
+      setLoadingBots(true)
+      try {
+        const res = await axios.get('/api/admin/bots', { headers: getAuthHeaders() })
+        setAllBots((res.data.bots || []).filter(b => b.is_active !== false))
+      } catch { setAllBots([]) }
+      setLoadingBots(false)
+    }
+    fetchBots()
+  }, [])
+
+  // Sync external selections when they change (if user hasn't made local selections)
+  useEffect(() => {
+    if (externalSelectedIds?.length > 0 && localSelectedIds.length === 0) {
+      setLocalSelectedIds(externalSelectedIds)
+    }
+  }, [externalSelectedIds])
 
   // --- Fetch targets based on action type ---
   useEffect(() => {
@@ -274,6 +304,74 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds }) {
                 {at.icon} {at.label}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Bot selector */}
+        <div className="bot-queue-field">
+          <label className="bot-queue-label">Select Bots</label>
+          <div className="bot-queue-bot-selector">
+            <div
+              className="bot-queue-bot-selector-header"
+              onClick={() => setBotSelectorOpen(!botSelectorOpen)}
+            >
+              <span>{selectedBotIds.length} bot{selectedBotIds.length !== 1 ? 's' : ''} selected</span>
+              <span style={{ fontSize: '12px' }}>{botSelectorOpen ? '\u25B2' : '\u25BC'}</span>
+            </div>
+            {botSelectorOpen && (
+              <div className="bot-queue-bot-selector-dropdown">
+                <input
+                  type="text"
+                  placeholder="Search bots..."
+                  value={botSearch}
+                  onChange={e => setBotSearch(e.target.value)}
+                  className="bot-queue-bot-search"
+                />
+                <div className="bot-queue-bot-selector-actions">
+                  <button onClick={() => {
+                    const filtered = allBots.filter(b => !botSearch || b.username?.toLowerCase().includes(botSearch.toLowerCase()))
+                    setLocalSelectedIds(prev => {
+                      const ids = new Set(prev)
+                      filtered.forEach(b => ids.add(b.id))
+                      return [...ids]
+                    })
+                  }} className="bot-queue-bot-select-action">Select All{botSearch ? ' filtered' : ''}</button>
+                  <button onClick={() => {
+                    if (botSearch) {
+                      const filtered = allBots.filter(b => b.username?.toLowerCase().includes(botSearch.toLowerCase()))
+                      const filterIds = new Set(filtered.map(b => b.id))
+                      setLocalSelectedIds(prev => prev.filter(id => !filterIds.has(id)))
+                    } else {
+                      setLocalSelectedIds([])
+                    }
+                  }} className="bot-queue-bot-select-action">Deselect All{botSearch ? ' filtered' : ''}</button>
+                </div>
+                <div className="bot-queue-bot-list">
+                  {loadingBots ? (
+                    <div className="bot-queue-loading-text">Loading bots...</div>
+                  ) : (
+                    allBots
+                      .filter(b => !botSearch || b.username?.toLowerCase().includes(botSearch.toLowerCase()))
+                      .map(bot => (
+                        <label key={bot.id} className="bot-queue-bot-item">
+                          <input
+                            type="checkbox"
+                            checked={localSelectedIds.includes(bot.id)}
+                            onChange={() => {
+                              setLocalSelectedIds(prev =>
+                                prev.includes(bot.id)
+                                  ? prev.filter(id => id !== bot.id)
+                                  : [...prev, bot.id]
+                              )
+                            }}
+                          />
+                          <span className="bot-queue-bot-name">{bot.username}</span>
+                        </label>
+                      ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
