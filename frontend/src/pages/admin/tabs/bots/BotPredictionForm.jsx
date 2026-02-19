@@ -62,6 +62,11 @@ export default function BotPredictionForm({ getAuthHeaders, selectedBotIds }) {
     { predicted_result: '', analysis_summary: '' },
   ]);
 
+  // Analysis state
+  const [analysis, setAnalysis] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(true);
+
   // Submission state
   const [submitting, setSubmitting] = useState(false);
   const [resultMessage, setResultMessage] = useState(null); // { type: 'success'|'error', text: '' }
@@ -126,10 +131,42 @@ export default function BotPredictionForm({ getAuthHeaders, selectedBotIds }) {
     const currentKey = selectedMatch?.match_key || selectedMatch?.id;
     if (matchKey === currentKey) {
       setSelectedMatch(null);
+      setAnalysis(null);
     } else {
       setSelectedMatch(match);
+      fetchAnalysis(match);
     }
     setResultMessage(null);
+  };
+
+  // Fetch analysis for selected match
+  const fetchAnalysis = async (match) => {
+    if (!match.home_team_id || !match.away_team_id) {
+      setAnalysis(null);
+      return;
+    }
+    setAnalysisLoading(true);
+    setAnalysis(null);
+    try {
+      const comp = match.league_code || 'PL';
+      const [predRes, h2hRes] = await Promise.allSettled([
+        axios.post('/api/predict', {
+          team_a_id: match.home_team_id,
+          team_b_id: match.away_team_id,
+          venue: 'team_a',
+          competition: comp,
+          team_a_name: match.home_team,
+          team_b_name: match.away_team,
+        }),
+        axios.get(`/api/h2h-analysis/${match.home_team_id}/${match.away_team_id}?competition=${comp}`),
+      ]);
+      const pred = predRes.status === 'fulfilled' ? predRes.value.data : null;
+      const h2h = h2hRes.status === 'fulfilled' ? h2hRes.value.data : null;
+      setAnalysis({ prediction: pred, h2h });
+    } catch {
+      setAnalysis(null);
+    }
+    setAnalysisLoading(false);
   };
 
   // Variation handlers
@@ -412,17 +449,109 @@ export default function BotPredictionForm({ getAuthHeaders, selectedBotIds }) {
                   </span>
                   <span className="bot-pred-selected-league">{selectedMatch.league || ''}</span>
                 </div>
-                {selectedMatch.home_team_id && selectedMatch.away_team_id && (
-                  <a
-                    href={`/match/${selectedMatch.league_code || 'PL'}/${selectedMatch.home_team_id}/${selectedMatch.away_team_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bot-pred-analysis-link"
-                  >
-                    View Analysis
-                  </a>
-                )}
+                <button
+                  className="bot-pred-analysis-link"
+                  onClick={() => setAnalysisOpen(!analysisOpen)}
+                >
+                  {analysisOpen ? 'Hide Analysis' : 'Show Analysis'}
+                </button>
               </div>
+
+              {/* Inline analysis panel */}
+              {analysisOpen && (
+                <div className="bot-pred-analysis-panel">
+                  {analysisLoading ? (
+                    <div className="bot-pred-analysis-loading">Loading analysis...</div>
+                  ) : analysis?.prediction ? (
+                    <>
+                      {/* AI Prediction Summary */}
+                      <div className="bot-pred-analysis-section">
+                        <div className="bot-pred-analysis-heading">AI Prediction</div>
+                        <div className="bot-pred-analysis-row">
+                          <span className="bot-pred-analysis-key">Result:</span>
+                          <strong>{analysis.prediction.predicted_outcome || analysis.prediction.match_info?.predicted_result || '—'}</strong>
+                        </div>
+                        {analysis.prediction.confidence && (
+                          <div className="bot-pred-analysis-row">
+                            <span className="bot-pred-analysis-key">Confidence:</span>
+                            <span>{Math.round(analysis.prediction.confidence * 100)}%</span>
+                          </div>
+                        )}
+                        {analysis.prediction.predicted_score && (
+                          <div className="bot-pred-analysis-row">
+                            <span className="bot-pred-analysis-key">Score:</span>
+                            <span>{analysis.prediction.predicted_score}</span>
+                          </div>
+                        )}
+                        {(analysis.prediction.over_25 || analysis.prediction.btts) && (
+                          <div className="bot-pred-analysis-row">
+                            {analysis.prediction.over_25 && <span>Over 2.5: <strong>{analysis.prediction.over_25}</strong></span>}
+                            {analysis.prediction.btts && <span style={{ marginLeft: 12 }}>BTTS: <strong>{analysis.prediction.btts}</strong></span>}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Team Form */}
+                      {analysis.prediction.match_info?.team_a?.form && (
+                        <div className="bot-pred-analysis-section">
+                          <div className="bot-pred-analysis-heading">Recent Form</div>
+                          <div className="bot-pred-analysis-row">
+                            <span className="bot-pred-analysis-key">{selectedMatch.home_team}:</span>
+                            <span className="bot-pred-form-display">
+                              {analysis.prediction.match_info.team_a.form.split('').map((r, i) => (
+                                <span key={i} className={`bot-pred-form-badge bot-pred-form-${r}`}>{r}</span>
+                              ))}
+                            </span>
+                          </div>
+                          {analysis.prediction.match_info?.team_b?.form && (
+                            <div className="bot-pred-analysis-row">
+                              <span className="bot-pred-analysis-key">{selectedMatch.away_team}:</span>
+                              <span className="bot-pred-form-display">
+                                {analysis.prediction.match_info.team_b.form.split('').map((r, i) => (
+                                  <span key={i} className={`bot-pred-form-badge bot-pred-form-${r}`}>{r}</span>
+                                ))}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* H2H Summary */}
+                      {analysis.h2h?.summary && (
+                        <div className="bot-pred-analysis-section">
+                          <div className="bot-pred-analysis-heading">Head to Head</div>
+                          <div className="bot-pred-analysis-row">
+                            <span>{analysis.h2h.summary}</span>
+                          </div>
+                        </div>
+                      )}
+                      {analysis.h2h?.matches && analysis.h2h.matches.length > 0 && !analysis.h2h.summary && (
+                        <div className="bot-pred-analysis-section">
+                          <div className="bot-pred-analysis-heading">H2H ({analysis.h2h.matches.length} matches)</div>
+                          {analysis.h2h.matches.slice(0, 5).map((m, i) => (
+                            <div key={i} className="bot-pred-analysis-row" style={{ fontSize: 11 }}>
+                              {m.home_team} {m.home_goals}-{m.away_goals} {m.away_team}
+                              <span style={{ color: '#888', marginLeft: 6 }}>{m.date}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Key reasoning */}
+                      {analysis.prediction.reasoning && (
+                        <div className="bot-pred-analysis-section">
+                          <div className="bot-pred-analysis-heading">AI Reasoning</div>
+                          <div className="bot-pred-analysis-reasoning">{analysis.prediction.reasoning}</div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="bot-pred-analysis-loading">
+                      {!selectedMatch.home_team_id ? 'Team data not available for analysis' : 'No analysis available'}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {mode === 'single' ? (
                 /* ============ SINGLE BOT MODE ============ */
