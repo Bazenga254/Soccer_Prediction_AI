@@ -1738,11 +1738,14 @@ async def admin_bots_live_matches(x_admin_password: str = Header(None), authoriz
     import football_api
     live_matches = await football_api.fetch_live_matches() or []
     todays = await football_api.fetch_todays_fixtures() or []
-    # Merge in today's matches not already in live
+    # Merge in today's scheduled/upcoming matches (not finished ones)
+    finished_statuses = {"FT", "AET", "PEN", "CANC", "ABD", "AWD", "WO"}
     live_ids = {m["id"] for m in live_matches}
     for match in todays:
-        if match["id"] not in live_ids:
+        if match["id"] not in live_ids and match.get("status") not in finished_statuses:
             live_matches.append(match)
+    # Filter out finished matches from live list too
+    live_matches = [m for m in live_matches if m.get("status") not in finished_statuses]
     # Return simplified match data
     matches = []
     for m in live_matches:
