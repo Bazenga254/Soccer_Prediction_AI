@@ -736,7 +736,7 @@ export default function LiveScores() {
                                   navigate('/upgrade', { state: { from: 'upcoming' } })
                                   return
                                 }
-                                navigate(`/match/${compCode}/${fixture.home_team.id}/${fixture.away_team.id}`, { state: { from: 'upcoming' } })
+                                navigate(`/match/${compCode}/${fixture.home_team.id}/${fixture.away_team.id}`, { state: { fixture, from: 'upcoming' } })
                               }}
                             >
                               <div className="upcoming-fixture-time">

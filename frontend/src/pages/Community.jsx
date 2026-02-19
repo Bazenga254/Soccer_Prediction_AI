@@ -881,7 +881,7 @@ function UpcomingMatchesTab() {
                             return
                           }
                           const compCode = fixture.competition?.code || selectedLeague
-                          navigate(`/match/${compCode}/${fixture.home_team.id}/${fixture.away_team.id}`, { state: { from: 'upcoming' } })
+                          navigate(`/match/${compCode}/${fixture.home_team.id}/${fixture.away_team.id}`, { state: { fixture, from: 'upcoming' } })
                         }}
                       >
                         <div className="upcoming-fixture-time">

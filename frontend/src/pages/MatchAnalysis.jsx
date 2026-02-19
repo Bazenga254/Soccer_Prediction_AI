@@ -2124,7 +2124,7 @@ export default function MatchAnalysis() {
   const { competitionId, homeId, awayId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
-  const fixture = location.state?.fixture
+  const [fixture, setFixture] = useState(location.state?.fixture || null)
   const competition = competitionId || 'PL'
   const competitionName = COMPETITION_NAMES[competition] || fixture?.competition?.name || 'League'
   const fixtureId = fixture?.id
@@ -2149,6 +2149,28 @@ export default function MatchAnalysis() {
 
   const isLive = (status) => ['1H', '2H', 'LIVE', 'ET', 'HT'].includes(status)
   const matchIsLive = isLive(liveData?.status || fixture?.status)
+
+  // If fixture not passed in state, try to find it from today's fixtures
+  useEffect(() => {
+    if (fixture) return
+    const findFixture = async () => {
+      try {
+        const [liveRes, todayRes] = await Promise.allSettled([
+          axios.get('/api/live-matches'),
+          axios.get(`/api/fixtures/${competition}`)
+        ])
+        const allMatches = [
+          ...(liveRes.status === 'fulfilled' ? liveRes.value.data.matches || [] : []),
+          ...(todayRes.status === 'fulfilled' ? todayRes.value.data.fixtures || todayRes.value.data || [] : [])
+        ]
+        const match = allMatches.find(m =>
+          String(m.home_team?.id) === String(homeId) && String(m.away_team?.id) === String(awayId)
+        )
+        if (match) setFixture(match)
+      } catch { /* ignore */ }
+    }
+    findFixture()
+  }, [homeId, awayId, competition])
 
   // Fetch prediction, H2H, match stats
   useEffect(() => {
