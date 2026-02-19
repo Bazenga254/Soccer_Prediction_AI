@@ -3481,6 +3481,24 @@
 .bot-pred-selected-league {
   font-size: 12px;
   color: var(--admin-text-muted);
+  display: block;
+  margin-top: 2px;
+}
+.bot-pred-analysis-link {
+  display: inline-block;
+  padding: 6px 14px;
+  background: var(--admin-accent);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: filter 0.15s;
+}
+.bot-pred-analysis-link:hover {
+  filter: brightness(1.15);
+  text-decoration: none;
 }
 .bot-pred-field {
   margin-bottom: 12px;

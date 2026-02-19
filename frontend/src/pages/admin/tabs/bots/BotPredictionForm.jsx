@@ -406,10 +406,22 @@ export default function BotPredictionForm({ getAuthHeaders, selectedBotIds }) {
             <div className="bot-pred-form-content">
               {/* Selected match display */}
               <div className="bot-pred-selected-match">
-                <span className="bot-pred-selected-teams">
-                  {selectedMatch.home_team} vs {selectedMatch.away_team}
-                </span>
-                <span className="bot-pred-selected-league">{selectedMatch.league || ''}</span>
+                <div>
+                  <span className="bot-pred-selected-teams">
+                    {selectedMatch.home_team} vs {selectedMatch.away_team}
+                  </span>
+                  <span className="bot-pred-selected-league">{selectedMatch.league || ''}</span>
+                </div>
+                {selectedMatch.home_team_id && selectedMatch.away_team_id && (
+                  <a
+                    href={`/match/${selectedMatch.league_code || 'PL'}/${selectedMatch.home_team_id}/${selectedMatch.away_team_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bot-pred-analysis-link"
+                  >
+                    View Analysis
+                  </a>
+                )}
               </div>
 
               {mode === 'single' ? (

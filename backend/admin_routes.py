@@ -1756,12 +1756,15 @@ async def admin_bots_live_matches(x_admin_password: str = Header(None), authoriz
             "match_key": str(m.get("id")),
             "home_team": home.get("name", "Unknown"),
             "away_team": away.get("name", "Unknown"),
+            "home_team_id": home.get("id"),
+            "away_team_id": away.get("id"),
             "home_logo": home.get("logo", ""),
             "away_logo": away.get("logo", ""),
             "score": f"{m.get('home_score', 0)}-{m.get('away_score', 0)}",
             "status": m.get("status", "NS"),
             "minute": m.get("minute", ""),
             "league": m.get("league", {}).get("name", ""),
+            "league_code": m.get("league", {}).get("code") or m.get("competition", {}).get("code", ""),
         })
     # Sort: live first, then scheduled
     live_statuses = {"1H", "2H", "HT", "ET", "LIVE"}
