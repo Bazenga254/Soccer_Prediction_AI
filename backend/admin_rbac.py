@@ -225,18 +225,30 @@ def migrate_legacy_roles():
 # ─── Permission Checking ───
 
 def has_permission(user_id: int, module: str, action: str = "read") -> bool:
-    """Check if a user has permission to perform an action on a module."""
+    """Check if a user has permission to perform an action on a module.
+    Checks custom user overrides first, then falls back to role defaults.
+    """
+    action_col = f"can_{action}"
+    if action_col not in ("can_read", "can_write", "can_edit", "can_delete", "can_export", "can_approve"):
+        return False
+
     conn = _get_db()
     user = conn.execute("SELECT role_id FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user or not user["role_id"]:
         conn.close()
         return False
 
-    action_col = f"can_{action}"
-    if action_col not in ("can_read", "can_write", "can_edit", "can_delete", "can_export", "can_approve"):
-        conn.close()
-        return False
+    # Check custom user override first
+    custom = conn.execute(
+        f"SELECT {action_col} FROM user_permissions WHERE user_id = ? AND module = ?",
+        (user_id, module),
+    ).fetchone()
 
+    if custom and custom[action_col] != -1:
+        conn.close()
+        return bool(custom[action_col] == 1)
+
+    # Fall back to role default
     perm = conn.execute(
         f"SELECT {action_col} FROM permissions WHERE role_id = ? AND module = ?",
         (user["role_id"], module),
@@ -288,20 +300,190 @@ def get_user_role(user_id: int) -> Optional[Dict]:
 
 
 def get_accessible_modules(user_id: int) -> List[Dict]:
-    """Get all modules a user can access with their permission details."""
+    """Get all modules a user can access with their permission details (includes custom overrides)."""
+    effective = get_effective_permissions(user_id)
+    if not effective:
+        return []
+    result = []
+    for module, perms in effective.items():
+        if perms.get("read", 0) == 1:
+            result.append({
+                "module": module,
+                "can_read": perms.get("read", 0),
+                "can_write": perms.get("write", 0),
+                "can_edit": perms.get("edit", 0),
+                "can_delete": perms.get("delete", 0),
+                "can_export": perms.get("export", 0),
+                "can_approve": perms.get("approve", 0),
+                "data_scope": perms.get("scope", "own"),
+            })
+    return result
+
+
+# ─── Custom Per-User Permissions ───
+
+def get_role_permissions_by_name(role_name: str) -> Dict:
+    """Get the default permission matrix for a role from DEFAULT_PERMISSIONS."""
+    return DEFAULT_PERMISSIONS.get(role_name, {})
+
+
+def get_all_roles_permissions() -> Dict:
+    """Get all roles with their default permissions for display in role assignment modal."""
+    result = {}
+    for role in ROLE_HIERARCHY:
+        role_name = role["name"]
+        result[role_name] = {
+            "display_name": role["display_name"],
+            "level": role["level"],
+            "department": role["department"],
+            "description": role["description"],
+            "permissions": DEFAULT_PERMISSIONS.get(role_name, {}),
+        }
+    return result
+
+
+def get_user_custom_permissions(user_id: int) -> Dict:
+    """Get custom permission overrides for a user from user_permissions table.
+    Returns: {module: {can_read: -1|0|1, can_write: -1|0|1, ...}}
+    """
+    conn = _get_db()
+    rows = conn.execute(
+        "SELECT module, can_read, can_write, can_edit, can_delete, can_export, can_approve FROM user_permissions WHERE user_id = ?",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    result = {}
+    for row in rows:
+        result[row["module"]] = {
+            "can_read": row["can_read"],
+            "can_write": row["can_write"],
+            "can_edit": row["can_edit"],
+            "can_delete": row["can_delete"],
+            "can_export": row["can_export"],
+            "can_approve": row["can_approve"],
+        }
+    return result
+
+
+def get_effective_permissions(user_id: int) -> Dict:
+    """Get merged permissions: role defaults + user custom overrides.
+    Returns: {module: {read: 0|1, write: 0|1, ..., scope: str}}
+    Custom overrides: 1=grant, 0=deny, -1=inherit from role.
+    """
     conn = _get_db()
     user = conn.execute("SELECT role_id FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user or not user["role_id"]:
         conn.close()
-        return []
+        return {}
 
-    rows = conn.execute(
-        """SELECT module, can_read, can_write, can_edit, can_delete, can_export, can_approve, data_scope
-           FROM permissions WHERE role_id = ? AND can_read = 1""",
-        (user["role_id"],),
-    ).fetchall()
+    role = conn.execute("SELECT name FROM roles WHERE id = ?", (user["role_id"],)).fetchone()
     conn.close()
-    return [dict(r) for r in rows]
+    if not role:
+        return {}
+
+    role_name = role["name"]
+    role_perms = DEFAULT_PERMISSIONS.get(role_name, {})
+    custom_overrides = get_user_custom_permissions(user_id)
+
+    # Start with all modules from role defaults
+    effective = {}
+    all_modules_set = set(ALL_MODULES)
+
+    # First, apply role defaults
+    for module in all_modules_set:
+        role_mod = role_perms.get(module, {})
+        effective[module] = {
+            "read": role_mod.get("read", 0),
+            "write": role_mod.get("write", 0),
+            "edit": role_mod.get("edit", 0),
+            "delete": role_mod.get("delete", 0),
+            "export": role_mod.get("export", 0),
+            "approve": role_mod.get("approve", 0),
+            "scope": role_mod.get("scope", "own"),
+        }
+
+    # Then, apply custom overrides
+    for module, overrides in custom_overrides.items():
+        if module not in effective:
+            effective[module] = {"read": 0, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"}
+
+        action_map = {
+            "can_read": "read", "can_write": "write", "can_edit": "edit",
+            "can_delete": "delete", "can_export": "export", "can_approve": "approve",
+        }
+        for db_col, action_key in action_map.items():
+            override_val = overrides.get(db_col, -1)
+            if override_val == 1:
+                effective[module][action_key] = 1
+            elif override_val == 0:
+                effective[module][action_key] = 0
+            # -1 means inherit, so keep role default
+
+    return effective
+
+
+def set_user_custom_permissions(user_id: int, permissions: Dict) -> Dict:
+    """Set custom permission overrides for a user.
+    Input: {module: {can_read: -1|0|1, can_write: -1|0|1, ...}}
+    Values: -1=inherit from role, 0=explicitly deny, 1=explicitly grant
+    """
+    conn = _get_db()
+    user = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "User not found"}
+
+    for module, perms in permissions.items():
+        if module not in ALL_MODULES:
+            continue
+
+        existing = conn.execute(
+            "SELECT id FROM user_permissions WHERE user_id = ? AND module = ?",
+            (user_id, module),
+        ).fetchone()
+
+        vals = {
+            "can_read": perms.get("can_read", -1),
+            "can_write": perms.get("can_write", -1),
+            "can_edit": perms.get("can_edit", -1),
+            "can_delete": perms.get("can_delete", -1),
+            "can_export": perms.get("can_export", -1),
+            "can_approve": perms.get("can_approve", -1),
+        }
+
+        # If all values are -1 (inherit), remove the row
+        if all(v == -1 for v in vals.values()):
+            if existing:
+                conn.execute("DELETE FROM user_permissions WHERE user_id = ? AND module = ?", (user_id, module))
+            continue
+
+        if existing:
+            conn.execute(
+                """UPDATE user_permissions SET can_read=?, can_write=?, can_edit=?, can_delete=?,
+                   can_export=?, can_approve=? WHERE user_id=? AND module=?""",
+                (vals["can_read"], vals["can_write"], vals["can_edit"],
+                 vals["can_delete"], vals["can_export"], vals["can_approve"], user_id, module),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO user_permissions (user_id, module, can_read, can_write, can_edit, can_delete, can_export, can_approve)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, module, vals["can_read"], vals["can_write"], vals["can_edit"],
+                 vals["can_delete"], vals["can_export"], vals["can_approve"]),
+            )
+
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
+
+def clear_user_custom_permissions(user_id: int) -> Dict:
+    """Remove all custom permission overrides for a user (reset to role defaults)."""
+    conn = _get_db()
+    conn.execute("DELETE FROM user_permissions WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return {"success": True}
 
 
 # ─── Role CRUD ───

@@ -6,7 +6,7 @@ All /api/admin/* endpoints with RBAC integration and activity logging.
 from fastapi import APIRouter, Header, HTTPException, UploadFile, File, Request, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 import uuid
@@ -79,6 +79,9 @@ class AdjustBalanceRequest(BaseModel):
 
 class AssignRoleRequest(BaseModel):
     role_id: int
+
+class UserPermissionsRequest(BaseModel):
+    permissions: Dict  # {module: {can_read: -1|0|1, can_write: -1|0|1, ...}}
 
 class CreateRoleRequest(BaseModel):
     name: str
@@ -981,6 +984,72 @@ async def admin_remove_role(user_id: int, request: Request,
         raise HTTPException(status_code=401, detail="Unauthorized")
     result = admin_rbac.remove_role(user_id)
     _log_action(auth, "remove_role", "employees", request, "user", user_id)
+    return result
+
+
+@admin_router.get("/roles/permissions")
+async def admin_get_all_roles_permissions(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get all roles with their default permission matrices for display in role assignment modal."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="employees", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return admin_rbac.get_all_roles_permissions()
+
+
+@admin_router.get("/staff/{user_id}/permissions")
+async def admin_get_staff_permissions(user_id: int, x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get a staff member's role permissions, custom overrides, and effective permissions."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="employees", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    role_info = admin_rbac.get_user_role(user_id)
+    role_perms = admin_rbac.get_role_permissions_by_name(role_info["name"]) if role_info else {}
+    custom_overrides = admin_rbac.get_user_custom_permissions(user_id)
+    effective = admin_rbac.get_effective_permissions(user_id)
+
+    return {
+        "role": role_info,
+        "role_permissions": role_perms,
+        "custom_overrides": custom_overrides,
+        "effective": effective,
+    }
+
+
+@admin_router.post("/staff/{user_id}/permissions")
+async def admin_set_staff_permissions(user_id: int, request: Request, body: UserPermissionsRequest,
+                                       x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Set custom permission overrides for a staff member."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="employees", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # Only owner/GM can modify permissions
+    if auth.get("role_level", 99) > 1:
+        raise HTTPException(status_code=403, detail="Insufficient permissions to modify user permissions")
+
+    result = admin_rbac.set_user_custom_permissions(user_id, body.permissions)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to set permissions"))
+
+    _log_action(auth, "set_custom_permissions", "employees", request, "user", user_id,
+                {"modules_changed": list(body.permissions.keys())})
+    return result
+
+
+@admin_router.post("/staff/{user_id}/reset-permissions")
+async def admin_reset_staff_permissions(user_id: int, request: Request,
+                                          x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Reset a staff member's permissions to role defaults (clear all custom overrides)."""
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="employees", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if auth.get("role_level", 99) > 1:
+        raise HTTPException(status_code=403, detail="Insufficient permissions to reset user permissions")
+
+    result = admin_rbac.clear_user_custom_permissions(user_id)
+    _log_action(auth, "reset_custom_permissions", "employees", request, "user", user_id)
     return result
 
 

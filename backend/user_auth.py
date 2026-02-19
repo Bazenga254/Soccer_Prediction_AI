@@ -384,6 +384,20 @@ def init_user_db():
         CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);
         CREATE INDEX IF NOT EXISTS idx_activity_module ON activity_logs(module);
 
+        CREATE TABLE IF NOT EXISTS user_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            module TEXT NOT NULL,
+            can_read INTEGER DEFAULT -1,
+            can_write INTEGER DEFAULT -1,
+            can_edit INTEGER DEFAULT -1,
+            can_delete INTEGER DEFAULT -1,
+            can_export INTEGER DEFAULT -1,
+            can_approve INTEGER DEFAULT -1,
+            UNIQUE(user_id, module)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_perms_user ON user_permissions(user_id);
+
         CREATE TABLE IF NOT EXISTS staff_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL REFERENCES users(id),
