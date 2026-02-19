@@ -259,9 +259,10 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
         messages_list: finalMessagesList,
       }
       await axios.post('/api/admin/bots/staggered-batch', body, { headers: getAuthHeaders() })
-      setFormSuccess(`Queue started with ${selectedBotIds.length} bots!`)
+      setFormSuccess(`Queue started with ${selectedBotIds.length} bots! You can start another batch now — select different bots, action, or target below.`)
       setMessage('')
       setMessagesList(['', ''])
+      setBulkText('')
       setTargetId('')
       fetchActiveQueues()
     } catch (err) {
@@ -300,7 +301,14 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
     <div className="bot-queue-panel">
       {/* ========== SECTION 1: Create Queue Form ========== */}
       <div className="bot-queue-section">
-        <h3 className="bot-queue-section-title">Create Staggered Queue</h3>
+        <h3 className="bot-queue-section-title">
+          Create Staggered Queue
+          {activeQueues.filter(q => q.status === 'running').length > 0 && (
+            <span className="bot-queue-running-badge">
+              {activeQueues.filter(q => q.status === 'running').length} running
+            </span>
+          )}
+        </h3>
 
         {formError && (
           <div className="bot-queue-error">
