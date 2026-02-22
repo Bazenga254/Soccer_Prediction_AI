@@ -304,7 +304,7 @@ html, body {
 /* Mobile responsive search */
 @media (max-width: 768px) {
   .header {
-    padding: 8px 10px;
+    padding: 8px 8px;
   }
   .header-content {
     gap: 0;
@@ -312,12 +312,16 @@ html, body {
     justify-content: space-between;
     align-items: center;
   }
+  .header-left {
+    flex-shrink: 0;
+    gap: 4px;
+  }
   .logo-icon-img {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
   }
   .header-logo {
-    gap: 8px;
+    gap: 4px;
     flex-shrink: 0;
     min-width: 0;
   }
@@ -329,41 +333,41 @@ html, body {
   }
   /* Online badge sits next to logo */
   .active-users-badge {
-    padding: 3px 8px;
-    margin-left: 8px;
+    padding: 2px 6px;
+    margin-left: 0;
     order: unset;
     width: auto;
     justify-content: center;
     flex-shrink: 0;
   }
   .active-users-count {
-    font-size: 10px;
+    font-size: 9px;
   }
   .active-users-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
-  /* User controls fill remaining space, align right */
+  /* User controls - all icons in a row */
   .header-user-controls {
-    gap: 2px;
+    gap: 1px;
     flex-shrink: 0;
     margin-left: auto;
   }
   .user-avatar-btn {
-    margin-left: 4px;
-    padding: 2px;
+    margin-left: 2px;
+    padding: 1px;
   }
   .search-input-wrapper {
     min-width: 0;
-    padding: 5px 8px;
+    padding: 4px 6px;
     border-radius: 20px;
   }
   .search-input {
-    width: 60px;
-    font-size: 12px;
+    width: 48px;
+    font-size: 11px;
   }
   .search-input::placeholder {
-    font-size: 11px;
+    font-size: 10px;
   }
   .search-dropdown {
     position: fixed;
@@ -372,12 +376,12 @@ html, body {
     right: 12px;
     top: auto;
   }
-  /* Uniform icon button sizing */
+  /* Uniform compact icon buttons */
   .earnings-btn,
   .notification-bell-btn,
   .messages-bell-btn {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     display: flex;
     align-items: center;
@@ -390,45 +394,40 @@ html, body {
   .earnings-btn .earnings-icon,
   .notification-bell-btn svg,
   .messages-bell-btn svg {
-    font-size: 16px;
-    width: 16px;
-    height: 16px;
+    font-size: 15px;
+    width: 15px;
+    height: 15px;
   }
-  .user-avatar-circle {
-    width: 32px;
-    height: 32px;
-    font-size: 12px;
-  }
-}
-
-/* Small phones */
-@media (max-width: 400px) {
-  .header {
-    padding: 8px 8px;
-  }
-  .search-input {
-    width: 44px;
-  }
-  .header-user-controls {
-    gap: 1px;
-  }
-  .earnings-btn,
-  .notification-bell-btn,
-  .messages-bell-btn {
-    width: 28px;
-    height: 28px;
+  /* Hide language text, keep icon only */
+  .lang-selector-code {
+    display: none !important;
   }
   .user-avatar-circle {
     width: 28px;
     height: 28px;
     font-size: 11px;
   }
-  .active-users-badge {
-    padding: 2px 6px;
-    margin-left: 4px;
+}
+
+/* Small phones */
+@media (max-width: 400px) {
+  .search-input {
+    width: 36px;
   }
-  .active-users-count {
-    font-size: 9px;
+  .earnings-btn,
+  .notification-bell-btn,
+  .messages-bell-btn {
+    width: 26px;
+    height: 26px;
+  }
+  .user-avatar-circle {
+    width: 26px;
+    height: 26px;
+    font-size: 10px;
+  }
+  .logo-icon-img {
+    width: 28px;
+    height: 28px;
   }
 }
 

@@ -50,7 +50,7 @@ export default function LanguageSelector({ variant = 'default' }) {
           <line x1="2" y1="12" x2="22" y2="12"/>
           <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
         </svg>
-        <span style={s.langCode}>{currentLang.code.toUpperCase()}</span>
+        <span style={s.langCode} className="lang-selector-code">{currentLang.code.toUpperCase()}</span>
       </button>
 
       {open && (
