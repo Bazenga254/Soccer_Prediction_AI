@@ -58,9 +58,17 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
-        globIgnores: ['**/hero-*.jpg'],
+        globPatterns: ['index.html', 'assets/index-*.js', 'assets/index-*.css'],
         runtimeCaching: [
+          {
+            urlPattern: /\/assets\/.+\.(js|css)$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'lazy-chunks',
+              expiration: { maxEntries: 60, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'StaleWhileRevalidate',
