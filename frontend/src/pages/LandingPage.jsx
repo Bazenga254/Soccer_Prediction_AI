@@ -46,10 +46,53 @@ export default function LandingPage() {
   const { currency, currencySymbol, isKenyan } = useCurrency()
   const [authModal, setAuthModal] = useState({ open: false, mode: 'login' })
   const [pricing, setPricing] = useState(null)
+  const [showInstallBanner, setShowInstallBanner] = useState(false)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [isIOS, setIsIOS] = useState(false)
+  const [showIOSGuide, setShowIOSGuide] = useState(false)
 
   useEffect(() => {
     axios.get('/api/pricing').then(res => setPricing(res.data)).catch(() => {})
   }, [])
+
+  // Mobile install prompt detection
+  useEffect(() => {
+    // Skip if already installed as PWA
+    if (window.matchMedia('(display-mode: standalone)').matches) return
+
+    const isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent) ||
+      (navigator.maxTouchPoints > 1 && window.innerWidth < 1024)
+    if (!isMobile) return
+
+    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    setIsIOS(isIOSDevice)
+
+    if (isIOSDevice) {
+      setShowInstallBanner(true)
+      return
+    }
+
+    const handler = (e) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+      setShowInstallBanner(true)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstallClick = async () => {
+    if (isIOS) {
+      setShowIOSGuide(true)
+      return
+    }
+    if (!installPrompt) return
+    installPrompt.prompt()
+    const { outcome } = await installPrompt.userChoice
+    if (outcome === 'accepted') setShowInstallBanner(false)
+    setInstallPrompt(null)
+  }
 
   const openSignIn = () => setAuthModal({ open: true, mode: 'login' })
   const openSignUp = () => setAuthModal({ open: true, mode: 'signup' })
@@ -309,6 +352,101 @@ export default function LandingPage() {
           <p className="landing-footer-copy">&copy; {t('landing.copyright')}</p>
         </div>
       </footer>
+
+      {/* Mobile Install Banner */}
+      {showInstallBanner && (
+        <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 9999,
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+          borderTop: '1px solid #334155',
+          padding: '14px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          boxShadow: '0 -4px 24px rgba(0,0,0,0.5)',
+        }}>
+          <img src="/pwa-192x192.png" alt="Spark AI" style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#f8fafc', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+              Get the Spark AI App
+            </div>
+            <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.3, marginTop: 2 }}>
+              Install for quick access & faster loading
+            </div>
+          </div>
+          <button onClick={handleInstallClick} style={{
+            padding: '9px 18px',
+            background: '#22c55e',
+            color: '#0f172a',
+            fontWeight: 700,
+            fontSize: 13,
+            border: 'none',
+            borderRadius: 8,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}>
+            Install
+          </button>
+          <button onClick={() => setShowInstallBanner(false)} style={{
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            fontSize: 18,
+            cursor: 'pointer',
+            padding: 4,
+            lineHeight: 1,
+            flexShrink: 0,
+          }} aria-label="Dismiss">&times;</button>
+        </div>
+      )}
+
+      {/* iOS Install Guide Modal */}
+      {showIOSGuide && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 10000,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+        }} onClick={() => setShowIOSGuide(false)}>
+          <div style={{
+            background: '#1e293b',
+            borderRadius: 16,
+            padding: 28,
+            maxWidth: 340,
+            width: '100%',
+            textAlign: 'center',
+          }} onClick={e => e.stopPropagation()}>
+            <img src="/pwa-192x192.png" alt="Spark AI" style={{ width: 64, height: 64, borderRadius: 14, marginBottom: 16 }} />
+            <h3 style={{ color: '#f8fafc', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Install Spark AI</h3>
+            <div style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.6, textAlign: 'left', marginBottom: 20 }}>
+              <p style={{ marginBottom: 12 }}>To install this app on your iPhone:</p>
+              <p style={{ marginBottom: 8 }}>1. Tap the <strong style={{ color: '#f8fafc' }}>Share</strong> button <span style={{ fontSize: 18, verticalAlign: 'middle' }}>&#x2B06;&#xFE0F;</span> at the bottom of Safari</p>
+              <p style={{ marginBottom: 8 }}>2. Scroll down and tap <strong style={{ color: '#f8fafc' }}>"Add to Home Screen"</strong></p>
+              <p>3. Tap <strong style={{ color: '#f8fafc' }}>"Add"</strong> to install</p>
+            </div>
+            <button onClick={() => setShowIOSGuide(false)} style={{
+              width: '100%',
+              padding: '12px 24px',
+              background: '#22c55e',
+              color: '#0f172a',
+              fontWeight: 700,
+              fontSize: 15,
+              border: 'none',
+              borderRadius: 10,
+              cursor: 'pointer',
+            }}>Got it</button>
+          </div>
+        </div>
+      )}
 
       {/* Auth Modal */}
       <AuthModal
