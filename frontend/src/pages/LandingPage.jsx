@@ -90,14 +90,14 @@ export default function LandingPage() {
   ]
 
   const PRO_FEATURES = pricing?.plans?.[weeklyKey]?.features || [
-    'Unlimited AI match predictions',
-    'Unlimited jackpot analyses',
-    'Unlimited AI chat prompts',
+    '20 AI match predictions per day',
+    '5 jackpot analyses per day',
+    '50 AI chat prompts per day',
     'Odds comparison across bookmakers',
     'Advanced analytics & value betting',
     'Live score tracking & goal alerts',
     '40+ leagues worldwide',
-    'Chrome extension unlimited access',
+    'Chrome extension access',
     'Community & paid predictions',
     'Ad-free experience',
     'Priority support',

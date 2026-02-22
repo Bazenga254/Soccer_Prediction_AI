@@ -528,19 +528,19 @@ export default function Upgrade() {
             <span className="feature-label">{t('upgrade.matchAnalysis')}</span>
             <span>{t('upgrade.threePer24h')}</span>
             <span>{currencySymbol}{matchPrice} each</span>
-            <span className="pro-value">{t('upgrade.unlimited')}</span>
+            <span className="pro-value">20 per day</span>
           </div>
           <div className="comparison-row">
             <span className="feature-label">{t('upgrade.jackpotAnalysis')}</span>
             <span>{t('upgrade.twoThen172h')}</span>
             <span>{currencySymbol}{jackpotPrice} each</span>
-            <span className="pro-value">{t('upgrade.unlimited')}</span>
+            <span className="pro-value">5 per day</span>
           </div>
           <div className="comparison-row">
             <span className="feature-label">{t('upgrade.aiChatPrompts')}</span>
             <span>{t('upgrade.total10')}</span>
             <span>{t('upgrade.total10')}</span>
-            <span className="pro-value">{t('upgrade.unlimited')}</span>
+            <span className="pro-value">50 per day</span>
           </div>
           <div className="comparison-row">
             <span className="feature-label">Live Score Tracking</span>
