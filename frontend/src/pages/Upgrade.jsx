@@ -16,8 +16,8 @@ export default function Upgrade() {
   const [loading, setLoading] = useState(true)
   const [mpesaModal, setMpesaModal] = useState({ open: false, planId: '', amountKes: 0, amountUsd: 0, title: '', description: '', txType: 'subscription' })
   const [balance, setBalance] = useState(null)
-  const [depositAmount, setDepositAmount] = useState(currency === 'KES' ? 260 : 2)
-  const [minDepositKes, setMinDepositKes] = useState(260)
+  const [depositAmount, setDepositAmount] = useState(currency === 'KES' ? 100 : 1)
+  const [minDepositKes, setMinDepositKes] = useState(100)
   const [whopModal, setWhopModal] = useState({ open: false, transactionType: '', planId: '', amountUsd: 0, title: '' })
   const [pricingInfo, setPricingInfo] = useState(null)
   const [creatorWallet, setCreatorWallet] = useState(null)
@@ -60,9 +60,9 @@ export default function Upgrade() {
         if (res.data.amount_kes) {
           const rate = res.data.amount_kes
           setKesRate(rate)
-          const kesMin = Math.ceil(2 * rate)
+          const kesMin = Math.ceil(1 * rate)
           setMinDepositKes(kesMin)
-          setDepositAmount(prev => prev <= 260 ? kesMin : prev)
+          setDepositAmount(prev => prev <= 100 ? kesMin : prev)
         }
       })
       .catch(() => {})
@@ -94,11 +94,11 @@ export default function Upgrade() {
     .filter(([, plan]) => plan.currency === currency)
 
   const matchPrice = currency === 'KES'
-    ? (pricingInfo?.pay_per_use?.match_analysis_price_kes ?? 65)
-    : (pricingInfo?.pay_per_use?.match_analysis_price_usd ?? 0.50)
+    ? (pricingInfo?.pay_per_use?.match_analysis_price_kes ?? 25)
+    : (pricingInfo?.pay_per_use?.match_analysis_price_usd ?? 0.25)
   const jackpotPrice = currency === 'KES'
-    ? (pricingInfo?.pay_per_use?.jackpot_analysis_price_kes ?? 130)
-    : (pricingInfo?.pay_per_use?.jackpot_analysis_price_usd ?? 1.00)
+    ? (pricingInfo?.pay_per_use?.jackpot_analysis_price_kes ?? 65)
+    : (pricingInfo?.pay_per_use?.jackpot_analysis_price_usd ?? 0.65)
 
   const handleUpgrade = (planId, plan) => {
     if (plan.currency === 'KES' || isKenyan) {
@@ -138,7 +138,7 @@ export default function Upgrade() {
         txType: 'balance_topup',
       })
     } else {
-      if (depositAmount < 2) return
+      if (depositAmount < 1) return
       setMpesaModal({
         open: true,
         planId: 'balance_topup',
@@ -438,10 +438,10 @@ export default function Upgrade() {
                 <span className="paygo-input-prefix">{currencySymbol}</span>
                 <input
                   type="number"
-                  min={isKenyan ? minDepositKes : 2}
+                  min={isKenyan ? minDepositKes : 1}
                   step={isKenyan ? 10 : 1}
                   value={depositAmount}
-                  onChange={e => setDepositAmount(Math.max(isKenyan ? minDepositKes : 2, Number(e.target.value)))}
+                  onChange={e => setDepositAmount(Math.max(isKenyan ? minDepositKes : 1, Number(e.target.value)))}
                   className="paygo-input"
                 />
               </div>
@@ -450,7 +450,7 @@ export default function Upgrade() {
               </button>
               {!isKenyan && (
                 <button className="paygo-deposit-btn card" onClick={() => {
-                  if (depositAmount < 2) return
+                  if (depositAmount < 1) return
                   setWhopModal({
                     open: true,
                     transactionType: 'balance_topup',
@@ -574,9 +574,9 @@ export default function Upgrade() {
           </div>
           <div className="comparison-row">
             <span className="feature-label">Chrome Extension</span>
-            <span>Basic</span>
-            <span>Basic</span>
-            <span className="pro-value">{t('upgrade.unlimited')}</span>
+            <span className="no-value">&mdash;</span>
+            <span className="no-value">&mdash;</span>
+            <span className="pro-value check-value">&#10003;</span>
           </div>
           <div className="comparison-row">
             <span className="feature-label">Community Predictions</span>

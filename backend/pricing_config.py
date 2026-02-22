@@ -117,10 +117,10 @@ def _seed_defaults(conn):
         ("referral_commission_rate", "0.30", "commissions", "Referral Commission Rate", "Percentage of payment credited to referrer (0.30 = 30%)", "percent"),
         ("creator_sale_share", "0.70", "commissions", "Creator Sale Share", "Percentage of prediction sale price paid to creator (0.70 = 70%)", "percent"),
         # Pay per use
-        ("match_analysis_price_usd", "0.50", "pay_per_use", "Match Analysis Price (USD)", "Per-analysis deduction for match analysis", "number"),
-        ("jackpot_analysis_price_usd", "1.00", "pay_per_use", "Jackpot Analysis Price (USD)", "Per-analysis deduction for jackpot analysis", "number"),
-        ("match_analysis_price_kes", "65.0", "pay_per_use", "Match Analysis Price (KES)", "Per-analysis price shown to KES users", "number"),
-        ("jackpot_analysis_price_kes", "130.0", "pay_per_use", "Jackpot Analysis Price (KES)", "Per-analysis price shown to KES users", "number"),
+        ("match_analysis_price_usd", "0.25", "pay_per_use", "Match Analysis Price (USD)", "Per-analysis deduction for match analysis", "number"),
+        ("jackpot_analysis_price_usd", "0.65", "pay_per_use", "Jackpot Analysis Price (USD)", "Per-analysis deduction for jackpot analysis", "number"),
+        ("match_analysis_price_kes", "25.0", "pay_per_use", "Match Analysis Price (KES)", "Per-analysis price shown to KES users", "number"),
+        ("jackpot_analysis_price_kes", "65.0", "pay_per_use", "Jackpot Analysis Price (KES)", "Per-analysis price shown to KES users", "number"),
         # Free tier
         ("free_predictions_per_day", "3", "free_tier", "Free Predictions Per Day", "Number of free predictions allowed per day", "number"),
         ("free_shares_per_day", "1", "free_tier", "Free Community Shares Per Day", "Number of free community shares allowed per day", "number"),
@@ -311,10 +311,10 @@ def get_public_pricing() -> Dict:
     return {
         "plans": get_plans_dict(),
         "pay_per_use": {
-            "match_analysis_price_usd": get("match_analysis_price_usd", 0.50),
-            "jackpot_analysis_price_usd": get("jackpot_analysis_price_usd", 1.00),
-            "match_analysis_price_kes": get("match_analysis_price_kes", 65.0),
-            "jackpot_analysis_price_kes": get("jackpot_analysis_price_kes", 130.0),
+            "match_analysis_price_usd": get("match_analysis_price_usd", 0.25),
+            "jackpot_analysis_price_usd": get("jackpot_analysis_price_usd", 0.65),
+            "match_analysis_price_kes": get("match_analysis_price_kes", 25.0),
+            "jackpot_analysis_price_kes": get("jackpot_analysis_price_kes", 65.0),
         },
         "commissions": {
             "referral_rate": get("referral_commission_rate", 0.30),

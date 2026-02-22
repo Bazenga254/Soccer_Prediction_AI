@@ -28,6 +28,7 @@ import access_codes
 import prediction_tracker
 import user_auth
 import community
+import team_aliases
 import subscriptions
 import pricing_config
 import ai_support
@@ -206,12 +207,14 @@ async def startup():
     asyncio.create_task(bot_manager.start_bot_heartbeats())
     asyncio.create_task(_prediction_result_checker())
     asyncio.create_task(_weekly_disbursement_generator())
+    asyncio.create_task(_daily_predictions_generator())
     print("[OK] Support keep-alive checker started (30-min idle, 3-min response)")
     print("[OK] Payment expiry checker started (15-min timeout)")
     print("[OK] Active user tracking started")
     print("[OK] Bot heartbeat system started")
     print("[OK] Prediction result checker started (5-min interval)")
     print("[OK] Weekly disbursement generator started (Fridays 10:00 EAT)")
+    print("[OK] Daily free predictions generator started (30-min check interval)")
     print("=" * 50)
 
 
@@ -535,7 +538,7 @@ async def use_balance_for_analysis(authorization: str = Header(None)):
     if tier in ("pro", "trial"):
         raise HTTPException(status_code=400, detail="Subscribed users have unlimited access")
     user_id = payload["user_id"]
-    price = pricing_config.get("match_analysis_price_usd", 0.50)
+    price = pricing_config.get("match_analysis_price_usd", 0.25)
     bal = community.get_user_balance(user_id)
     if bal.get("balance_usd", 0) < price:
         raise HTTPException(status_code=403, detail=f"Insufficient balance. Deposit at least ${price:.2f} to continue.")
@@ -556,7 +559,7 @@ async def use_balance_for_jackpot(authorization: str = Header(None)):
     if tier in ("pro", "trial"):
         raise HTTPException(status_code=400, detail="Subscribed users have unlimited access")
     user_id = payload["user_id"]
-    price = pricing_config.get("jackpot_analysis_price_usd", 1.00)
+    price = pricing_config.get("jackpot_analysis_price_usd", 0.65)
     bal = community.get_user_balance(user_id)
     if bal.get("balance_usd", 0) < price:
         raise HTTPException(status_code=403, detail=f"Insufficient balance. Deposit at least ${price:.2f} to continue.")
@@ -568,9 +571,21 @@ async def use_balance_for_jackpot(authorization: str = Header(None)):
 
 
 @app.post("/api/predict")
-async def predict(request: PredictRequest):
+async def predict(request: PredictRequest, req: Request = None, authorization: str = Header(None)):
     if request.team_a_id == request.team_b_id:
         return {"error": "Cannot predict a match between a team and itself"}
+
+    # Track extension usage
+    source = ""
+    if req:
+        source = req.headers.get("x-spark-source", "")
+    if source == "extension":
+        payload = _get_current_user(authorization)
+        if payload:
+            _log_extension_event(
+                payload["user_id"], "prediction",
+                f"{request.team_a_name or request.team_a_id} vs {request.team_b_name or request.team_b_id}"
+            )
 
     teams = await get_teams(request.competition)
     team_a = next((t for t in teams if t["id"] == request.team_a_id), None)
@@ -596,8 +611,14 @@ async def predict(request: PredictRequest):
         except (ValueError, TypeError):
             predict_league_id = 39
 
-    players_a = analyze_players(await get_team_players(request.team_a_id, predict_league_id), team_a)
-    players_b = analyze_players(await get_team_players(request.team_b_id, predict_league_id), team_b)
+    raw_players_a = await get_team_players(request.team_a_id, predict_league_id)
+    raw_players_b = await get_team_players(request.team_b_id, predict_league_id)
+    players_a = analyze_players(raw_players_a, team_a)
+    players_b = analyze_players(raw_players_b, team_b)
+    # Detect if player data came from live API (live players have 'photo' URLs from API-Football)
+    _players_live = is_using_live_data() and config.API_FOOTBALL_KEY and (
+        any(p.get("photo") for p in raw_players_a) or any(p.get("photo") for p in raw_players_b)
+    )
 
     # Try async odds with live data, fall back to simulated
     try:
@@ -642,7 +663,7 @@ async def predict(request: PredictRequest):
             "teams": "API-Football (Live)" if is_using_live_data() else "Sample Data",
             "odds": "The Odds API (Live)" if odds.get("using_live_odds") else "Simulated",
             "h2h": "API-Football (Live)" if is_using_live_data() else "Sample Data",
-            "players": "Sample Data",
+            "players": "API-Football (Live)" if _players_live else "Sample Data",
         }
     }
 
@@ -855,6 +876,155 @@ def _require_sensitive_action(user_id: int):
     check = user_auth.check_sensitive_action_allowed(user_id)
     if not check["allowed"]:
         raise HTTPException(status_code=403, detail=check["message"])
+
+
+# === CHROME EXTENSION ENDPOINTS ===
+
+class TeamLookupRequest(BaseModel):
+    teams: list  # [{name: str, position: str}, ...]
+    competition: str = ""
+
+@app.get("/api/extension/validate")
+async def extension_validate(authorization: str = Header(None)):
+    """Lightweight validation: token valid + pro tier check for Chrome extension."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    # Log extension session
+    _log_extension_event(payload["user_id"], "session_validate", "")
+    return {
+        "valid": True,
+        "user_id": payload["user_id"],
+        "username": payload.get("username", ""),
+        "tier": payload["tier"],
+        "is_pro": payload["tier"] == "pro",
+    }
+
+@app.post("/api/extension/lookup-teams")
+async def extension_lookup_teams(request: TeamLookupRequest, authorization: str = Header(None)):
+    """Fuzzy match team names from betting sites to API-Football IDs.
+    Uses static aliases first, then dynamic API-Football search for unknown teams."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if payload["tier"] != "pro":
+        raise HTTPException(status_code=403, detail="Pro subscription required for extension")
+    results = await team_aliases.lookup_teams_dynamic(request.teams, request.competition)
+    return {"matches": results}
+
+
+# --- Extension Analytics ---
+import sqlite3 as _sqlite3
+from datetime import datetime as _dt
+
+def _init_extension_analytics():
+    """Create extension_analytics table if it doesn't exist."""
+    db = _sqlite3.connect("users.db")
+    db.execute("""CREATE TABLE IF NOT EXISTS extension_analytics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        details TEXT DEFAULT '',
+        created_at TEXT NOT NULL
+    )""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_ext_analytics_user ON extension_analytics(user_id)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_ext_analytics_action ON extension_analytics(action)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_ext_analytics_date ON extension_analytics(created_at)")
+    db.commit()
+    db.close()
+
+_init_extension_analytics()
+
+def _log_extension_event(user_id: int, action: str, details: str = ""):
+    """Log an extension usage event."""
+    db = _sqlite3.connect("users.db")
+    db.execute(
+        "INSERT INTO extension_analytics (user_id, action, details, created_at) VALUES (?, ?, ?, ?)",
+        (user_id, action, details, _dt.utcnow().isoformat())
+    )
+    db.commit()
+    db.close()
+
+
+@app.post("/api/extension/log-event")
+async def extension_log_event(request: Request, authorization: str = Header(None)):
+    """Log extension usage events for analytics."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    body = await request.json()
+    _log_extension_event(payload["user_id"], body.get("action", "unknown"), body.get("details", ""))
+    return {"ok": True}
+
+
+@app.get("/api/admin/extension-analytics")
+async def admin_extension_analytics(authorization: str = Header(None), x_admin_password: str = Header(None), days: int = 30):
+    """Get extension usage analytics for admin dashboard."""
+    if x_admin_password and x_admin_password == ADMIN_PASSWORD:
+        pass  # password auth OK
+    else:
+        payload = _get_current_user(authorization)
+        if not payload or not payload.get("is_admin"):
+            raise HTTPException(status_code=403, detail="Admin access required")
+
+    from datetime import timedelta
+    cutoff = (_dt.utcnow() - timedelta(days=days)).isoformat()
+
+    db = _sqlite3.connect("users.db")
+    db.row_factory = _sqlite3.Row
+
+    # Total extension users (unique)
+    total_users = db.execute(
+        "SELECT COUNT(DISTINCT user_id) as cnt FROM extension_analytics WHERE created_at >= ?", (cutoff,)
+    ).fetchone()["cnt"]
+
+    # Total events
+    total_events = db.execute(
+        "SELECT COUNT(*) as cnt FROM extension_analytics WHERE created_at >= ?", (cutoff,)
+    ).fetchone()["cnt"]
+
+    # Events by action
+    by_action = [dict(r) for r in db.execute(
+        "SELECT action, COUNT(*) as cnt FROM extension_analytics WHERE created_at >= ? GROUP BY action ORDER BY cnt DESC", (cutoff,)
+    ).fetchall()]
+
+    # Top extension users
+    top_users = [dict(r) for r in db.execute("""
+        SELECT ea.user_id, u.username, u.email, u.display_name, COUNT(*) as event_count,
+               MAX(ea.created_at) as last_active
+        FROM extension_analytics ea
+        JOIN users u ON ea.user_id = u.id
+        WHERE ea.created_at >= ?
+        GROUP BY ea.user_id
+        ORDER BY event_count DESC
+        LIMIT 20
+    """, (cutoff,)).fetchall()]
+
+    # Daily active extension users
+    daily = [dict(r) for r in db.execute("""
+        SELECT DATE(created_at) as day, COUNT(DISTINCT user_id) as users, COUNT(*) as events
+        FROM extension_analytics
+        WHERE created_at >= ?
+        GROUP BY DATE(created_at)
+        ORDER BY day DESC
+        LIMIT 30
+    """, (cutoff,)).fetchall()]
+
+    # Extension predictions vs website predictions
+    ext_predictions = db.execute(
+        "SELECT COUNT(*) as cnt FROM extension_analytics WHERE action = 'prediction' AND created_at >= ?", (cutoff,)
+    ).fetchone()["cnt"]
+
+    db.close()
+
+    return {
+        "total_extension_users": total_users,
+        "total_events": total_events,
+        "extension_predictions": ext_predictions,
+        "by_action": by_action,
+        "top_users": top_users,
+        "daily": daily,
+    }
 
 
 @app.get("/api/user/security-status")
@@ -1750,6 +1920,18 @@ async def _weekly_disbursement_generator():
             print(f"[Disbursement] Weekly generator error: {e}")
 
 
+async def _daily_predictions_generator():
+    """Background task: generate 10 free daily predictions. Checks every 30 minutes, generates once per day."""
+    await asyncio.sleep(60)  # Wait for other services to initialize
+    while True:
+        try:
+            from daily_picks import generate_daily_predictions
+            await generate_daily_predictions()
+        except Exception as e:
+            print(f"[DAILY PICKS] Error: {e}")
+        await asyncio.sleep(1800)  # Check every 30 minutes
+
+
 async def _prediction_result_checker():
     """Background task: check finished matches and update community + track record predictions every 5 minutes."""
     while True:
@@ -2284,7 +2466,54 @@ class UpdateResultRequest(BaseModel):
 @app.get("/api/predictions")
 async def get_predictions(limit: int = 50):
     """Get all stored predictions."""
-    predictions = prediction_tracker.get_all_predictions(limit)
+    raw = prediction_tracker.get_all_predictions(limit)
+
+    # Build a lookup of user_id -> display_name from users.db
+    user_ids = set(p.get("user_id") for p in raw if p.get("user_id"))
+    user_names = {}
+    if user_ids:
+        try:
+            import sqlite3 as _sqlite3
+            _uconn = _sqlite3.connect("users.db")
+            _uconn.row_factory = _sqlite3.Row
+            placeholders = ",".join("?" for _ in user_ids)
+            _rows = _uconn.execute(
+                f"SELECT id, display_name, username FROM users WHERE id IN ({placeholders})",
+                list(user_ids),
+            ).fetchall()
+            for r in _rows:
+                user_names[r["id"]] = r["display_name"] or r["username"] or f"User #{r['id']}"
+            _uconn.close()
+        except Exception:
+            pass  # If users.db lookup fails, we'll just show "—"
+
+    # Map database column names to frontend-expected field names
+    predictions = []
+    for p in raw:
+        mapped = dict(p)
+        mapped["home_team"] = p.get("team_a_name", "?")
+        mapped["away_team"] = p.get("team_b_name", "?")
+        mapped["match"] = f"{p.get('team_a_name', '?')} vs {p.get('team_b_name', '?')}"
+        mapped["predicted_outcome"] = p.get("predicted_result", "")
+        mapped["league"] = p.get("competition", "")
+        # Add user info
+        uid = p.get("user_id")
+        mapped["user_name"] = user_names.get(uid, "System") if uid else "System"
+        # Map result_correct (0/1/None) to correct (true/false/null)
+        rc = p.get("result_correct")
+        if rc is not None:
+            mapped["correct"] = bool(rc)
+            mapped["status"] = "correct" if rc else "incorrect"
+        else:
+            mapped["correct"] = None
+            mapped["status"] = "pending"
+        # Build actual score string
+        hg = p.get("actual_home_goals")
+        ag = p.get("actual_away_goals")
+        if hg is not None and ag is not None:
+            mapped["score"] = f"{hg} - {ag}"
+            mapped["actual"] = f"{hg} - {ag}"
+        predictions.append(mapped)
     return {"predictions": predictions}
 
 
@@ -2293,6 +2522,18 @@ async def get_prediction_accuracy():
     """Get overall prediction accuracy stats."""
     stats = prediction_tracker.get_accuracy_stats()
     return stats
+
+
+@app.get("/api/predictions/daily-free")
+async def get_daily_free_predictions(date: str = None):
+    """Get today's daily free AI predictions. No auth required — available to all users."""
+    predictions = community.get_daily_free_predictions(date)
+    date_str = date or datetime.now().strftime("%Y-%m-%d")
+    return {
+        "predictions": predictions,
+        "date": date_str,
+        "count": len(predictions),
+    }
 
 
 @app.post("/api/predictions/update-result")
@@ -2455,6 +2696,7 @@ async def confirm_predictions(request: ConfirmPredictionsRequest, authorization:
                 outcome=outcome,
                 top_predictions=[],
                 odds=pred.odds,
+                user_id=payload.get("user_id"),
             )
             confirmed.append(pred.matchId)
         except Exception as e:
@@ -3534,7 +3776,61 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
     over_15 = 0
     over_25 = 0
     over_35 = 0
+    over_45 = 0
+    over_55 = 0
     btts_yes = 0  # Both teams to score
+
+    # Exact goals counters
+    exact_goals_count = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, "6+": 0}
+    team_a_exact = {0: 0, 1: 0, 2: 0, "3+": 0}
+    team_b_exact = {0: 0, 1: 0, 2: 0, "3+": 0}
+
+    # Clean sheets
+    team_a_clean_sheet = 0
+    team_b_clean_sheet = 0
+
+    # Correct score tracking
+    correct_scores = {}
+
+    # Half-time data counters
+    ht_matches = 0
+    ht_team_a_wins = 0
+    ht_draws = 0
+    ht_team_b_wins = 0
+    ht_btts = 0
+    ht_over_05 = 0
+    ht_over_15 = 0
+    ht_over_25 = 0
+    ht_team_a_over_05 = 0
+    ht_team_a_over_15 = 0
+    ht_team_b_over_05 = 0
+    ht_team_b_over_15 = 0
+    ht_exact = {0: 0, 1: 0, "2+": 0}
+
+    # Combined market counters
+    ft_1x2_btts = {"1_yes": 0, "1_no": 0, "x_yes": 0, "x_no": 0, "2_yes": 0, "2_no": 0}
+    total_btts = {"over25_yes": 0, "over25_no": 0, "under25_yes": 0, "under25_no": 0}
+
+    # HT/FT results
+    htft_results = {}
+
+    # Both halves over/under 1.5
+    both_halves_over_15 = 0
+    both_halves_under_15 = 0
+    ht_counted = 0
+
+    # 1st half combined markets
+    fh_1x2_btts = {"1_yes": 0, "1_no": 0, "x_yes": 0, "x_no": 0, "2_yes": 0, "2_no": 0}
+    fh_1x2_total = {"1_over": 0, "1_under": 0, "x_over": 0, "x_under": 0, "2_over": 0, "2_under": 0}
+
+    # 2nd half combined markets
+    sh_1x2_btts = {"1_yes": 0, "1_no": 0, "x_yes": 0, "x_no": 0, "2_yes": 0, "2_no": 0}
+    sh_1x2_total = {"1_over": 0, "1_under": 0, "x_over": 0, "x_under": 0, "2_over": 0, "2_under": 0}
+
+    # Handicap tracking
+    handicap_levels = [-1, -2, -3, 1, 2, 3]
+    handicap_results = {h: {"team_a": 0, "draw": 0, "team_b": 0} for h in handicap_levels}
+    ht_handicap_results = {h: {"team_a": 0, "draw": 0, "team_b": 0} for h in [-1, 1]}
 
     for match in completed_h2h:
         home_id = match.get("home_team_id")
@@ -3572,8 +3868,181 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
             over_25 += 1
         if match_goals > 3.5:
             over_35 += 1
-        if home_score > 0 and away_score > 0:
+        if match_goals > 4.5:
+            over_45 += 1
+        if match_goals > 5.5:
+            over_55 += 1
+
+        btts = home_score > 0 and away_score > 0
+        if btts:
             btts_yes += 1
+
+        # Determine team_a and team_b scores for this match
+        if home_id == team_a_id:
+            ta_score, tb_score = home_score, away_score
+        else:
+            ta_score, tb_score = away_score, home_score
+
+        # Full-time result
+        if ta_score > tb_score:
+            ft_result = "1"
+        elif ta_score < tb_score:
+            ft_result = "2"
+        else:
+            ft_result = "x"
+
+        # Exact goals
+        if match_goals >= 6:
+            exact_goals_count["6+"] += 1
+        else:
+            exact_goals_count[match_goals] = exact_goals_count.get(match_goals, 0) + 1
+
+        # Team exact goals
+        if ta_score >= 3:
+            team_a_exact["3+"] += 1
+        else:
+            team_a_exact[ta_score] = team_a_exact.get(ta_score, 0) + 1
+        if tb_score >= 3:
+            team_b_exact["3+"] += 1
+        else:
+            team_b_exact[tb_score] = team_b_exact.get(tb_score, 0) + 1
+
+        # Clean sheets
+        if tb_score == 0:
+            team_a_clean_sheet += 1
+        if ta_score == 0:
+            team_b_clean_sheet += 1
+
+        # Correct score tracking
+        score_key = f"{ta_score}:{tb_score}"
+        correct_scores[score_key] = correct_scores.get(score_key, 0) + 1
+
+        # Combined: 1X2 & BTTS (full-time)
+        ft_1x2_btts[f"{ft_result}_{'yes' if btts else 'no'}"] += 1
+
+        # Combined: Total & BTTS
+        over_25_flag = match_goals > 2.5
+        btts_key = "yes" if btts else "no"
+        if over_25_flag:
+            total_btts[f"over25_{btts_key}"] += 1
+        else:
+            total_btts[f"under25_{btts_key}"] += 1
+
+        # Handicap (European) for various levels
+        for h in handicap_levels:
+            adj_ta = ta_score + h
+            if adj_ta > tb_score:
+                handicap_results[h]["team_a"] += 1
+            elif adj_ta < tb_score:
+                handicap_results[h]["team_b"] += 1
+            else:
+                handicap_results[h]["draw"] += 1
+
+        # Half-time data (if available)
+        ht_home = match.get("ht_home_score")
+        ht_away = match.get("ht_away_score")
+        if ht_home is not None and ht_away is not None:
+            ht_matches += 1
+            ht_counted += 1
+
+            if home_id == team_a_id:
+                ht_ta, ht_tb = ht_home, ht_away
+            else:
+                ht_ta, ht_tb = ht_away, ht_home
+
+            ht_total = ht_home + ht_away
+
+            # 1st Half 1X2
+            if ht_ta > ht_tb:
+                ht_team_a_wins += 1
+                ht_result = "1"
+            elif ht_ta < ht_tb:
+                ht_team_b_wins += 1
+                ht_result = "2"
+            else:
+                ht_draws += 1
+                ht_result = "x"
+
+            # 1st Half BTTS
+            ht_btts_flag = ht_ta > 0 and ht_tb > 0
+            if ht_btts_flag:
+                ht_btts += 1
+
+            # 1st Half Over/Under
+            if ht_total > 0.5:
+                ht_over_05 += 1
+            if ht_total > 1.5:
+                ht_over_15 += 1
+            if ht_total > 2.5:
+                ht_over_25 += 1
+
+            # 1st Half Team Totals
+            if ht_ta > 0.5:
+                ht_team_a_over_05 += 1
+            if ht_ta > 1.5:
+                ht_team_a_over_15 += 1
+            if ht_tb > 0.5:
+                ht_team_b_over_05 += 1
+            if ht_tb > 1.5:
+                ht_team_b_over_15 += 1
+
+            # 1st Half Exact Goals
+            if ht_total == 0:
+                ht_exact[0] += 1
+            elif ht_total == 1:
+                ht_exact[1] += 1
+            else:
+                ht_exact["2+"] += 1
+
+            # 1st Half Handicap
+            for h in [-1, 1]:
+                adj = ht_ta + h
+                if adj > ht_tb:
+                    ht_handicap_results[h]["team_a"] += 1
+                elif adj < ht_tb:
+                    ht_handicap_results[h]["team_b"] += 1
+                else:
+                    ht_handicap_results[h]["draw"] += 1
+
+            # 1st Half combined: 1X2 & BTTS
+            fh_1x2_btts[f"{ht_result}_{'yes' if ht_btts_flag else 'no'}"] += 1
+
+            # 1st Half combined: 1X2 & Total O/U 1.5
+            ou_key = "over" if ht_total > 1.5 else "under"
+            fh_1x2_total[f"{ht_result}_{ou_key}"] += 1
+
+            # 2nd Half data
+            sh_ta = ta_score - ht_ta
+            sh_tb = tb_score - ht_tb
+            sh_total = sh_ta + sh_tb
+
+            # 2nd Half 1X2
+            if sh_ta > sh_tb:
+                sh_result = "1"
+            elif sh_ta < sh_tb:
+                sh_result = "2"
+            else:
+                sh_result = "x"
+
+            # 2nd Half BTTS
+            sh_btts_flag = sh_ta > 0 and sh_tb > 0
+
+            # 2nd Half combined: 1X2 & BTTS
+            sh_1x2_btts[f"{sh_result}_{'yes' if sh_btts_flag else 'no'}"] += 1
+
+            # 2nd Half combined: 1X2 & Total O/U 1.5
+            sh_ou = "over" if sh_total > 1.5 else "under"
+            sh_1x2_total[f"{sh_result}_{sh_ou}"] += 1
+
+            # HT/FT result
+            htft_key = f"{ht_result}/{ft_result}"
+            htft_results[htft_key] = htft_results.get(htft_key, 0) + 1
+
+            # Both halves Over/Under 1.5
+            if ht_total >= 2 and sh_total >= 2:
+                both_halves_over_15 += 1
+            if ht_total <= 1 and sh_total <= 1:
+                both_halves_under_15 += 1
 
     avg_goals = total_goals / total_matches if total_matches > 0 else 0
     avg_team_a_goals = team_a_goals / total_matches if total_matches > 0 else 0
@@ -3594,6 +4063,8 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
             "over_15": {"count": over_15, "percentage": pct(over_15), "prediction": "Yes" if pct(over_15) >= 50 else "No"},
             "over_25": {"count": over_25, "percentage": pct(over_25), "prediction": "Yes" if pct(over_25) >= 50 else "No"},
             "over_35": {"count": over_35, "percentage": pct(over_35), "prediction": "Yes" if pct(over_35) >= 50 else "No"},
+            "over_45": {"count": over_45, "percentage": pct(over_45), "prediction": "Yes" if pct(over_45) >= 50 else "No"},
+            "over_55": {"count": over_55, "percentage": pct(over_55), "prediction": "Yes" if pct(over_55) >= 50 else "No"},
         },
         "btts": {
             "yes": {"count": btts_yes, "percentage": pct(btts_yes)},
@@ -3647,23 +4118,206 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
         }
     }
 
-    # First Half estimates (roughly 40-45% of goals in first half)
-    first_half_avg_goals = avg_goals * 0.42
-    first_half_analysis = {
-        "over_05": round(min(90, 40 + first_half_avg_goals * 30), 1),
-        "over_15": round(min(70, 20 + first_half_avg_goals * 25), 1),
-        "over_25": round(min(50, 10 + first_half_avg_goals * 20), 1),
-        "1x2": {
-            "team_a": round(team_a_win_pct * 0.75, 1),  # Teams that win often lead at HT
-            "draw": round(40 + draw_pct * 0.5, 1),  # More draws at HT than FT
-            "team_b": round(team_b_win_pct * 0.75, 1),
-        },
-        "double_chance": {
-            "1X": round(min(85, team_a_win_pct * 0.75 + 40), 1),
-            "X2": round(min(85, team_b_win_pct * 0.75 + 40), 1),
-            "12": round(max(30, (team_a_win_pct + team_b_win_pct) * 0.6), 1),
+    # Helper for HT percentage calculations
+    def ht_pct(count):
+        return round((count / ht_matches) * 100, 1) if ht_matches > 0 else 0
+
+    # First Half analysis - use actual HT data if available, else estimate
+    if ht_matches > 0:
+        first_half_analysis = {
+            "over_05": ht_pct(ht_over_05),
+            "over_15": ht_pct(ht_over_15),
+            "over_25": ht_pct(ht_over_25),
+            "1x2": {
+                "team_a": ht_pct(ht_team_a_wins),
+                "draw": ht_pct(ht_draws),
+                "team_b": ht_pct(ht_team_b_wins),
+            },
+            "double_chance": {
+                "1X": ht_pct(ht_team_a_wins + ht_draws),
+                "X2": ht_pct(ht_team_b_wins + ht_draws),
+                "12": ht_pct(ht_team_a_wins + ht_team_b_wins),
+            },
+            "btts": {
+                "yes": ht_pct(ht_btts),
+                "no": ht_pct(ht_matches - ht_btts),
+                "prediction": "Yes" if ht_btts > ht_matches / 2 else "No"
+            },
+            "team_total": {
+                "team_a": {
+                    "over_05": ht_pct(ht_team_a_over_05),
+                    "over_15": ht_pct(ht_team_a_over_15),
+                },
+                "team_b": {
+                    "over_05": ht_pct(ht_team_b_over_05),
+                    "over_15": ht_pct(ht_team_b_over_15),
+                },
+            },
+            "exact_goals": {str(k): ht_pct(v) for k, v in ht_exact.items()},
+            "handicap": {
+                str(h): {
+                    "team_a": ht_pct(ht_handicap_results[h]["team_a"]),
+                    "draw": ht_pct(ht_handicap_results[h]["draw"]),
+                    "team_b": ht_pct(ht_handicap_results[h]["team_b"]),
+                } for h in [-1, 1]
+            },
+            "1x2_btts": {k: ht_pct(v) for k, v in fh_1x2_btts.items()},
+            "1x2_total": {k: ht_pct(v) for k, v in fh_1x2_total.items()},
+            "bookings_ou": {
+                "over_05": round(min(85, 30 + avg_goals * 8), 1),
+                "over_15": round(min(70, 15 + avg_goals * 6), 1),
+                "over_25": round(min(50, 5 + avg_goals * 4), 1),
+                "is_estimate": True,
+            },
+            "corners_ou": {
+                "over_35": round(min(80, 35 + avg_goals * 6), 1),
+                "over_45": round(min(70, 25 + avg_goals * 5), 1),
+                "over_55": round(min(55, 15 + avg_goals * 4), 1),
+                "is_estimate": True,
+            },
         }
+    else:
+        first_half_avg_goals = avg_goals * 0.42
+        first_half_analysis = {
+            "over_05": round(min(90, 40 + first_half_avg_goals * 30), 1),
+            "over_15": round(min(70, 20 + first_half_avg_goals * 25), 1),
+            "over_25": round(min(50, 10 + first_half_avg_goals * 20), 1),
+            "1x2": {
+                "team_a": round(team_a_win_pct * 0.75, 1),
+                "draw": round(40 + draw_pct * 0.5, 1),
+                "team_b": round(team_b_win_pct * 0.75, 1),
+            },
+            "double_chance": {
+                "1X": round(min(85, team_a_win_pct * 0.75 + 40), 1),
+                "X2": round(min(85, team_b_win_pct * 0.75 + 40), 1),
+                "12": round(max(30, (team_a_win_pct + team_b_win_pct) * 0.6), 1),
+            },
+            "btts": {
+                "yes": round(pct(btts_yes) * 0.35, 1),
+                "no": round(100 - pct(btts_yes) * 0.35, 1),
+                "prediction": "No"
+            },
+            "team_total": {
+                "team_a": {"over_05": round(team_totals["team_a"]["over_05"] * 0.6, 1), "over_15": round(team_totals["team_a"]["over_15"] * 0.4, 1)},
+                "team_b": {"over_05": round(team_totals["team_b"]["over_05"] * 0.6, 1), "over_15": round(team_totals["team_b"]["over_15"] * 0.4, 1)},
+            },
+            "exact_goals": {"0": round(100 - min(90, 40 + avg_goals * 0.42 * 30), 1), "1": round(35, 1), "2+": round(min(50, 10 + avg_goals * 0.42 * 20), 1)},
+            "handicap": {
+                "-1": {"team_a": round(team_a_win_pct * 0.4, 1), "draw": round(30, 1), "team_b": round(70 - team_a_win_pct * 0.4, 1)},
+                "1": {"team_a": round(min(80, team_a_win_pct * 0.75 + 25), 1), "draw": round(20, 1), "team_b": round(max(5, team_b_win_pct * 0.4), 1)},
+            },
+            "1x2_btts": {k: round(100 / 6, 1) for k in fh_1x2_btts.keys()},
+            "1x2_total": {k: round(100 / 6, 1) for k in fh_1x2_total.keys()},
+            "bookings_ou": {
+                "over_05": round(min(85, 30 + avg_goals * 8), 1),
+                "over_15": round(min(70, 15 + avg_goals * 6), 1),
+                "over_25": round(min(50, 5 + avg_goals * 4), 1),
+                "is_estimate": True,
+            },
+            "corners_ou": {
+                "over_35": round(min(80, 35 + avg_goals * 6), 1),
+                "over_45": round(min(70, 25 + avg_goals * 5), 1),
+                "over_55": round(min(55, 15 + avg_goals * 4), 1),
+                "is_estimate": True,
+            },
+        }
+
+    # 2nd Half combined markets
+    second_half_analysis = {
+        "1x2_btts": {k: ht_pct(v) for k, v in sh_1x2_btts.items()} if ht_matches > 0 else {},
+        "1x2_total": {k: ht_pct(v) for k, v in sh_1x2_total.items()} if ht_matches > 0 else {},
     }
+
+    # Exact Goals (full-time)
+    exact_goals_data = {str(k): pct(v) for k, v in exact_goals_count.items()}
+
+    # Team Exact Goals
+    team_a_exact_data = {str(k): pct(v) for k, v in team_a_exact.items()}
+    team_b_exact_data = {str(k): pct(v) for k, v in team_b_exact.items()}
+
+    # Team Clean Sheet
+    clean_sheet_data = {
+        "team_a": {"yes": pct(team_a_clean_sheet), "no": pct(total_matches - team_a_clean_sheet)},
+        "team_b": {"yes": pct(team_b_clean_sheet), "no": pct(total_matches - team_b_clean_sheet)},
+    }
+
+    # Full-time 1X2 & BTTS combined
+    ft_1x2_btts_data = {k: pct(v) for k, v in ft_1x2_btts.items()}
+
+    # Total & BTTS combined
+    total_btts_data = {k: pct(v) for k, v in total_btts.items()}
+
+    # Full-time Handicap (European)
+    handicap_data = {}
+    for h in handicap_levels:
+        handicap_data[str(h)] = {
+            "team_a": pct(handicap_results[h]["team_a"]),
+            "draw": pct(handicap_results[h]["draw"]),
+            "team_b": pct(handicap_results[h]["team_b"]),
+        }
+
+    # Team Multigoals
+    team_a_multigoals = {
+        "0": pct(team_a_exact.get(0, 0)),
+        "1-2": pct(team_a_exact.get(1, 0) + team_a_exact.get(2, 0)),
+        "1-3": pct(team_a_exact.get(1, 0) + team_a_exact.get(2, 0) + team_a_exact.get("3+", 0)),
+        "2-3": pct(team_a_exact.get(2, 0) + team_a_exact.get("3+", 0)),
+        "4+": round(max(2, pct(team_a_exact.get("3+", 0)) * 0.4), 1),
+    }
+    team_b_multigoals = {
+        "0": pct(team_b_exact.get(0, 0)),
+        "1-2": pct(team_b_exact.get(1, 0) + team_b_exact.get(2, 0)),
+        "1-3": pct(team_b_exact.get(1, 0) + team_b_exact.get(2, 0) + team_b_exact.get("3+", 0)),
+        "2-3": pct(team_b_exact.get(2, 0) + team_b_exact.get("3+", 0)),
+        "4+": round(max(2, pct(team_b_exact.get("3+", 0)) * 0.4), 1),
+    }
+
+    # Correct Score (Poisson model)
+    import math
+    def poisson_prob(lam, k):
+        return (lam ** k) * math.exp(-lam) / math.factorial(k)
+
+    correct_score_data = {}
+    for i in range(5):
+        for j in range(5):
+            prob = poisson_prob(avg_team_a_goals, i) * poisson_prob(avg_team_b_goals, j) * 100
+            correct_score_data[f"{i}:{j}"] = round(prob, 1)
+    # "Other" = 100 - sum of all computed
+    listed_sum = sum(correct_score_data.values())
+    correct_score_data["Other"] = round(max(0, 100 - listed_sum), 1)
+
+    # HT/FT & Total combined
+    htft_total_data = {}
+    if ht_matches > 0:
+        for key in ["1/1", "1/x", "1/2", "x/1", "x/x", "x/2", "2/1", "2/x", "2/2"]:
+            htft_total_data[key] = ht_pct(htft_results.get(key, 0))
+
+    # Both Halves Over/Under 1.5
+    both_halves_data = {
+        "over_15": ht_pct(both_halves_over_15) if ht_counted > 0 else round(max(5, (pct(over_35)) * 0.5), 1),
+        "under_15": ht_pct(both_halves_under_15) if ht_counted > 0 else round(max(10, (100 - pct(over_15)) * 0.8), 1),
+    }
+
+    # 1st Goal & 1X2 combined (estimated from First Goal probs * 1X2 probs)
+    fg_ta = first_goal_team_a / 100
+    fg_tb = (100 - first_goal_team_a - no_goal_pct) / 100
+    fg_no = no_goal_pct / 100
+    ta_wp = team_a_win_pct / 100
+    tb_wp = team_b_win_pct / 100
+    dr_p = draw_pct / 100
+    first_goal_1x2_data = {
+        "1_goal_1": round(fg_ta * ta_wp * 1.3 * 100, 1),  # slight correlation boost
+        "1_goal_x": round(fg_ta * dr_p * 0.8 * 100, 1),
+        "1_goal_2": round(fg_ta * tb_wp * 0.5 * 100, 1),
+        "2_goal_1": round(fg_tb * ta_wp * 0.5 * 100, 1),
+        "2_goal_x": round(fg_tb * dr_p * 0.8 * 100, 1),
+        "2_goal_2": round(fg_tb * tb_wp * 1.3 * 100, 1),
+        "no_goal": round(fg_no * 100, 1),
+    }
+    # Normalize to 100%
+    fg_total = sum(first_goal_1x2_data.values())
+    if fg_total > 0:
+        first_goal_1x2_data = {k: round(v / fg_total * 100, 1) for k, v in first_goal_1x2_data.items()}
 
     result_analysis = {
         "1x2": {
@@ -3689,8 +4343,26 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
             "no_goal": {"percentage": no_goal_pct},
         },
         "multigoals": multigoals,
+        "team_multigoals": {
+            "team_a": team_a_multigoals,
+            "team_b": team_b_multigoals,
+        },
         "team_totals": team_totals,
         "first_half": first_half_analysis,
+        "second_half": second_half_analysis,
+        "handicap": handicap_data,
+        "exact_goals": exact_goals_data,
+        "team_exact_goals": {
+            "team_a": team_a_exact_data,
+            "team_b": team_b_exact_data,
+        },
+        "clean_sheet": clean_sheet_data,
+        "1x2_btts": ft_1x2_btts_data,
+        "total_btts": total_btts_data,
+        "correct_score": correct_score_data,
+        "htft": htft_total_data,
+        "both_halves": both_halves_data,
+        "first_goal_1x2": first_goal_1x2_data,
         "recommended_bet": _get_recommended_bet(team_a_win_pct, draw_pct, team_b_win_pct, team_a.get("name"), team_b.get("name"))
     }
 
@@ -4533,6 +5205,87 @@ async def jackpot_match_chat(request: JackpotChatRequest, authorization: str = H
     except Exception as e:
         print(f"[Jackpot Chat] Error: {e}")
         return {"response": "Sorry, I couldn't process your question right now. Please try again.", "sources": []}
+
+
+# ==================== PRIVACY POLICY (for Chrome Web Store) ====================
+@app.get("/privacy")
+async def privacy_policy():
+    """Serve privacy policy page for Chrome Web Store compliance."""
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content="""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy - Spark AI Soccer Prediction Assistant</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:800px;margin:0 auto;padding:40px 20px;line-height:1.7;color:#e2e8f0;background:#0f172a}
+h1{color:#3b82f6;border-bottom:2px solid #1e3a5f;padding-bottom:12px}
+h2{color:#60a5fa;margin-top:32px}
+a{color:#3b82f6}
+ul{padding-left:20px}
+.updated{color:#94a3b8;font-size:14px}
+</style>
+</head>
+<body>
+<h1>Privacy Policy</h1>
+<p class="updated">Last updated: February 22, 2026</p>
+<p>Spark AI ("we", "us", "our") operates the Spark AI - Soccer Prediction Assistant browser extension. This policy describes how we collect, use, and protect your information.</p>
+
+<h2>1. Information We Collect</h2>
+<ul>
+<li><strong>Account Information:</strong> When you sign in via Google OAuth, we receive your name, email address, and profile picture to create your account.</li>
+<li><strong>Match Preferences:</strong> Teams you choose to track for live score notifications.</li>
+<li><strong>Usage Data:</strong> Which features you use (predictions viewed, matches analyzed) to improve our service.</li>
+<li><strong>Payment Information:</strong> If you subscribe to a paid plan, payment is processed securely through M-Pesa (Safaricom) or card payment providers. We do not store your full payment details.</li>
+</ul>
+
+<h2>2. How We Use Your Information</h2>
+<ul>
+<li>To provide AI-powered match predictions and analysis</li>
+<li>To send live score notifications for tracked matches</li>
+<li>To manage your subscription and account</li>
+<li>To improve the accuracy of our prediction models</li>
+</ul>
+
+<h2>3. Third-Party Services</h2>
+<p>We use the following third-party services:</p>
+<ul>
+<li><strong>Google OAuth:</strong> For secure account authentication</li>
+<li><strong>API-Football:</strong> For match data, fixtures, and live scores</li>
+<li><strong>The Odds API:</strong> For betting odds comparison</li>
+<li><strong>Safaricom M-Pesa (Daraja):</strong> For mobile payment processing</li>
+</ul>
+
+<h2>4. Data Storage & Security</h2>
+<p>Your data is stored on secure servers. Authentication tokens are stored locally in your browser using Chrome's storage API. We use HTTPS encryption for all data transmission.</p>
+
+<h2>5. Data Sharing</h2>
+<p>We do not sell, trade, or share your personal information with third parties, except as required to provide the service (e.g., processing payments) or as required by law.</p>
+
+<h2>6. Your Rights</h2>
+<ul>
+<li>You can delete your account and all associated data at any time</li>
+<li>You can revoke Google OAuth access through your Google Account settings</li>
+<li>You can uninstall the extension to stop all data collection</li>
+</ul>
+
+<h2>7. Permissions Explained</h2>
+<ul>
+<li><strong>storage:</strong> Save your preferences and authentication tokens locally</li>
+<li><strong>activeTab:</strong> Display prediction buttons on supported betting sites</li>
+<li><strong>identity:</strong> Enable Google sign-in</li>
+<li><strong>alarms:</strong> Schedule live score polling for tracked matches</li>
+<li><strong>notifications:</strong> Alert you when tracked teams score</li>
+</ul>
+
+<h2>8. Contact Us</h2>
+<p>If you have questions about this privacy policy, contact us at:<br>
+<a href="mailto:support@spark-ai-prediction.com">support@spark-ai-prediction.com</a></p>
+
+<h2>9. Changes to This Policy</h2>
+<p>We may update this policy from time to time. Changes will be posted on this page with an updated date.</p>
+</body>
+</html>""")
 
 
 # ==================== SERVE FRONTEND IN PRODUCTION ====================
