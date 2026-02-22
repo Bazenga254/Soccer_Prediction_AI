@@ -151,7 +151,7 @@ export default function Header({ user, logout }) {
       }).catch(() => {})
     }
     fetchCount()
-    const interval = setInterval(fetchCount, 1000)
+    const interval = setInterval(fetchCount, 30000)
     return () => clearInterval(interval)
   }, [])
 

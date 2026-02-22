@@ -34,7 +34,10 @@ export function AuthProvider({ children }) {
 
   const fetchProfile = async () => {
     try {
-      const response = await axios.get('/api/user/me')
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
+      const response = await axios.get('/api/user/me', { signal: controller.signal })
+      clearTimeout(timeout)
       if (response.data.user) {
         setUser(response.data.user)
         setIsAuthenticated(true)
