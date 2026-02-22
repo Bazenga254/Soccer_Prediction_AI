@@ -81,10 +81,10 @@ function ProtectedApp() {
         <Header user={user} logout={logout} />
         <main className="main-content">
           <Routes>
-            <Route path="/" element={<FixturesList competition="PL" />} />
+            <Route path="/" element={<LiveScores />} />
+            <Route path="/live" element={<LiveScores />} />
             <Route path="/competition/:competitionId" element={<FixturesList />} />
             <Route path="/match/:competitionId/:homeId/:awayId" element={<MatchAnalysis />} />
-            <Route path="/live" element={<LiveScores />} />
             <Route path="/my-predictions" element={<TrackRecord />} />
             <Route path="/predictions" element={<Community />} />
             <Route path="/jackpot" element={<JackpotAnalyzer />} />
