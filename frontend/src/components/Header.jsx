@@ -173,20 +173,21 @@ export default function Header({ user, logout }) {
   return (
     <header className="header">
       <div className="header-content">
-        <Link to="/" className="header-logo" style={{ textDecoration: 'none' }}>
-          <img src={sparkLogo} alt="Spark AI" className="logo-icon-img" />
-          <div className="logo-text">
-            <h1>Spark AI Prediction</h1>
-            <span className="logo-subtitle">Smart Match Analysis & Predictions</span>
-          </div>
-        </Link>
-
-        {activeUsers > 0 && (
-          <div className="active-users-badge">
-            <span className="active-users-dot"></span>
-            <span className="active-users-count">{activeUsers.toLocaleString()} online</span>
-          </div>
-        )}
+        <div className="header-left">
+          <Link to="/" className="header-logo" style={{ textDecoration: 'none' }}>
+            <img src={sparkLogo} alt="Spark AI" className="logo-icon-img" />
+            <div className="logo-text">
+              <h1>Spark AI Prediction</h1>
+              <span className="logo-subtitle">Smart Match Analysis & Predictions</span>
+            </div>
+          </Link>
+          {activeUsers > 0 && (
+            <div className="active-users-badge">
+              <span className="active-users-dot"></span>
+              <span className="active-users-count">{activeUsers.toLocaleString()} online</span>
+            </div>
+          )}
+        </div>
 
         {user && (
           <div className="header-user-controls">
