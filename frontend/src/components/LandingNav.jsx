@@ -36,6 +36,10 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
           <button className="landing-nav-link" onClick={() => handleNavClick('how-it-works')}>{t('nav.howItWorks')}</button>
           <a className="landing-nav-link" href="/docs" style={{ textDecoration: 'none' }}>{t('nav.docs')}</a>
           <div className="landing-nav-mobile-actions">
+            <a href="/extension" className="landing-extension-btn" onClick={() => setMobileOpen(false)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              Install Extension
+            </a>
             <button className="landing-signin-btn" onClick={() => { setMobileOpen(false); onSignIn() }}>{t('nav.signIn')}</button>
             <button className="landing-cta-btn" onClick={() => { setMobileOpen(false); onGetStarted() }}>{t('nav.getStarted')}</button>
           </div>
@@ -43,6 +47,10 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
 
         <div className="landing-nav-actions">
           <LanguageSelector variant="landing" />
+          <a href="/extension" className="landing-extension-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            Install Extension
+          </a>
           <button className="landing-signin-btn" onClick={onSignIn}>{t('nav.signIn')}</button>
           <button className="landing-cta-btn" onClick={onGetStarted}>{t('nav.getStarted')}</button>
         </div>

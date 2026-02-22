@@ -30,6 +30,7 @@ const DocsPage = lazy(() => import('./pages/DocsPage'))
 const ReferralLanding = lazy(() => import('./pages/ReferralLanding'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const TermsOfService = lazy(() => import('./pages/TermsOfService'))
+const ExtensionInstall = lazy(() => import('./pages/ExtensionInstall'))
 const BetSlip = lazy(() => import('./components/BetSlip'))
 const SupportChat = lazy(() => import('./components/SupportChat'))
 const AccountSetup = lazy(() => import('./components/AccountSetup'))
@@ -160,6 +161,7 @@ function App() {
               <Route path="/login" element={<AccessGate />} />
               <Route path="/docs" element={<DocsPage />} />
               <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/extension" element={<ExtensionInstall />} />
               <Route path="*" element={<ProtectedApp />} />
             </Routes>
           </Suspense>
