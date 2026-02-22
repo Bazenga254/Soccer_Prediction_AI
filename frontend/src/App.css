@@ -6587,11 +6587,17 @@ html, body {
     left: 12px;
     right: 12px;
     bottom: 12px;
+    z-index: 1001;
   }
 
   .live-chat-popup-messages {
     max-height: 400px;
     min-height: 250px;
+  }
+
+  body.live-chat-open .support-chat-fab,
+  body.live-chat-open .support-chat-window {
+    display: none !important;
   }
 }
 

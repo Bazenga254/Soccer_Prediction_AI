@@ -23,6 +23,107 @@ function EmojiPicker({ onSelect }) {
   )
 }
 
+const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || ''
+
+function GifPicker({ onSelect, onClose }) {
+  const [query, setQuery] = useState('')
+  const [gifs, setGifs] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [searched, setSearched] = useState(false)
+  const searchTimeout = useRef(null)
+
+  const fetchGifs = useCallback(async (q) => {
+    if (!GIPHY_API_KEY) return
+    setLoading(true)
+    try {
+      const endpoint = q
+        ? 'https://api.giphy.com/v1/gifs/search'
+        : 'https://api.giphy.com/v1/gifs/trending'
+      const params = new URLSearchParams({
+        api_key: GIPHY_API_KEY,
+        limit: '20',
+        rating: 'pg-13',
+        ...(q ? { q } : {}),
+      })
+      const res = await fetch(`${endpoint}?${params}`)
+      const data = await res.json()
+      const results = (data.data || []).map(g => ({
+        id: g.id,
+        title: g.title || '',
+        preview_url: g.images?.fixed_width_small?.url || '',
+        url: g.images?.fixed_width?.url || '',
+      }))
+      setGifs(results)
+    } catch {
+      setGifs([])
+    }
+    setLoading(false)
+    setSearched(true)
+  }, [])
+
+  useEffect(() => {
+    fetchGifs('')
+  }, [fetchGifs])
+
+  const handleSearch = (val) => {
+    setQuery(val)
+    clearTimeout(searchTimeout.current)
+    searchTimeout.current = setTimeout(() => {
+      fetchGifs(val)
+    }, 400)
+  }
+
+  if (!GIPHY_API_KEY) {
+    return (
+      <div className="gif-picker" onClick={e => e.stopPropagation()}>
+        <div className="gif-empty" style={{ padding: '20px' }}>GIF search is not configured</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="gif-picker" onClick={e => e.stopPropagation()}>
+      <div className="gif-picker-header">
+        <input
+          type="text"
+          className="gif-search-input"
+          placeholder="Search GIFs..."
+          value={query}
+          onChange={e => handleSearch(e.target.value)}
+          autoFocus
+        />
+        <button className="gif-picker-close" onClick={onClose} type="button">{'\u2715'}</button>
+      </div>
+      <div className="gif-picker-grid">
+        {loading && <div className="gif-loading">Searching...</div>}
+        {!loading && searched && gifs.length === 0 && (
+          <div className="gif-empty">No GIFs found</div>
+        )}
+        {gifs.map(gif => (
+          <button
+            key={gif.id}
+            className="gif-picker-item"
+            onClick={() => onSelect(gif.url)}
+            type="button"
+            title={gif.title}
+          >
+            <img src={gif.preview_url || gif.url} alt={gif.title} loading="lazy" />
+          </button>
+        ))}
+      </div>
+      <div className="gif-picker-powered">Powered by GIPHY</div>
+    </div>
+  )
+}
+
+function renderMessage(text) {
+  const gifMatch = text.match(/^\[gif\](.*?)\[\/gif\]$/)
+  if (gifMatch) {
+    return <img src={gifMatch[1]} alt="GIF" className="chat-gif" loading="lazy" />
+  }
+  return <p className="chat-text">{text}</p>
+}
+
 export default function LiveChatPopup({ matchKey, matchName, onClose }) {
   const { t } = useTranslation()
   const { user } = useAuth()
@@ -30,6 +131,7 @@ export default function LiveChatPopup({ matchKey, matchName, onClose }) {
   const [newMsg, setNewMsg] = useState('')
   const [sending, setSending] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
+  const [showGif, setShowGif] = useState(false)
   const [isExpanded, setIsExpanded] = useState(true)
   const lastIdRef = useRef(0)
   const chatEndRef = useRef(null)
@@ -52,6 +154,11 @@ export default function LiveChatPopup({ matchKey, matchName, onClose }) {
   }, [matchKey])
 
   useEffect(() => {
+    document.body.classList.add('live-chat-open')
+    return () => document.body.classList.remove('live-chat-open')
+  }, [])
+
+  useEffect(() => {
     lastIdRef.current = 0
     setMessages([])
     fetchMessages(0)
@@ -70,12 +177,13 @@ export default function LiveChatPopup({ matchKey, matchName, onClose }) {
     }
   }, [messages.length])
 
-  const handleSend = async () => {
-    if (!newMsg.trim()) return
+  const sendMessage = async (msg) => {
+    if (!msg.trim()) return
     setSending(true)
     setShowEmoji(false)
+    setShowGif(false)
     try {
-      const res = await axios.post(`/api/match/${matchKey}/chat`, { message: newMsg })
+      const res = await axios.post(`/api/match/${matchKey}/chat`, { message: msg })
       if (res.data.success) {
         setMessages(prev => [...prev, res.data.chat])
         lastIdRef.current = res.data.chat.id
@@ -85,8 +193,15 @@ export default function LiveChatPopup({ matchKey, matchName, onClose }) {
     setSending(false)
   }
 
+  const handleSend = () => sendMessage(newMsg)
+
+  const handleGifSelect = (gifUrl) => {
+    sendMessage(`[gif]${gifUrl}[/gif]`)
+  }
+
   const handleEmojiSelect = (emoji) => {
     setNewMsg(prev => prev + emoji)
+    setShowEmoji(false)
     inputRef.current?.focus()
   }
 
@@ -129,17 +244,31 @@ export default function LiveChatPopup({ matchKey, matchName, onClose }) {
                     <strong>{m.display_name}</strong>
                     <span className="chat-time">{formatTime(m.created_at)}</span>
                   </div>
-                  <p className="chat-text">{m.message}</p>
+                  {renderMessage(m.message)}
                 </div>
               </div>
             ))}
             <div ref={chatEndRef} />
           </div>
           <div className="live-chat-popup-input">
-            <button className="emoji-toggle-btn" onClick={() => setShowEmoji(!showEmoji)} type="button" title={t('community.emojis')}>
+            <button
+              className="emoji-toggle-btn"
+              onClick={() => { setShowEmoji(!showEmoji); setShowGif(false) }}
+              type="button"
+              title={t('community.emojis')}
+            >
               {'\u{1F600}'}
             </button>
+            <button
+              className="gif-toggle-btn"
+              onClick={() => { setShowGif(!showGif); setShowEmoji(false) }}
+              type="button"
+              title="GIF"
+            >
+              GIF
+            </button>
             {showEmoji && <EmojiPicker onSelect={handleEmojiSelect} />}
+            {showGif && <GifPicker onSelect={handleGifSelect} onClose={() => setShowGif(false)} />}
             <input
               ref={inputRef}
               type="text"
