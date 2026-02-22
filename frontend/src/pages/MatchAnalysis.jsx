@@ -36,6 +36,10 @@ function formatCardLabel(key) {
   return key
 }
 
+function round1(val) {
+  return Math.round(val * 10) / 10
+}
+
 const COMPETITION_NAMES = {
   'PL': 'Premier League',
   'ELC': 'Championship',
@@ -482,21 +486,34 @@ function DirectH2HContent({ h2hData, teamAName, teamBName, homeId, awayId }) {
         </div>
 
         <h5>Over/Under Predictions</h5>
-        <div className="ou-grid">
-          {Object.entries(goals_analysis.over_under).map(([key, data]) => (
-            <div
-              key={key}
-              className={`ou-item selectable-probability ${data.prediction === 'Yes' ? 'likely' : 'unlikely'} ${isSelected('Over/Under', formatOverUnderLabel(key)) ? 'selected' : ''}`}
-              onClick={() => handleSelectBet('Over/Under', formatOverUnderLabel(key), data.percentage)}
-            >
-              <span className="ou-label">{formatOverUnderLabel(key)}</span>
-              <span className="ou-pct">{data.percentage}%</span>
-              <span className={`ou-prediction ${data.prediction === 'Yes' ? 'yes' : 'no'}`}>
-                {data.prediction}
-              </span>
-              <div className="selection-indicator">{isSelected('Over/Under', formatOverUnderLabel(key)) ? '✓' : '+'}</div>
-            </div>
-          ))}
+        <div className="ou-grid ou-grid-paired">
+          {Object.entries(goals_analysis.over_under).map(([key, data]) => {
+            const overLabel = formatOverUnderLabel(key)
+            const underLabel = overLabel.replace('Over', 'Under')
+            const underPct = round1(100 - data.percentage)
+            return (
+              <div key={key} className="ou-pair">
+                <div
+                  className={`ou-item selectable-probability ${data.percentage >= 50 ? 'likely' : 'unlikely'} ${isSelected('Over/Under', overLabel) ? 'selected' : ''}`}
+                  onClick={() => handleSelectBet('Over/Under', overLabel, data.percentage)}
+                >
+                  <span className="ou-label">{overLabel}</span>
+                  <span className="ou-pct">{data.percentage}%</span>
+                  <span className={`ou-prediction ${data.percentage >= 50 ? 'yes' : 'no'}`}>{data.percentage >= 50 ? 'Yes' : 'No'}</span>
+                  <div className="selection-indicator">{isSelected('Over/Under', overLabel) ? '✓' : '+'}</div>
+                </div>
+                <div
+                  className={`ou-item selectable-probability ${underPct >= 50 ? 'likely' : 'unlikely'} ${isSelected('Over/Under', underLabel) ? 'selected' : ''}`}
+                  onClick={() => handleSelectBet('Over/Under', underLabel, underPct)}
+                >
+                  <span className="ou-label">{underLabel}</span>
+                  <span className="ou-pct">{underPct}%</span>
+                  <span className={`ou-prediction ${underPct >= 50 ? 'yes' : 'no'}`}>{underPct >= 50 ? 'Yes' : 'No'}</span>
+                  <div className="selection-indicator">{isSelected('Over/Under', underLabel) ? '✓' : '+'}</div>
+                </div>
+              </div>
+            )
+          })}
         </div>
 
         <div className="btts-section">
@@ -697,35 +714,23 @@ function GoalMarketsSection({ h2hData, teamAName, teamBName, matchId, matchName 
             <div className="team-card-stats">
               <h4>{teamAName}</h4>
               <div className="card-details">
-                <div className="card-detail">
-                  <span className="detail-label">Over 0.5</span>
-                  <span className="detail-value">{teamTotals.team_a.over_05}%</span>
-                </div>
-                <div className="card-detail">
-                  <span className="detail-label">Over 1.5</span>
-                  <span className="detail-value">{teamTotals.team_a.over_15}%</span>
-                </div>
-                <div className="card-detail">
-                  <span className="detail-label">Over 2.5</span>
-                  <span className="detail-value">{teamTotals.team_a.over_25}%</span>
-                </div>
+                {[['over_05', '0.5'], ['over_15', '1.5'], ['over_25', '2.5']].map(([k, t]) => (
+                  <div key={k} className="card-detail-pair">
+                    <div className="card-detail"><span className="detail-label">Over {t}</span><span className="detail-value">{teamTotals.team_a[k]}%</span></div>
+                    <div className="card-detail under"><span className="detail-label">Under {t}</span><span className="detail-value">{round1(100 - teamTotals.team_a[k])}%</span></div>
+                  </div>
+                ))}
               </div>
             </div>
             <div className="team-card-stats">
               <h4>{teamBName}</h4>
               <div className="card-details">
-                <div className="card-detail">
-                  <span className="detail-label">Over 0.5</span>
-                  <span className="detail-value">{teamTotals.team_b.over_05}%</span>
-                </div>
-                <div className="card-detail">
-                  <span className="detail-label">Over 1.5</span>
-                  <span className="detail-value">{teamTotals.team_b.over_15}%</span>
-                </div>
-                <div className="card-detail">
-                  <span className="detail-label">Over 2.5</span>
-                  <span className="detail-value">{teamTotals.team_b.over_25}%</span>
-                </div>
+                {[['over_05', '0.5'], ['over_15', '1.5'], ['over_25', '2.5']].map(([k, t]) => (
+                  <div key={k} className="card-detail-pair">
+                    <div className="card-detail"><span className="detail-label">Over {t}</span><span className="detail-value">{teamTotals.team_b[k]}%</span></div>
+                    <div className="card-detail under"><span className="detail-label">Under {t}</span><span className="detail-value">{round1(100 - teamTotals.team_b[k])}%</span></div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -773,19 +778,19 @@ function GoalMarketsSection({ h2hData, teamAName, teamBName, matchId, matchName 
           </div>
 
           <h5 style={{ marginTop: '16px' }}>1st Half - Total Goals</h5>
-          <div className="ou-grid">
-            <div className={`ou-item ${firstHalf.over_05 >= 50 ? 'likely' : 'unlikely'}`}>
-              <span className="ou-label">Over 0.5</span>
-              <span className="ou-pct">{firstHalf.over_05}%</span>
-            </div>
-            <div className={`ou-item ${firstHalf.over_15 >= 50 ? 'likely' : 'unlikely'}`}>
-              <span className="ou-label">Over 1.5</span>
-              <span className="ou-pct">{firstHalf.over_15}%</span>
-            </div>
-            <div className={`ou-item ${firstHalf.over_25 >= 50 ? 'likely' : 'unlikely'}`}>
-              <span className="ou-label">Over 2.5</span>
-              <span className="ou-pct">{firstHalf.over_25}%</span>
-            </div>
+          <div className="ou-grid ou-grid-paired">
+            {[['over_05', '0.5'], ['over_15', '1.5'], ['over_25', '2.5']].map(([k, t]) => (
+              <div key={k} className="ou-pair">
+                <div className={`ou-item ${firstHalf[k] >= 50 ? 'likely' : 'unlikely'}`}>
+                  <span className="ou-label">Over {t}</span>
+                  <span className="ou-pct">{firstHalf[k]}%</span>
+                </div>
+                <div className={`ou-item ${(100 - firstHalf[k]) >= 50 ? 'likely' : 'unlikely'}`}>
+                  <span className="ou-label">Under {t}</span>
+                  <span className="ou-pct">{round1(100 - firstHalf[k])}%</span>
+                </div>
+              </div>
+            ))}
           </div>
 
           <h5 style={{ marginTop: '16px' }}>1st Half - Double Chance</h5>
@@ -811,6 +816,424 @@ function GoalMarketsSection({ h2hData, teamAName, teamBName, matchId, matchName 
               </div>
               <span className="dc-value">{firstHalf.double_chance?.['12']}%</span>
             </div>
+          </div>
+
+          {/* 1st Half BTTS */}
+          {firstHalf.btts && (
+            <>
+              <h5 style={{ marginTop: '16px' }}>1st Half - Both Teams to Score</h5>
+              <div className="btts-options">
+                <span className={`btts-option ${firstHalf.btts.prediction === 'Yes' ? 'selected-pred' : ''}`}>
+                  Yes: {firstHalf.btts.yes}%
+                </span>
+                <span className={`btts-option ${firstHalf.btts.prediction === 'No' ? 'selected-pred' : ''}`}>
+                  No: {firstHalf.btts.no}%
+                </span>
+              </div>
+            </>
+          )}
+
+          {/* 1st Half Team Total */}
+          {firstHalf.team_total && (
+            <>
+              <h5 style={{ marginTop: '16px' }}>1st Half - Team Total Goals</h5>
+              <div className="team-cards-comparison">
+                <div className="team-card-stats">
+                  <h4>{teamAName}</h4>
+                  <div className="card-details">
+                    {[['over_05', '0.5'], ['over_15', '1.5']].map(([k, t]) => (
+                      <div key={k} className="card-detail-pair">
+                        <div className="card-detail"><span className="detail-label">Over {t}</span><span className="detail-value">{firstHalf.team_total.team_a[k]}%</span></div>
+                        <div className="card-detail under"><span className="detail-label">Under {t}</span><span className="detail-value">{round1(100 - firstHalf.team_total.team_a[k])}%</span></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="team-card-stats">
+                  <h4>{teamBName}</h4>
+                  <div className="card-details">
+                    {[['over_05', '0.5'], ['over_15', '1.5']].map(([k, t]) => (
+                      <div key={k} className="card-detail-pair">
+                        <div className="card-detail"><span className="detail-label">Over {t}</span><span className="detail-value">{firstHalf.team_total.team_b[k]}%</span></div>
+                        <div className="card-detail under"><span className="detail-label">Under {t}</span><span className="detail-value">{round1(100 - firstHalf.team_total.team_b[k])}%</span></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 1st Half Exact Goals */}
+          {firstHalf.exact_goals && (
+            <>
+              <h5 style={{ marginTop: '16px' }}>1st Half - Exact Goals</h5>
+              <div className="ou-grid">
+                {Object.entries(firstHalf.exact_goals).map(([goals, pct]) => (
+                  <div key={goals} className={`ou-item ${pct >= 30 ? 'likely' : ''}`}>
+                    <span className="ou-label">{goals === '2+' ? '2+' : goals} Goal{goals !== '1' ? 's' : ''}</span>
+                    <span className="ou-pct">{pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* 1st Half Handicap */}
+          {firstHalf.handicap && (
+            <>
+              <h5 style={{ marginTop: '16px' }}>1st Half - Handicap</h5>
+              {Object.entries(firstHalf.handicap).map(([h, data]) => (
+                <div key={h} style={{ marginBottom: '8px' }}>
+                  <div className="handicap-label">{teamAName} ({h > 0 ? '+' : ''}{h})</div>
+                  <div className="h2h-1x2-grid">
+                    <div className="result-card"><div className="result-label">{teamAName}</div><div className="result-value">{data.team_a}%</div></div>
+                    <div className="result-card"><div className="result-label">Draw</div><div className="result-value">{data.draw}%</div></div>
+                    <div className="result-card"><div className="result-label">{teamBName}</div><div className="result-value">{data.team_b}%</div></div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* 1st Half 1X2 & BTTS */}
+          {firstHalf['1x2_btts'] && Object.values(firstHalf['1x2_btts']).some(v => v > 0) && (
+            <>
+              <h5 style={{ marginTop: '16px' }}>1st Half - 1X2 & Both Teams to Score</h5>
+              <div className="combined-market-grid">
+                {[['1_yes', '1 & Yes'], ['1_no', '1 & No'], ['x_yes', 'X & Yes'], ['x_no', 'X & No'], ['2_yes', '2 & Yes'], ['2_no', '2 & No']].map(([k, label]) => (
+                  <div key={k} className={`combined-market-item ${firstHalf['1x2_btts'][k] >= 20 ? 'likely' : ''}`}>
+                    <span className="cm-label">{label}</span>
+                    <span className="cm-pct">{firstHalf['1x2_btts'][k]}%</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* 1st Half 1X2 & Total */}
+          {firstHalf['1x2_total'] && Object.values(firstHalf['1x2_total']).some(v => v > 0) && (
+            <>
+              <h5 style={{ marginTop: '16px' }}>1st Half - 1X2 & Total O/U 1.5</h5>
+              <div className="combined-market-grid">
+                {[['1_over', '1 & Over 1.5'], ['1_under', '1 & Under 1.5'], ['x_over', 'X & Over 1.5'], ['x_under', 'X & Under 1.5'], ['2_over', '2 & Over 1.5'], ['2_under', '2 & Under 1.5']].map(([k, label]) => (
+                  <div key={k} className={`combined-market-item ${firstHalf['1x2_total'][k] >= 20 ? 'likely' : ''}`}>
+                    <span className="cm-label">{label}</span>
+                    <span className="cm-pct">{firstHalf['1x2_total'][k]}%</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* 1st Half Bookings O/U */}
+          {firstHalf.bookings_ou && (
+            <>
+              <h5 style={{ marginTop: '16px' }}>1st Half - Total Bookings</h5>
+              <div className="estimate-disclaimer">Rough estimate - limited data available for per-half bookings</div>
+              <div className="ou-grid ou-grid-paired">
+                {[['over_05', '0.5'], ['over_15', '1.5'], ['over_25', '2.5']].map(([k, t]) => (
+                  <div key={k} className="ou-pair">
+                    <div className={`ou-item ${firstHalf.bookings_ou[k] >= 50 ? 'likely' : 'unlikely'}`}>
+                      <span className="ou-label">Over {t}</span>
+                      <span className="ou-pct">{firstHalf.bookings_ou[k]}%</span>
+                    </div>
+                    <div className={`ou-item ${(100 - firstHalf.bookings_ou[k]) >= 50 ? 'likely' : 'unlikely'}`}>
+                      <span className="ou-label">Under {t}</span>
+                      <span className="ou-pct">{round1(100 - firstHalf.bookings_ou[k])}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* 1st Half Corners O/U */}
+          {firstHalf.corners_ou && (
+            <>
+              <h5 style={{ marginTop: '16px' }}>1st Half - Total Corners</h5>
+              <div className="estimate-disclaimer">Rough estimate - limited data available for per-half corners</div>
+              <div className="ou-grid ou-grid-paired">
+                {[['over_35', '3.5'], ['over_45', '4.5'], ['over_55', '5.5']].map(([k, t]) => (
+                  <div key={k} className="ou-pair">
+                    <div className={`ou-item ${firstHalf.corners_ou[k] >= 50 ? 'likely' : 'unlikely'}`}>
+                      <span className="ou-label">Over {t}</span>
+                      <span className="ou-pct">{firstHalf.corners_ou[k]}%</span>
+                    </div>
+                    <div className={`ou-item ${(100 - firstHalf.corners_ou[k]) >= 50 ? 'likely' : 'unlikely'}`}>
+                      <span className="ou-label">Under {t}</span>
+                      <span className="ou-pct">{round1(100 - firstHalf.corners_ou[k])}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Full-Time Handicap */}
+      {resultAnalysis.handicap && Object.keys(resultAnalysis.handicap).length > 0 && (
+        <div className="h2h-subsection">
+          <h4>Full-Time Handicap (European)</h4>
+          {Object.entries(resultAnalysis.handicap).map(([h, data]) => (
+            <div key={h} style={{ marginBottom: '8px' }}>
+              <div className="handicap-label">{teamAName} ({parseInt(h) > 0 ? '+' : ''}{h})</div>
+              <div className="h2h-1x2-grid">
+                <div className={`result-card selectable-probability ${isSelected('Handicap', `${teamAName} (${h})`) ? 'selected' : ''}`}
+                  onClick={() => handleSelect('Handicap', `${teamAName} (${h})`, data.team_a)}>
+                  <div className="result-label">{teamAName}</div><div className="result-value">{data.team_a}%</div>
+                  <div className="selection-indicator">{isSelected('Handicap', `${teamAName} (${h})`) ? '✓' : '+'}</div>
+                </div>
+                <div className="result-card"><div className="result-label">Draw</div><div className="result-value">{data.draw}%</div></div>
+                <div className={`result-card selectable-probability ${isSelected('Handicap', `${teamBName} (${-parseInt(h)})`) ? 'selected' : ''}`}
+                  onClick={() => handleSelect('Handicap', `${teamBName} (${-parseInt(h)})`, data.team_b)}>
+                  <div className="result-label">{teamBName}</div><div className="result-value">{data.team_b}%</div>
+                  <div className="selection-indicator">{isSelected('Handicap', `${teamBName} (${-parseInt(h)})`) ? '✓' : '+'}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Exact Goals */}
+      {resultAnalysis.exact_goals && (
+        <div className="h2h-subsection">
+          <h4>Exact Goals</h4>
+          <div className="ou-grid">
+            {Object.entries(resultAnalysis.exact_goals).map(([goals, pct]) => (
+              <div key={goals} className={`ou-item selectable-probability ${pct >= 15 ? 'likely' : ''} ${isSelected('Exact Goals', `${goals} Goals`) ? 'selected' : ''}`}
+                onClick={() => handleSelect('Exact Goals', `${goals} Goals`, pct)}>
+                <span className="ou-label">{goals === '6+' ? '6+' : goals} Goal{goals !== '1' ? 's' : ''}</span>
+                <span className="ou-pct">{pct}%</span>
+                <div className="selection-indicator">{isSelected('Exact Goals', `${goals} Goals`) ? '✓' : '+'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Team Exact Goals */}
+      {resultAnalysis.team_exact_goals && (
+        <div className="h2h-subsection">
+          <h4>Team Exact Goals</h4>
+          <div className="team-cards-comparison">
+            <div className="team-card-stats">
+              <h4>{teamAName}</h4>
+              <div className="card-details">
+                {Object.entries(resultAnalysis.team_exact_goals.team_a).map(([g, pct]) => (
+                  <div key={g} className="card-detail">
+                    <span className="detail-label">{g === '3+' ? '3+' : g} Goal{g !== '1' ? 's' : ''}</span>
+                    <span className="detail-value">{pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="team-card-stats">
+              <h4>{teamBName}</h4>
+              <div className="card-details">
+                {Object.entries(resultAnalysis.team_exact_goals.team_b).map(([g, pct]) => (
+                  <div key={g} className="card-detail">
+                    <span className="detail-label">{g === '3+' ? '3+' : g} Goal{g !== '1' ? 's' : ''}</span>
+                    <span className="detail-value">{pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Team Multigoals */}
+      {resultAnalysis.team_multigoals && (
+        <div className="h2h-subsection">
+          <h4>Team Multigoals</h4>
+          <div className="team-cards-comparison">
+            <div className="team-card-stats">
+              <h4>{teamAName}</h4>
+              <div className="card-details">
+                {Object.entries(resultAnalysis.team_multigoals.team_a).map(([range, pct]) => (
+                  <div key={range} className="card-detail">
+                    <span className="detail-label">{range === '0' ? 'No Goal' : range === '4+' ? '4+ Goals' : `${range} Goals`}</span>
+                    <span className="detail-value">{pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="team-card-stats">
+              <h4>{teamBName}</h4>
+              <div className="card-details">
+                {Object.entries(resultAnalysis.team_multigoals.team_b).map(([range, pct]) => (
+                  <div key={range} className="card-detail">
+                    <span className="detail-label">{range === '0' ? 'No Goal' : range === '4+' ? '4+ Goals' : `${range} Goals`}</span>
+                    <span className="detail-value">{pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Team Clean Sheet */}
+      {resultAnalysis.clean_sheet && (
+        <div className="h2h-subsection">
+          <h4>Clean Sheet</h4>
+          <div className="clean-sheet-info">
+            A clean sheet means a team does not concede (let in) any goals during the match. Betting "Yes" means you predict the team will keep a clean sheet (0 goals conceded).
+          </div>
+          <div className="team-cards-comparison">
+            <div className="team-card-stats">
+              <h4>{teamAName}</h4>
+              <div className="card-details">
+                <div className="card-detail"><span className="detail-label">Yes</span><span className="detail-value">{resultAnalysis.clean_sheet.team_a.yes}%</span></div>
+                <div className="card-detail"><span className="detail-label">No</span><span className="detail-value">{resultAnalysis.clean_sheet.team_a.no}%</span></div>
+              </div>
+            </div>
+            <div className="team-card-stats">
+              <h4>{teamBName}</h4>
+              <div className="card-details">
+                <div className="card-detail"><span className="detail-label">Yes</span><span className="detail-value">{resultAnalysis.clean_sheet.team_b.yes}%</span></div>
+                <div className="card-detail"><span className="detail-label">No</span><span className="detail-value">{resultAnalysis.clean_sheet.team_b.no}%</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1X2 & BTTS (Full-time) */}
+      {resultAnalysis['1x2_btts'] && (
+        <div className="h2h-subsection">
+          <h4>1X2 & Both Teams to Score</h4>
+          <div className="combined-market-grid">
+            {[['1_yes', '1 & Yes'], ['1_no', '1 & No'], ['x_yes', 'X & Yes'], ['x_no', 'X & No'], ['2_yes', '2 & Yes'], ['2_no', '2 & No']].map(([k, label]) => (
+              <div key={k} className={`combined-market-item selectable-probability ${resultAnalysis['1x2_btts'][k] >= 20 ? 'likely' : ''} ${isSelected('1X2 & BTTS', label) ? 'selected' : ''}`}
+                onClick={() => handleSelect('1X2 & BTTS', label, resultAnalysis['1x2_btts'][k])}>
+                <span className="cm-label">{label}</span>
+                <span className="cm-pct">{resultAnalysis['1x2_btts'][k]}%</span>
+                <div className="selection-indicator">{isSelected('1X2 & BTTS', label) ? '✓' : '+'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Total & BTTS */}
+      {resultAnalysis.total_btts && (
+        <div className="h2h-subsection">
+          <h4>Total & Both Teams to Score</h4>
+          <div className="combined-market-grid">
+            {[['over25_yes', 'Over 2.5 & Yes'], ['over25_no', 'Over 2.5 & No'], ['under25_yes', 'Under 2.5 & Yes'], ['under25_no', 'Under 2.5 & No']].map(([k, label]) => (
+              <div key={k} className={`combined-market-item selectable-probability ${resultAnalysis.total_btts[k] >= 25 ? 'likely' : ''} ${isSelected('Total & BTTS', label) ? 'selected' : ''}`}
+                onClick={() => handleSelect('Total & BTTS', label, resultAnalysis.total_btts[k])}>
+                <span className="cm-label">{label}</span>
+                <span className="cm-pct">{resultAnalysis.total_btts[k]}%</span>
+                <div className="selection-indicator">{isSelected('Total & BTTS', label) ? '✓' : '+'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Correct Score */}
+      {resultAnalysis.correct_score && Object.keys(resultAnalysis.correct_score).length > 0 && (
+        <div className="h2h-subsection">
+          <h4>Correct Score</h4>
+          <div className="correct-score-grid">
+            {Object.entries(resultAnalysis.correct_score)
+              .sort((a, b) => b[1] - a[1])
+              .map(([score, pct]) => (
+                <div key={score} className={`correct-score-item selectable-probability ${pct >= 8 ? 'likely' : ''} ${isSelected('Correct Score', score) ? 'selected' : ''}`}
+                  onClick={() => handleSelect('Correct Score', score, pct)}>
+                  <span className="cs-score">{score}</span>
+                  <span className="cs-pct">{pct}%</span>
+                  <div className="selection-indicator">{isSelected('Correct Score', score) ? '✓' : '+'}</div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* HT/FT */}
+      {resultAnalysis.htft && Object.keys(resultAnalysis.htft).length > 0 && (
+        <div className="h2h-subsection">
+          <h4>HalfTime / FullTime</h4>
+          <div className="combined-market-grid">
+            {['1/1', '1/x', '1/2', 'x/1', 'x/x', 'x/2', '2/1', '2/x', '2/2'].map(key => (
+              <div key={key} className={`combined-market-item selectable-probability ${(resultAnalysis.htft[key] || 0) >= 15 ? 'likely' : ''} ${isSelected('HT/FT', key.toUpperCase()) ? 'selected' : ''}`}
+                onClick={() => handleSelect('HT/FT', key.toUpperCase(), resultAnalysis.htft[key] || 0)}>
+                <span className="cm-label">{key.toUpperCase()}</span>
+                <span className="cm-pct">{resultAnalysis.htft[key] || 0}%</span>
+                <div className="selection-indicator">{isSelected('HT/FT', key.toUpperCase()) ? '✓' : '+'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Both Halves Over/Under 1.5 */}
+      {resultAnalysis.both_halves && (
+        <div className="h2h-subsection">
+          <h4>Both Halves Over/Under 1.5</h4>
+          <div className="ou-grid">
+            <div className={`ou-item ${resultAnalysis.both_halves.over_15 >= 30 ? 'likely' : ''}`}>
+              <span className="ou-label">Both Over 1.5</span>
+              <span className="ou-pct">{resultAnalysis.both_halves.over_15}%</span>
+            </div>
+            <div className={`ou-item ${resultAnalysis.both_halves.under_15 >= 30 ? 'likely' : ''}`}>
+              <span className="ou-label">Both Under 1.5</span>
+              <span className="ou-pct">{resultAnalysis.both_halves.under_15}%</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1st Goal & 1X2 */}
+      {resultAnalysis.first_goal_1x2 && (
+        <div className="h2h-subsection">
+          <h4>1st Goal & 1X2</h4>
+          <div className="combined-market-grid">
+            {[['1_goal_1', `${teamAName} Goal & 1`], ['1_goal_x', `${teamAName} Goal & X`], ['1_goal_2', `${teamAName} Goal & 2`],
+              ['2_goal_1', `${teamBName} Goal & 1`], ['2_goal_x', `${teamBName} Goal & X`], ['2_goal_2', `${teamBName} Goal & 2`],
+              ['no_goal', 'No Goal']].map(([k, label]) => (
+              <div key={k} className={`combined-market-item selectable-probability ${resultAnalysis.first_goal_1x2[k] >= 15 ? 'likely' : ''} ${isSelected('1st Goal & 1X2', label) ? 'selected' : ''}`}
+                onClick={() => handleSelect('1st Goal & 1X2', label, resultAnalysis.first_goal_1x2[k])}>
+                <span className="cm-label">{label}</span>
+                <span className="cm-pct">{resultAnalysis.first_goal_1x2[k]}%</span>
+                <div className="selection-indicator">{isSelected('1st Goal & 1X2', label) ? '✓' : '+'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 2nd Half - 1X2 & BTTS */}
+      {resultAnalysis.second_half?.['1x2_btts'] && Object.values(resultAnalysis.second_half['1x2_btts']).some(v => v > 0) && (
+        <div className="h2h-subsection">
+          <h4>2nd Half - 1X2 & Both Teams to Score</h4>
+          <div className="combined-market-grid">
+            {[['1_yes', '1 & Yes'], ['1_no', '1 & No'], ['x_yes', 'X & Yes'], ['x_no', 'X & No'], ['2_yes', '2 & Yes'], ['2_no', '2 & No']].map(([k, label]) => (
+              <div key={k} className={`combined-market-item ${resultAnalysis.second_half['1x2_btts'][k] >= 20 ? 'likely' : ''}`}>
+                <span className="cm-label">{label}</span>
+                <span className="cm-pct">{resultAnalysis.second_half['1x2_btts'][k]}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 2nd Half - 1X2 & Total */}
+      {resultAnalysis.second_half?.['1x2_total'] && Object.values(resultAnalysis.second_half['1x2_total']).some(v => v > 0) && (
+        <div className="h2h-subsection">
+          <h4>2nd Half - 1X2 & Total O/U 1.5</h4>
+          <div className="combined-market-grid">
+            {[['1_over', '1 & Over 1.5'], ['1_under', '1 & Under 1.5'], ['x_over', 'X & Over 1.5'], ['x_under', 'X & Under 1.5'], ['2_over', '2 & Over 1.5'], ['2_under', '2 & Under 1.5']].map(([k, label]) => (
+              <div key={k} className={`combined-market-item ${resultAnalysis.second_half['1x2_total'][k] >= 20 ? 'likely' : ''}`}>
+                <span className="cm-label">{label}</span>
+                <span className="cm-pct">{resultAnalysis.second_half['1x2_total'][k]}%</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -936,21 +1359,34 @@ function CornersSection({ cornerAnalysis, teamAName, teamBName, matchId, matchNa
       )}
 
       <h4>Over/Under Total Corners</h4>
-      <div className="ou-grid corners-ou">
-        {Object.entries(cornerAnalysis.over_under).map(([key, data]) => (
-          <div
-            key={key}
-            className={`ou-item selectable-probability ${data.prediction === 'Yes' ? 'likely' : 'unlikely'} ${isSelected('Corners O/U', formatOverUnderLabel(key)) ? 'selected' : ''}`}
-            onClick={() => handleSelect('Corners O/U', formatOverUnderLabel(key), data.percentage)}
-          >
-            <span className="ou-label">{formatOverUnderLabel(key)}</span>
-            <span className="ou-pct">{data.percentage}%</span>
-            <span className={`ou-prediction ${data.prediction === 'Yes' ? 'yes' : 'no'}`}>
-              {data.prediction}
-            </span>
-            <div className="selection-indicator">{isSelected('Corners O/U', formatOverUnderLabel(key)) ? '✓' : '+'}</div>
-          </div>
-        ))}
+      <div className="ou-grid ou-grid-paired corners-ou">
+        {Object.entries(cornerAnalysis.over_under).map(([key, data]) => {
+          const overLabel = formatOverUnderLabel(key)
+          const underLabel = overLabel.replace('Over', 'Under')
+          const underPct = round1(100 - data.percentage)
+          return (
+            <div key={key} className="ou-pair">
+              <div
+                className={`ou-item selectable-probability ${data.percentage >= 50 ? 'likely' : 'unlikely'} ${isSelected('Corners O/U', overLabel) ? 'selected' : ''}`}
+                onClick={() => handleSelect('Corners O/U', overLabel, data.percentage)}
+              >
+                <span className="ou-label">{overLabel}</span>
+                <span className="ou-pct">{data.percentage}%</span>
+                <span className={`ou-prediction ${data.percentage >= 50 ? 'yes' : 'no'}`}>{data.percentage >= 50 ? 'Yes' : 'No'}</span>
+                <div className="selection-indicator">{isSelected('Corners O/U', overLabel) ? '✓' : '+'}</div>
+              </div>
+              <div
+                className={`ou-item selectable-probability ${underPct >= 50 ? 'likely' : 'unlikely'} ${isSelected('Corners O/U', underLabel) ? 'selected' : ''}`}
+                onClick={() => handleSelect('Corners O/U', underLabel, underPct)}
+              >
+                <span className="ou-label">{underLabel}</span>
+                <span className="ou-pct">{underPct}%</span>
+                <span className={`ou-prediction ${underPct >= 50 ? 'yes' : 'no'}`}>{underPct >= 50 ? 'Yes' : 'No'}</span>
+                <div className="selection-indicator">{isSelected('Corners O/U', underLabel) ? '✓' : '+'}</div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -1070,21 +1506,34 @@ function CardsSection({ cardAnalysis, teamAName, teamBName, matchId, matchName }
       </div>
 
       <h4>Card Over/Under Predictions</h4>
-      <div className="ou-grid cards-ou">
-        {Object.entries(cardAnalysis.over_under).map(([key, data]) => (
-          <div
-            key={key}
-            className={`ou-item selectable-probability ${data.prediction === 'Yes' ? 'likely' : 'unlikely'} ${isSelected('Cards O/U', formatCardLabel(key)) ? 'selected' : ''}`}
-            onClick={() => handleSelect('Cards O/U', formatCardLabel(key), data.percentage)}
-          >
-            <span className="ou-label">{formatCardLabel(key)}</span>
-            <span className="ou-pct">{data.percentage}%</span>
-            <span className={`ou-prediction ${data.prediction === 'Yes' ? 'yes' : 'no'}`}>
-              {data.prediction}
-            </span>
-            <div className="selection-indicator">{isSelected('Cards O/U', formatCardLabel(key)) ? '✓' : '+'}</div>
-          </div>
-        ))}
+      <div className="ou-grid ou-grid-paired cards-ou">
+        {Object.entries(cardAnalysis.over_under).map(([key, data]) => {
+          const overLabel = formatCardLabel(key)
+          const underLabel = overLabel.replace('Over', 'Under')
+          const underPct = round1(100 - data.percentage)
+          return (
+            <div key={key} className="ou-pair">
+              <div
+                className={`ou-item selectable-probability ${data.percentage >= 50 ? 'likely' : 'unlikely'} ${isSelected('Cards O/U', overLabel) ? 'selected' : ''}`}
+                onClick={() => handleSelect('Cards O/U', overLabel, data.percentage)}
+              >
+                <span className="ou-label">{overLabel}</span>
+                <span className="ou-pct">{data.percentage}%</span>
+                <span className={`ou-prediction ${data.percentage >= 50 ? 'yes' : 'no'}`}>{data.percentage >= 50 ? 'Yes' : 'No'}</span>
+                <div className="selection-indicator">{isSelected('Cards O/U', overLabel) ? '✓' : '+'}</div>
+              </div>
+              <div
+                className={`ou-item selectable-probability ${underPct >= 50 ? 'likely' : 'unlikely'} ${isSelected('Cards O/U', underLabel) ? 'selected' : ''}`}
+                onClick={() => handleSelect('Cards O/U', underLabel, underPct)}
+              >
+                <span className="ou-label">{underLabel}</span>
+                <span className="ou-pct">{underPct}%</span>
+                <span className={`ou-prediction ${underPct >= 50 ? 'yes' : 'no'}`}>{underPct >= 50 ? 'Yes' : 'No'}</span>
+                <div className="selection-indicator">{isSelected('Cards O/U', underLabel) ? '✓' : '+'}</div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -2481,6 +2930,14 @@ export default function MatchAnalysis() {
 
       {!loading && !error && !viewBlocked && (
         <div className="analysis-results">
+          {/* AI Disclaimer Banner */}
+          <div className="ai-disclaimer-banner">
+            <div className="disclaimer-icon">&#9888;</div>
+            <div className="disclaimer-text">
+              <strong>Disclaimer</strong> — The probabilities displayed on this page are AI-generated estimates based on historical head-to-head records, recent form, and team performance data. They are intended for informational purposes only and do not guarantee outcomes. We strongly advise conducting your own analysis and exercising independent judgement before making any betting decisions. <strong>Please gamble responsibly.</strong>
+            </div>
+          </div>
+
           {/* Live Analysis (real-time polled or from fixture) */}
           {currentAnalysis && (
             <LiveAnalysisSection
@@ -2565,9 +3022,7 @@ export default function MatchAnalysis() {
           )}
 
           {/* Player Impact */}
-          {prediction?.players && (
-            <PlayerImpact players={prediction.players} matchInfo={prediction.match_info} />
-          )}
+          <PlayerImpact players={prediction?.players} matchInfo={prediction?.match_info} />
 
           {/* Final Prediction - Always at the bottom */}
           <FinalPrediction

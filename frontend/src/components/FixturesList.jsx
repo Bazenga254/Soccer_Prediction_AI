@@ -4,18 +4,74 @@ import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
 const COMPETITION_NAMES = {
+  // Top 5 European Leagues
   'PL': 'Premier League',
-  'ELC': 'Championship',
   'PD': 'La Liga',
   'BL1': 'Bundesliga',
   'SA': 'Serie A',
   'FL1': 'Ligue 1',
+  // Other European Leagues
+  'ELC': 'Championship',
   'DED': 'Eredivisie',
   'PPL': 'Primeira Liga',
+  'SPL': 'Scottish Premiership',
+  'BPL': 'Belgian Pro League',
+  'TSL': 'Turkish Super Lig',
+  'SSL': 'Swiss Super League',
+  'ABL': 'Austrian Bundesliga',
+  'GSL': 'Greek Super League',
+  'DSL': 'Danish Superliga',
+  'SWA': 'Swedish Allsvenskan',
+  'NOE': 'Norwegian Eliteserien',
+  'CFL': 'Czech First League',
+  'EPL': 'Polish Ekstraklasa',
+  'HNL': 'Croatian HNL',
+  'SRS': 'Serbian Super Liga',
+  'ROL': 'Romanian Liga I',
+  'UPL': 'Ukrainian Premier League',
+  'RPL': 'Russian Premier League',
+  // South America
+  'BSA': 'Brazilian Serie A',
+  'ALP': 'Argentine Liga Profesional',
+  'COL': 'Colombian Primera A',
+  'CHL': 'Chilean Primera Division',
+  'URU': 'Uruguayan Primera Division',
+  'PAR': 'Paraguayan Division',
+  'PER': 'Peruvian Liga 1',
+  'ECU': 'Ecuadorian Serie A',
+  // North/Central America
+  'MLS': 'MLS',
+  'LMX': 'Liga MX',
+  // Africa
+  'EGY': 'Egyptian Premier League',
+  'ZAF': 'South African Premier League',
+  'MAR': 'Moroccan Botola Pro',
+  'ALG': 'Algerian Ligue 1',
+  'TUN': 'Tunisian Ligue 1',
+  'NGA': 'Nigerian NPFL',
+  'KEN': 'Kenyan Premier League',
+  'GHA': 'Ghanaian Premier League',
+  // Asia & Oceania
+  'JPN': 'J-League',
+  'KOR': 'K-League',
+  'SAU': 'Saudi Pro League',
+  'CHN': 'Chinese Super League',
+  'IND': 'Indian Super League',
+  'AUS': 'A-League',
+  'THA': 'Thai League 1',
+  'UAE': 'UAE Pro League',
+  // Continental Competitions
   'CL': 'Champions League',
+  'EL': 'Europa League',
+  'ECL': 'Conference League',
   'CLI': 'Copa Libertadores',
+  'CAF': 'CAF Champions League',
+  'AFC': 'AFC Champions League',
+  // International
   'EC': 'Euro Championship',
   'WC': 'World Cup',
+  'CA': 'Copa America',
+  'ACN': 'Africa Cup of Nations',
 }
 
 function formatDate(dateStr) {

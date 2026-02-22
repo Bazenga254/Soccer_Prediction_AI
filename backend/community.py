@@ -461,6 +461,7 @@ def init_community_db():
         "ALTER TABLE community_predictions ADD COLUMN odds REAL",
         "ALTER TABLE community_predictions ADD COLUMN slip_id TEXT",
         "ALTER TABLE community_predictions ADD COLUMN combined_odds REAL",
+        "ALTER TABLE community_predictions ADD COLUMN is_daily_free INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(col_sql)
@@ -820,6 +821,7 @@ def share_prediction(
     odds: float = None,
     slip_id: str = None,
     combined_odds: float = None,
+    is_daily_free: bool = False,
 ) -> Dict:
     """Share a prediction to the community."""
     if visibility not in ("public", "private"):
@@ -836,8 +838,8 @@ def share_prediction(
             predicted_over25, predicted_btts,
             best_value_bet, best_value_prob,
             analysis_summary, visibility, is_paid, price_usd, is_live_bet, odds,
-            slip_id, combined_odds, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            slip_id, combined_odds, is_daily_free, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         user_id, username, display_name, avatar_color,
         fixture_id, team_a_name, team_b_name, competition, competition_code,
@@ -845,7 +847,8 @@ def share_prediction(
         predicted_over25, predicted_btts,
         best_value_bet, best_value_prob,
         analysis_summary, visibility, 1 if is_paid else 0, price_usd,
-        1 if is_live_bet else 0, odds, slip_id, combined_odds, now,
+        1 if is_live_bet else 0, odds, slip_id, combined_odds,
+        1 if is_daily_free else 0, now,
     ))
     conn.commit()
     pred_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -896,6 +899,74 @@ def share_prediction(
             )
 
     return {"success": True, "prediction_id": pred_id, "is_first_today": is_first_today}
+
+
+def get_daily_free_predictions(date_str: str = None) -> List[Dict]:
+    """Get today's daily free AI picks (or for a specific date)."""
+    conn = _get_db()
+    if not date_str:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+
+    rows = conn.execute("""
+        SELECT cp.*,
+            COALESCE(AVG(pr.rating), 0) AS avg_rating,
+            COUNT(DISTINCT pr.id) AS rating_count,
+            COALESCE(SUM(CASE WHEN prx.reaction = 'like' THEN 1 ELSE 0 END), 0) AS likes,
+            COALESCE(SUM(CASE WHEN prx.reaction = 'dislike' THEN 1 ELSE 0 END), 0) AS dislikes
+        FROM community_predictions cp
+        LEFT JOIN prediction_ratings pr ON pr.prediction_id = cp.id
+        LEFT JOIN prediction_reactions prx ON prx.prediction_id = cp.id
+        WHERE cp.is_daily_free = 1 AND cp.created_at LIKE ?
+        GROUP BY cp.id
+        ORDER BY cp.id ASC
+    """, (f"{date_str}%",)).fetchall()
+    conn.close()
+
+    predictions = []
+    for r in rows:
+        d = dict(r)
+        predictions.append({
+            "id": d["id"],
+            "user_id": d["user_id"],
+            "username": d["username"],
+            "display_name": d["display_name"],
+            "avatar_color": d["avatar_color"],
+            "fixture_id": d["fixture_id"],
+            "team_a_name": d["team_a_name"],
+            "team_b_name": d["team_b_name"],
+            "competition": d["competition"],
+            "competition_code": d.get("competition_code", ""),
+            "predicted_result": d["predicted_result"],
+            "predicted_result_prob": d["predicted_result_prob"],
+            "predicted_over25": d.get("predicted_over25"),
+            "predicted_btts": d.get("predicted_btts"),
+            "best_value_bet": d.get("best_value_bet"),
+            "best_value_prob": d.get("best_value_prob"),
+            "analysis_summary": d.get("analysis_summary", ""),
+            "match_finished": bool(d.get("match_finished", 0)),
+            "result_correct": bool(d["result_correct"]) if d.get("result_correct") is not None else None,
+            "actual_result": d.get("actual_result"),
+            "avg_rating": round(d.get("avg_rating", 0), 1),
+            "rating_count": d.get("rating_count", 0),
+            "likes": d.get("likes", 0),
+            "dislikes": d.get("dislikes", 0),
+            "created_at": d["created_at"],
+            "is_daily_free": True,
+        })
+
+    return predictions
+
+
+def count_daily_free_today() -> int:
+    """Count how many daily free picks have been generated today."""
+    conn = _get_db()
+    today = datetime.now().strftime("%Y-%m-%d")
+    count = conn.execute(
+        "SELECT COUNT(*) as c FROM community_predictions WHERE is_daily_free = 1 AND created_at LIKE ?",
+        (f"{today}%",),
+    ).fetchone()["c"]
+    conn.close()
+    return count
 
 
 def _get_order_clause(sort_by: str) -> str:

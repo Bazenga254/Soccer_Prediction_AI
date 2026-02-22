@@ -390,11 +390,12 @@
   font-weight: 600;
 }
 
-.admin-badge-success { background: rgba(46, 204, 113, 0.15); color: var(--admin-success); }
+.admin-badge-success { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
 .admin-badge-warning { background: rgba(243, 156, 18, 0.15); color: var(--admin-warning); }
-.admin-badge-danger { background: rgba(231, 76, 60, 0.15); color: var(--admin-danger); }
+.admin-badge-danger { background: rgba(231, 76, 60, 0.15); color: #e74c3c; }
 .admin-badge-info { background: rgba(52, 152, 219, 0.15); color: var(--admin-info); }
 .admin-badge-neutral { background: rgba(139, 141, 151, 0.15); color: var(--admin-text-muted); }
+.admin-badge-pending { background: rgba(243, 156, 18, 0.15); color: #f39c12; }
 .admin-badge-pro { background: rgba(243, 156, 18, 0.15); color: var(--admin-warning); }
 .admin-badge-free { background: rgba(139, 141, 151, 0.15); color: var(--admin-text-muted); }
 

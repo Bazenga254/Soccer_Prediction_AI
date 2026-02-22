@@ -81,21 +81,38 @@ function PlayerCard({ player }) {
 }
 
 export default function PlayerImpact({ players, matchInfo }) {
-  if (!players?.team_a?.length && !players?.team_b?.length) return null
+  const hasPlayers = players?.team_a?.length || players?.team_b?.length
 
   return (
     <section className="card">
       <h2 className="card-title">Player Impact Analysis</h2>
-      <div className="players-grid">
-        <div>
-          <div className="team-column-title title-green">{matchInfo?.team_a?.name || 'Home'}</div>
-          {(players.team_a || []).map(p => <PlayerCard key={p.id} player={p} />)}
+      {hasPlayers ? (
+        <div className="players-grid">
+          <div>
+            <div className="team-column-title title-green">{matchInfo?.team_a?.name || 'Home'}</div>
+            {(players.team_a || []).map(p => <PlayerCard key={p.id} player={p} />)}
+          </div>
+          <div>
+            <div className="team-column-title title-blue">{matchInfo?.team_b?.name || 'Away'}</div>
+            {(players.team_b || []).map(p => <PlayerCard key={p.id} player={p} />)}
+          </div>
         </div>
-        <div>
-          <div className="team-column-title title-blue">{matchInfo?.team_b?.name || 'Away'}</div>
-          {(players.team_b || []).map(p => <PlayerCard key={p.id} player={p} />)}
+      ) : (
+        <div style={{
+          textAlign: 'center',
+          padding: '32px 20px',
+          color: '#94a3b8',
+        }}>
+          <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.6 }}>&#9917;</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#cbd5e1', marginBottom: 6 }}>
+            Player data is currently unavailable for this fixture
+          </div>
+          <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+            Detailed player statistics may not yet be published for this league or matchday.
+            Please verify with the official league source for the latest squad and performance data.
+          </div>
         </div>
-      </div>
+      )}
     </section>
   )
 }

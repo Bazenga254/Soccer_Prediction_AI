@@ -5,6 +5,198 @@ import { useAuth } from '../context/AuthContext'
 import LiveChatPopup from '../components/LiveChatPopup'
 import axios from 'axios'
 
+// Match tracking notifications
+
+const HEADLINES = {
+  tracking_started: [
+    'Good Choice! \u{1F44D}', "Let's Go! \u{1F525}", 'Locked In! \u{1F512}',
+    'Game On! \u{1F3AE}', "You're Set! \u2705", 'Eyes On! \u{1F440}',
+  ],
+  celebration: [
+    'GOOOAAAL! \u{1F389}', 'GET IN! \u{1F4AA}', 'YESSS! \u{1F525}',
+    'WHAT A GOAL! \u26BD', 'UNSTOPPABLE! \u{1F680}', 'BEAUTY! \u{1F60D}',
+    'TAKE A BOW! \u{1F3AF}', 'SCENES! \u{1F38A}',
+  ],
+  sad: [
+    'Oh No... \u{1F622}', 'Gutted... \u{1F494}', 'That Hurts... \u{1F629}',
+    'Nooo! \u{1F62D}', 'Stay Strong... \u{1F97A}', 'Pain... \u{1F480}',
+  ],
+  worried: [
+    "It's Level... \u{1F630}", 'All Square... \u{1F62C}', 'Nervous Times... \u{1FAE3}',
+    'Hold On... \u{1F624}', "Don't Panic... \u{1F64F}",
+  ],
+  big_lead: [
+    'RUNNING RIOT! \u{1F3C6}', 'UNSTOPPABLE! \u{1F4AB}', 'ON FIRE! \u{1F525}\u{1F525}\u{1F525}',
+    'DEMOLITION! \u{1F4AA}', 'TOO EASY! \u{1F60E}',
+  ],
+  match_won: [
+    'VICTORY! \u{1F3C6}', 'WE WON! \u{1F389}\u{1F389}', 'CHAMPIONS! \u{1F451}',
+    'FULL TIME - WIN! \u{1F525}', 'GET IN THERE! \u{1F4AA}', 'WHAT A WIN! \u{1F60D}',
+  ],
+  match_lost: [
+    'Full Time - Defeat \u{1F494}', 'We Lost... \u{1F62D}', 'Heartbreak \u{1F480}',
+    'Not Our Day... \u{1F622}', 'Tough Loss \u{1F629}', 'Gutted... \u{1F61E}',
+  ],
+  match_draw: [
+    'Full Time - Draw \u{1F91D}', 'Honors Even \u{1F610}', 'A Point Each \u{1F937}',
+    'So Close... \u{1F614}', 'Shared the Spoils \u{1F91D}',
+  ],
+}
+
+const SUB_MESSAGES = {
+  tracking_started: [
+    'You made the right choice!', "We'll keep you posted on every goal!",
+    'Sit back and enjoy the match!', "You'll get notified when they score!",
+    'Tracking is live! Good luck!', 'May the best team win!',
+  ],
+  celebration: [
+    'Your team just scored!', 'What a moment!', 'The crowd goes wild!',
+    'Pure class!', 'Brilliant finish!', 'Get in there!',
+  ],
+  sad: [
+    'Stay strong, anything can happen!', 'Keep believing!',
+    "It's not over yet...", 'There is still time!', 'Chin up!',
+  ],
+  worried: [
+    'Come on, you can do this!', 'Time to fight back!',
+    "It's anyone's game now!", 'Stay focused!', 'Deep breaths...',
+  ],
+  big_lead: [
+    'Absolutely dominant!', 'No mercy!', 'A masterclass!',
+    'Running the show!', 'Total control!',
+  ],
+  match_won: [
+    'Congratulations! What a performance!', 'Your team did it!',
+    'Three points in the bag!', 'Well deserved victory!',
+    'Time to celebrate!', 'What a result!',
+  ],
+  match_lost: [
+    'Better luck next time...', "There's always the next match.",
+    'Keep your head up!', "It wasn't meant to be today.",
+    'Chin up, move forward!', 'The comeback starts next match!',
+  ],
+  match_draw: [
+    'A fair result in the end.', 'Could have gone either way.',
+    'Not a bad point away from home.', 'Almost had it!',
+    'On to the next one!',
+  ],
+}
+
+// Pre-selected GIF pools (instant load, no API call needed)
+const PRESELECTED_GIFS = {
+  tracking_started: [
+    'https://media.giphy.com/media/l0MYt5jPR6QX5APm0/200.gif',
+    'https://media.giphy.com/media/3oEjHV0z8S7WM4MwnK/200.gif',
+    'https://media.giphy.com/media/xTiTnEHBh7qapSf11u/200.gif',
+    'https://media.giphy.com/media/YRuFixSNWFVcXaxpmX/200.gif',
+    'https://media.giphy.com/media/artj92V8o75VPL7AeQ/200.gif',
+    'https://media.giphy.com/media/3oz8xIsloV320wXd6M/200.gif',
+  ],
+  celebration: [
+    'https://media.giphy.com/media/3o7bu2D938PkrKrcYw/200.gif',
+    'https://media.giphy.com/media/vGxiQNwXOrc17Aanuf/200.gif',
+    'https://media.giphy.com/media/sirOb06HhLmVxV0LtQ/200.gif',
+    'https://media.giphy.com/media/l3UcicwEsOOan1Q2c/200.gif',
+    'https://media.giphy.com/media/KjFoWsZmuUzdoonjmz/200.gif',
+    'https://media.giphy.com/media/QxMb25h7RhitNWgyy0/200.gif',
+  ],
+  sad: [
+    'https://media.giphy.com/media/rDf21Jd6npuG94c8pe/200.gif',
+    'https://media.giphy.com/media/Nuk8ZhBtEsS6kMBNCb/200.gif',
+    'https://media.giphy.com/media/7SEVVDyj4dXyhIjcIh/200.gif',
+    'https://media.giphy.com/media/c5nW05OqnQ5MsRM7X1/200.gif',
+    'https://media.giphy.com/media/1naY1TdNLTlSEdzi5D/200.gif',
+    'https://media.giphy.com/media/tFKHi78AVX0QkLuLeX/200.gif',
+  ],
+  worried: [
+    'https://media.giphy.com/media/3oz8xLlw6GHVfokaNW/200.gif',
+    'https://media.giphy.com/media/5io17TpOzP17cPqHpI/200.gif',
+    'https://media.giphy.com/media/UJBrPPqsMpVtzBeHOZ/200.gif',
+    'https://media.giphy.com/media/4QgiErmjZiPESRcKYt/200.gif',
+    'https://media.giphy.com/media/Z406ds5hiUAoYUe9TR/200.gif',
+    'https://media.giphy.com/media/l4FATJpd4LWgeruTK/200.gif',
+  ],
+  big_lead: [
+    'https://media.giphy.com/media/nbQiWoHJFaJtcl3qT6/200.gif',
+    'https://media.giphy.com/media/KQARp0xmXD90CIOIcb/200.gif',
+    'https://media.giphy.com/media/DfbpTbQ9TvSX6/200.gif',
+    'https://media.giphy.com/media/cZGwq7OWe0fStVrzND/200.gif',
+    'https://media.giphy.com/media/15BuyagtKucHm/200.gif',
+    'https://media.giphy.com/media/l4pTcr7Nbt29Hpx72/200.gif',
+  ],
+  match_won: [
+    'https://media.giphy.com/media/26u4exk4zsAqPcq08/200.gif',
+    'https://media.giphy.com/media/cuKExiRZlVoPK92Bth/200.gif',
+    'https://media.giphy.com/media/oIGXtRBYxIYyXTnSnm/200.gif',
+    'https://media.giphy.com/media/2vlkAmFl8FOTogdUx0/200.gif',
+    'https://media.giphy.com/media/QR4UX8k7bQX1gKJp6i/200.gif',
+    'https://media.giphy.com/media/QAIGlJZqbnc0UYQn7U/200.gif',
+  ],
+  match_lost: [
+    'https://media.giphy.com/media/l1OBiDMmjQqXPpcSa4/200.gif',
+    'https://media.giphy.com/media/naKDoT6SAIqDavX3WQ/200.gif',
+    'https://media.giphy.com/media/6rLNAzFoLz3aIy41r9/200.gif',
+    'https://media.giphy.com/media/BE2wVc1nuX0tvxbGCL/200.gif',
+    'https://media.giphy.com/media/7kJ49xKZsckr8yV87R/200.gif',
+    'https://media.giphy.com/media/Tzl5kPytktnDqNu6tZ/200.gif',
+  ],
+  match_draw: [
+    'https://media.giphy.com/media/JRhS6WoswF8FxE0g2R/200.gif',
+    'https://media.giphy.com/media/l4pTsh45Dg7jnDM6Q/200.gif',
+    'https://media.giphy.com/media/EYUNo9AHh1qvx87fH1/200.gif',
+    'https://media.giphy.com/media/eI3XK2wTJ9uPcc7cDv/200.gif',
+    'https://media.giphy.com/media/3o7bu2PMhUljurpnWM/200.gif',
+    'https://media.giphy.com/media/igGyenWV6Dy4rhXbc8/200.gif',
+  ],
+}
+
+// Preload GIF images into browser cache
+function preloadGifs() {
+  Object.values(PRESELECTED_GIFS).forEach(urls => {
+    urls.forEach(url => {
+      const img = new Image()
+      img.src = url
+    })
+  })
+}
+
+// Track rotation index per type so we cycle through instead of repeating
+const gifIndexTracker = {}
+
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+function getGifForType(type) {
+  const pool = PRESELECTED_GIFS[type] || PRESELECTED_GIFS.celebration
+  if (!gifIndexTracker[type]) gifIndexTracker[type] = 0
+  const gif = pool[gifIndexTracker[type] % pool.length]
+  gifIndexTracker[type]++
+  return gif
+}
+
+// Browser notifications
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission()
+  }
+}
+
+function sendBrowserNotification(title, body, iconUrl) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+  try {
+    const notif = new Notification(title, {
+      body,
+      icon: iconUrl || '/favicon.ico',
+      badge: '/favicon.ico',
+      tag: 'spark-goal-' + Date.now(),
+      renotify: true,
+    })
+    notif.onclick = () => { window.focus(); notif.close() }
+    setTimeout(() => notif.close(), 10000)
+  } catch { /* ignore */ }
+}
+
 // League priority: lower number = shown first
 const LEAGUE_PRIORITY = {
   39: 1,    // Premier League
@@ -67,6 +259,18 @@ export default function LiveScores() {
   const prevGoalsRef = useRef({})
   const navigate = useNavigate()
 
+  // Match tracking state
+  const [trackedMatches, setTrackedMatches] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('trackedMatches') || '{}') } catch { return {} }
+  })
+  const [teamSelectorMatch, setTeamSelectorMatch] = useState(null)
+  const [goalNotification, setGoalNotification] = useState(null)
+  const notifQueueRef = useRef([])
+  const notifTimerRef = useRef(null)
+  const trackedRef = useRef(trackedMatches)
+  const prevStatusRef = useRef({}) // track match statuses for end-of-match detection
+  const endedMatchesRef = useRef(new Set()) // avoid duplicate end-of-match notifications
+
   // Upcoming matches state
   const [upcomingMatches, setUpcomingMatches] = useState([])
   const [upcomingLoading, setUpcomingLoading] = useState(true)
@@ -80,6 +284,101 @@ export default function LiveScores() {
       return next
     })
   }
+
+  // Sync tracked matches to localStorage and ref
+  useEffect(() => {
+    localStorage.setItem('trackedMatches', JSON.stringify(trackedMatches))
+    trackedRef.current = trackedMatches
+  }, [trackedMatches])
+
+  // Preload GIFs and request notification permission on mount
+  useEffect(() => {
+    preloadGifs()
+    requestNotificationPermission()
+  }, [])
+
+  const startTracking = (match, teamId) => {
+    const isHome = teamId === match.home_team.id
+    const tracked = {
+      teamId,
+      teamName: isHome ? match.home_team.name : match.away_team.name,
+      teamCrest: isHome ? match.home_team.crest : match.away_team.crest,
+      opponentName: isHome ? match.away_team.name : match.home_team.name,
+      homeGoals: match.goals?.home || 0,
+      awayGoals: match.goals?.away || 0,
+      isHome,
+    }
+    setTrackedMatches(prev => ({ ...prev, [match.id]: tracked }))
+    setTeamSelectorMatch(null)
+
+    // Initialize prevGoals with current score so existing goals don't trigger false notifications
+    prevGoalsRef.current[match.id] = (match.goals?.home || 0) + (match.goals?.away || 0)
+
+    // Show tracking confirmation notification
+    queueNotification(match, tracked, 'tracking_started', match.goals?.home || 0, match.goals?.away || 0)
+  }
+
+  const untrackMatch = (matchId) => {
+    setTrackedMatches(prev => {
+      const next = { ...prev }
+      delete next[matchId]
+      return next
+    })
+  }
+
+  const showNextNotification = useCallback(() => {
+    // Clear the expired timer ref first
+    notifTimerRef.current = null
+    if (notifQueueRef.current.length === 0) {
+      setGoalNotification(null)
+      return
+    }
+    const next = notifQueueRef.current.shift()
+    setGoalNotification(next)
+    notifTimerRef.current = setTimeout(() => {
+      showNextNotification()
+    }, 8000)
+  }, [])
+
+  const queueNotification = useCallback((match, tracked, type, newHome, newAway) => {
+    const gifUrl = getGifForType(type)
+    const headline = pickRandom(HEADLINES[type] || HEADLINES.celebration)
+    const subMessage = pickRandom(SUB_MESSAGES[type] || SUB_MESSAGES.celebration)
+    const notif = {
+      id: Date.now(),
+      type,
+      gifUrl,
+      headline,
+      subMessage,
+      homeTeam: match.home_team.name,
+      awayTeam: match.away_team.name,
+      homeCrest: match.home_team.crest,
+      awayCrest: match.away_team.crest,
+      homeGoals: newHome,
+      awayGoals: newAway,
+      trackedTeam: tracked.teamName,
+      trackedCrest: tracked.teamCrest,
+    }
+    notifQueueRef.current.push(notif)
+
+    // Send browser notification (works even when tab is in background)
+    sendBrowserNotification(
+      headline.replace(/[\u{1F000}-\u{1FFFF}]/gu, '').trim(),
+      `${match.home_team.name} ${newHome} - ${newAway} ${match.away_team.name}\n${subMessage}`,
+      tracked.teamCrest || '/favicon.ico'
+    )
+
+    // If no notification showing, start
+    if (!notifTimerRef.current) {
+      showNextNotification()
+    }
+  }, [showNextNotification])
+
+  const dismissNotification = useCallback(() => {
+    clearTimeout(notifTimerRef.current)
+    notifTimerRef.current = null
+    showNextNotification()
+  }, [showNextNotification])
 
   const fetchMatchStats = useCallback(async (fixtureId, homeTeamId, awayTeamId, forceRefresh = false) => {
     // Use refs for guard checks to avoid stale closure issues
@@ -134,12 +433,88 @@ export default function LiveScores() {
           playGoalSound()
         }
         prevGoals[key] = totalGoals
+        // Initialize status tracking for all matches
+        if (!prevStatusRef.current[key]) prevStatusRef.current[key] = m.status
       })
 
       if (newGoalMatchIds.size > 0) {
         setRecentGoalIds(newGoalMatchIds)
         setTimeout(() => setRecentGoalIds(new Set()), 8000)
       }
+
+      // Check tracked matches for score changes
+      const currentTracked = trackedRef.current
+      Object.keys(currentTracked).forEach(matchId => {
+        const match = matches.find(m => m.id === Number(matchId))
+        if (!match) return
+        const tracked = currentTracked[matchId]
+        const newHome = match.goals?.home || 0
+        const newAway = match.goals?.away || 0
+
+        if (newHome !== tracked.homeGoals || newAway !== tracked.awayGoals) {
+          const homeScored = newHome > tracked.homeGoals
+          const awayScored = newAway > tracked.awayGoals
+          const userTeamScored = (tracked.isHome && homeScored) || (!tracked.isHome && awayScored)
+          const opponentScored = (tracked.isHome && awayScored) || (!tracked.isHome && homeScored)
+          const isDraw = newHome === newAway
+          const userGoals = tracked.isHome ? newHome : newAway
+          const oppGoals = tracked.isHome ? newAway : newHome
+          const bigLead = userGoals - oppGoals >= 2
+
+          let type = 'celebration'
+          if (userTeamScored && bigLead) type = 'big_lead'
+          else if (userTeamScored) type = 'celebration'
+          else if (opponentScored && isDraw) type = 'worried'
+          else if (opponentScored) type = 'sad'
+
+          queueNotification(match, tracked, type, newHome, newAway)
+
+          // Update stored scores
+          setTrackedMatches(prev => ({
+            ...prev,
+            [matchId]: { ...prev[matchId], homeGoals: newHome, awayGoals: newAway }
+          }))
+        }
+      })
+
+      // Check tracked matches for match ending (FT/AET/PEN)
+      const finishedStatuses = ['FT', 'AET', 'PEN']
+      Object.keys(currentTracked).forEach(matchId => {
+        const match = matches.find(m => m.id === Number(matchId))
+        if (!match) return
+        const prevStatus = prevStatusRef.current[matchId]
+        const currentStatus = match.status
+
+        // Match just ended: was live before, now finished
+        if (
+          prevStatus && !finishedStatuses.includes(prevStatus) &&
+          finishedStatuses.includes(currentStatus) &&
+          !endedMatchesRef.current.has(matchId)
+        ) {
+          endedMatchesRef.current.add(matchId)
+          const tracked = currentTracked[matchId]
+          const finalHome = match.goals?.home || 0
+          const finalAway = match.goals?.away || 0
+          const userGoals = tracked.isHome ? finalHome : finalAway
+          const oppGoals = tracked.isHome ? finalAway : finalHome
+
+          let endType = 'match_draw'
+          if (userGoals > oppGoals) endType = 'match_won'
+          else if (userGoals < oppGoals) endType = 'match_lost'
+
+          queueNotification(match, tracked, endType, finalHome, finalAway)
+
+          // Auto-untrack ended matches after a delay
+          setTimeout(() => {
+            setTrackedMatches(prev => {
+              const next = { ...prev }
+              delete next[matchId]
+              return next
+            })
+          }, 15000)
+        }
+        prevStatusRef.current[matchId] = currentStatus
+      })
 
       setLiveMatches(matches)
       setLastUpdate(new Date())
@@ -397,6 +772,39 @@ export default function LiveScores() {
                             {match.goals?.away ?? 0}
                           </span>
                         </div>
+
+                        {/* Track match button */}
+                        {isLive(match.status) && (
+                          <div className="track-btn-wrap" onClick={e => e.stopPropagation()}>
+                            <button
+                              className={`track-btn ${trackedMatches[match.id] ? 'track-btn-active' : ''}`}
+                              onClick={() => {
+                                if (trackedMatches[match.id]) {
+                                  untrackMatch(match.id)
+                                } else {
+                                  setTeamSelectorMatch(teamSelectorMatch === match.id ? null : match.id)
+                                }
+                              }}
+                            >
+                              {trackedMatches[match.id] ? '\u{1F514} Tracking' : '\u26BD Track Match'}
+                            </button>
+                            {teamSelectorMatch === match.id && (
+                              <div className="team-selector-popup">
+                                <div className="team-selector-title">Which team do you support?</div>
+                                <div className="team-selector-options">
+                                  <button className="team-selector-btn" onClick={() => startTracking(match, match.home_team.id)}>
+                                    {match.home_team.crest && <img src={match.home_team.crest} alt="" className="team-selector-crest" />}
+                                    <span>{match.home_team.name}</span>
+                                  </button>
+                                  <button className="team-selector-btn" onClick={() => startTracking(match, match.away_team.id)}>
+                                    {match.away_team.crest && <img src={match.away_team.crest} alt="" className="team-selector-crest" />}
+                                    <span>{match.away_team.name}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         <div className="match-row-arrow">&rsaquo;</div>
                       </div>
@@ -813,6 +1221,42 @@ export default function LiveScores() {
           matchName={chatMatch.name}
           onClose={() => setChatMatch(null)}
         />
+      )}
+
+      {/* Goal Notification Overlay */}
+      {goalNotification && (
+        <div className="goal-notif-overlay" onClick={dismissNotification}>
+          <div className={`goal-notif-card goal-notif-${goalNotification.type}`} onClick={e => e.stopPropagation()}>
+            <button className="goal-notif-close" onClick={dismissNotification}>{'\u2715'}</button>
+            <div className="goal-notif-headline">{goalNotification.headline}</div>
+            <div className="goal-notif-gif-wrap">
+              {goalNotification.gifUrl ? (
+                <img src={goalNotification.gifUrl} alt="Goal reaction" className="goal-notif-gif" />
+              ) : (
+                <div className="goal-notif-gif-loading">{'\u26BD'} Loading...</div>
+              )}
+            </div>
+            <div className="goal-notif-score-section">
+              <div className="goal-notif-team">
+                {goalNotification.homeCrest && <img src={goalNotification.homeCrest} alt="" className="goal-notif-crest" />}
+                <span>{goalNotification.homeTeam}</span>
+              </div>
+              <div className="goal-notif-score">
+                {goalNotification.homeGoals} - {goalNotification.awayGoals}
+              </div>
+              <div className="goal-notif-team">
+                <span>{goalNotification.awayTeam}</span>
+                {goalNotification.awayCrest && <img src={goalNotification.awayCrest} alt="" className="goal-notif-crest" />}
+              </div>
+            </div>
+            <div className="goal-notif-sub">{goalNotification.subMessage}</div>
+            <div className="goal-notif-tracked">
+              {goalNotification.trackedCrest && <img src={goalNotification.trackedCrest} alt="" className="goal-notif-tracked-crest" />}
+              Tracking: {goalNotification.trackedTeam}
+            </div>
+            <div className="goal-notif-dismiss">Tap anywhere to dismiss</div>
+          </div>
+        </div>
       )}
     </div>
   )

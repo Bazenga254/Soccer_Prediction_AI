@@ -1,5 +1,118 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import axios from 'axios'
+
+const CHAT_EMOJIS = [
+  '\u26BD', '\u{1F945}', '\u{1F3C6}', '\u{1F525}', '\u{1F4AA}', '\u{1F44F}', '\u{1F3AF}', '\u{1F44D}', '\u{1F44E}',
+  '\u{1F602}', '\u{1F62D}', '\u{1F64F}', '\u2764\uFE0F', '\u{1F4AF}', '\u{1F914}', '\u{1F60D}', '\u{1F923}', '\u{1F480}',
+  '\u{1F624}', '\u{1FAE1}', '\u{1F389}', '\u{1F60E}', '\u{1F91D}', '\u{1F4B0}', '\u2B50', '\u{1F680}', '\u{1F631}',
+]
+
+const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || ''
+
+function BotEmojiPicker({ onSelect }) {
+  return (
+    <div className="bot-emoji-picker" onClick={e => e.stopPropagation()}>
+      <div className="bot-emoji-picker-grid">
+        {CHAT_EMOJIS.map(emoji => (
+          <button key={emoji} className="bot-emoji-picker-btn" onClick={() => onSelect(emoji)} type="button">
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BotGifPicker({ onSelect, onClose }) {
+  const [query, setQuery] = useState('')
+  const [gifs, setGifs] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [searched, setSearched] = useState(false)
+  const searchTimeout = useRef(null)
+
+  const fetchGifs = useCallback(async (q) => {
+    if (!GIPHY_API_KEY) return
+    setLoading(true)
+    try {
+      const endpoint = q
+        ? 'https://api.giphy.com/v1/gifs/search'
+        : 'https://api.giphy.com/v1/gifs/trending'
+      const params = new URLSearchParams({
+        api_key: GIPHY_API_KEY,
+        limit: '20',
+        rating: 'pg-13',
+        ...(q ? { q } : {}),
+      })
+      const res = await fetch(`${endpoint}?${params}`)
+      const data = await res.json()
+      const results = (data.data || []).map(g => ({
+        id: g.id,
+        title: g.title || '',
+        preview_url: g.images?.fixed_width_small?.url || '',
+        url: g.images?.fixed_width?.url || '',
+      }))
+      setGifs(results)
+    } catch {
+      setGifs([])
+    }
+    setLoading(false)
+    setSearched(true)
+  }, [])
+
+  useEffect(() => {
+    fetchGifs('')
+  }, [fetchGifs])
+
+  const handleSearch = (val) => {
+    setQuery(val)
+    clearTimeout(searchTimeout.current)
+    searchTimeout.current = setTimeout(() => {
+      fetchGifs(val)
+    }, 400)
+  }
+
+  if (!GIPHY_API_KEY) {
+    return (
+      <div className="bot-gif-picker" onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '20px', textAlign: 'center', color: '#666', fontSize: 13 }}>GIF search is not configured</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bot-gif-picker" onClick={e => e.stopPropagation()}>
+      <div className="bot-gif-picker-header">
+        <input
+          type="text"
+          className="bot-gif-search-input"
+          placeholder="Search GIFs..."
+          value={query}
+          onChange={e => handleSearch(e.target.value)}
+          autoFocus
+        />
+        <button className="bot-gif-picker-close" onClick={onClose} type="button">{'\u2715'}</button>
+      </div>
+      <div className="bot-gif-picker-grid">
+        {loading && <div className="bot-gif-loading">Searching...</div>}
+        {!loading && searched && gifs.length === 0 && (
+          <div className="bot-gif-empty">No GIFs found</div>
+        )}
+        {gifs.map(gif => (
+          <button
+            key={gif.id}
+            className="bot-gif-picker-item"
+            onClick={() => onSelect(gif.url)}
+            type="button"
+            title={gif.title}
+          >
+            <img src={gif.preview_url || gif.url} alt={gif.title} loading="lazy" />
+          </button>
+        ))}
+      </div>
+      <div className="bot-gif-picker-powered">Powered by GIPHY</div>
+    </div>
+  )
+}
 
 const QUEUE_ACTION_TYPES = [
   { value: 'match_chat', label: 'Live Chat', icon: '\u26BD' },
@@ -21,6 +134,41 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState('')
+
+  // --- Emoji & GIF picker state ---
+  const [showEmoji, setShowEmoji] = useState(false)
+  const [showGif, setShowGif] = useState(false)
+  const [activeTextarea, setActiveTextarea] = useState('same') // 'same' | 'bulk' | index for varied
+  const messageRef = useRef(null)
+  const bulkRef = useRef(null)
+  const variedRefs = useRef({})
+
+  const handleEmojiSelect = (emoji) => {
+    if (activeTextarea === 'same') {
+      setMessage(prev => prev + emoji)
+      messageRef.current?.focus()
+    } else if (activeTextarea === 'bulk') {
+      setBulkText(prev => prev + emoji)
+      bulkRef.current?.focus()
+    } else if (typeof activeTextarea === 'number') {
+      handleMessageChange(activeTextarea, messagesList[activeTextarea] + emoji)
+      variedRefs.current[activeTextarea]?.focus()
+    }
+    setShowEmoji(false)
+  }
+
+  const handleGifSelect = (gifUrl) => {
+    const gifTag = `[gif]${gifUrl}[/gif]`
+    if (activeTextarea === 'same') {
+      setMessage(prev => prev ? prev + '\n' + gifTag : gifTag)
+    } else if (activeTextarea === 'bulk') {
+      setBulkText(prev => prev ? prev + '\n' + gifTag : gifTag)
+    } else if (typeof activeTextarea === 'number') {
+      handleMessageChange(activeTextarea, messagesList[activeTextarea] ? messagesList[activeTextarea] + '\n' + gifTag : gifTag)
+    }
+    setShowGif(false)
+    setShowEmoji(false)
+  }
 
   // --- Bot selector state ---
   const [allBots, setAllBots] = useState([])
@@ -581,13 +729,33 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
                 {bulkText.split('\n').filter(l => l.trim()).length} / {selectedBotIds?.length || 0} messages
               </span>
             </label>
-            <textarea
-              value={bulkText}
-              onChange={(e) => setBulkText(e.target.value)}
-              className="bot-queue-textarea bot-queue-bulk-textarea"
-              placeholder={`Paste ${selectedBotIds?.length || 'your'} messages here, one per line:\nGreat match so far! ⚽\nThis team is on fire 🔥\nCome on boys! 💪\n...`}
-              rows={Math.min(Math.max(selectedBotIds?.length || 5, 5), 20)}
-            />
+            <div className="bot-queue-textarea-wrap">
+              <textarea
+                ref={bulkRef}
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                onFocus={() => setActiveTextarea('bulk')}
+                className="bot-queue-textarea bot-queue-bulk-textarea"
+                placeholder={`Paste ${selectedBotIds?.length || 'your'} messages here, one per line:\nGreat match so far! ⚽\nThis team is on fire 🔥\nCome on boys! 💪\n...`}
+                rows={Math.min(Math.max(selectedBotIds?.length || 5, 5), 20)}
+              />
+              <div className="bot-queue-textarea-actions">
+                <button
+                  type="button"
+                  className="bot-queue-emoji-btn"
+                  onClick={() => { setActiveTextarea('bulk'); setShowEmoji(!showEmoji); setShowGif(false) }}
+                  title="Emojis"
+                >{'\u{1F600}'}</button>
+                <button
+                  type="button"
+                  className="bot-queue-gif-btn"
+                  onClick={() => { setActiveTextarea('bulk'); setShowGif(!showGif); setShowEmoji(false) }}
+                  title="GIF"
+                >GIF</button>
+              </div>
+              {showEmoji && activeTextarea === 'bulk' && <BotEmojiPicker onSelect={handleEmojiSelect} />}
+              {showGif && activeTextarea === 'bulk' && <BotGifPicker onSelect={handleGifSelect} onClose={() => setShowGif(false)} />}
+            </div>
             <div className="bot-queue-bulk-info">
               {(() => {
                 const lineCount = bulkText.split('\n').filter(l => l.trim()).length
@@ -606,13 +774,33 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
             {messagesList.map((msg, index) => (
               <div key={index} className="bot-queue-varied-message-row">
                 <span className="bot-queue-varied-message-index">{index + 1}.</span>
-                <textarea
-                  value={msg}
-                  onChange={(e) => handleMessageChange(index, e.target.value)}
-                  className="bot-queue-textarea"
-                  placeholder={`Message variant ${index + 1}...`}
-                  rows={2}
-                />
+                <div className="bot-queue-textarea-wrap bot-queue-varied-wrap">
+                  <textarea
+                    ref={el => { variedRefs.current[index] = el }}
+                    value={msg}
+                    onChange={(e) => handleMessageChange(index, e.target.value)}
+                    onFocus={() => setActiveTextarea(index)}
+                    className="bot-queue-textarea"
+                    placeholder={`Message variant ${index + 1}...`}
+                    rows={2}
+                  />
+                  <div className="bot-queue-textarea-actions">
+                    <button
+                      type="button"
+                      className="bot-queue-emoji-btn"
+                      onClick={() => { setActiveTextarea(index); setShowEmoji(!showEmoji); setShowGif(false) }}
+                      title="Emojis"
+                    >{'\u{1F600}'}</button>
+                    <button
+                      type="button"
+                      className="bot-queue-gif-btn"
+                      onClick={() => { setActiveTextarea(index); setShowGif(!showGif); setShowEmoji(false) }}
+                      title="GIF"
+                    >GIF</button>
+                  </div>
+                  {showEmoji && activeTextarea === index && <BotEmojiPicker onSelect={handleEmojiSelect} />}
+                  {showGif && activeTextarea === index && <BotGifPicker onSelect={handleGifSelect} onClose={() => setShowGif(false)} />}
+                </div>
                 {messagesList.length > 2 && (
                   <button
                     onClick={() => handleRemoveMessage(index)}
@@ -633,13 +821,33 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
         ) : (
           <div className="bot-queue-field">
             <label className="bot-queue-label">Message</label>
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              className="bot-queue-textarea"
-              placeholder="Enter the message bots will send..."
-              rows={3}
-            />
+            <div className="bot-queue-textarea-wrap">
+              <textarea
+                ref={messageRef}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onFocus={() => setActiveTextarea('same')}
+                className="bot-queue-textarea"
+                placeholder="Enter the message bots will send..."
+                rows={3}
+              />
+              <div className="bot-queue-textarea-actions">
+                <button
+                  type="button"
+                  className="bot-queue-emoji-btn"
+                  onClick={() => { setActiveTextarea('same'); setShowEmoji(!showEmoji); setShowGif(false) }}
+                  title="Emojis"
+                >{'\u{1F600}'}</button>
+                <button
+                  type="button"
+                  className="bot-queue-gif-btn"
+                  onClick={() => { setActiveTextarea('same'); setShowGif(!showGif); setShowEmoji(false) }}
+                  title="GIF"
+                >GIF</button>
+              </div>
+              {showEmoji && activeTextarea === 'same' && <BotEmojiPicker onSelect={handleEmojiSelect} />}
+              {showGif && activeTextarea === 'same' && <BotGifPicker onSelect={handleGifSelect} onClose={() => setShowGif(false)} />}
+            </div>
           </div>
         )}
 
@@ -1412,6 +1620,197 @@ export default function BotQueuePanel({ getAuthHeaders, selectedBotIds: external
         .bot-queue-cancel-btn:hover {
           background: rgba(231,76,60,0.2);
           border-color: rgba(231,76,60,0.5);
+        }
+
+        /* Emoji & GIF picker styles */
+        .bot-queue-textarea-wrap {
+          position: relative;
+        }
+
+        .bot-queue-varied-wrap {
+          flex: 1;
+        }
+
+        .bot-queue-textarea-actions {
+          position: absolute;
+          bottom: 8px;
+          right: 10px;
+          display: flex;
+          gap: 4px;
+          z-index: 2;
+        }
+
+        .bot-queue-emoji-btn,
+        .bot-queue-gif-btn {
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 1px solid #2d313a;
+          background: #1e2130;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          transition: all 0.15s;
+        }
+
+        .bot-queue-gif-btn {
+          font-size: 10px;
+          font-weight: 700;
+          color: #a29bfe;
+          width: 34px;
+        }
+
+        .bot-queue-emoji-btn:hover,
+        .bot-queue-gif-btn:hover {
+          border-color: #6c5ce7;
+          background: rgba(108,92,231,0.15);
+        }
+
+        .bot-emoji-picker {
+          position: absolute;
+          bottom: 44px;
+          right: 0;
+          background: #1e2130;
+          border: 1px solid #2d313a;
+          border-radius: 10px;
+          padding: 8px;
+          z-index: 50;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+          width: 260px;
+        }
+
+        .bot-emoji-picker-grid {
+          display: grid;
+          grid-template-columns: repeat(9, 1fr);
+          gap: 2px;
+        }
+
+        .bot-emoji-picker-btn {
+          background: none;
+          border: none;
+          font-size: 18px;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 6px;
+          transition: background 0.12s;
+        }
+
+        .bot-emoji-picker-btn:hover {
+          background: rgba(108,92,231,0.2);
+        }
+
+        .bot-gif-picker {
+          position: absolute;
+          bottom: 44px;
+          right: 0;
+          background: #1e2130;
+          border: 1px solid #2d313a;
+          border-radius: 10px;
+          z-index: 50;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+          width: 320px;
+          height: 340px;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        .bot-gif-picker-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px;
+          border-bottom: 1px solid #2d313a;
+        }
+
+        .bot-gif-search-input {
+          flex: 1;
+          background: #161822;
+          border: 1px solid #2d313a;
+          border-radius: 6px;
+          padding: 6px 10px;
+          color: #e4e4e7;
+          font-size: 13px;
+          outline: none;
+        }
+
+        .bot-gif-search-input:focus {
+          border-color: #6c5ce7;
+        }
+
+        .bot-gif-picker-close {
+          background: none;
+          border: none;
+          color: #8b8fa3;
+          font-size: 14px;
+          cursor: pointer;
+          padding: 4px 6px;
+          border-radius: 4px;
+        }
+
+        .bot-gif-picker-close:hover {
+          color: #fff;
+          background: rgba(255,255,255,0.1);
+        }
+
+        .bot-gif-picker-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 4px;
+          padding: 6px;
+          overflow-y: auto;
+          flex: 1;
+          min-height: 0;
+        }
+
+        .bot-gif-picker-item {
+          background: #161822;
+          border: none;
+          cursor: pointer;
+          border-radius: 6px;
+          overflow: hidden;
+          padding: 0;
+          height: 90px;
+          position: relative;
+          transition: transform 0.15s;
+        }
+
+        .bot-gif-picker-item:hover {
+          transform: scale(1.03);
+          box-shadow: 0 0 0 2px #6c5ce7;
+        }
+
+        .bot-gif-picker-item img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .bot-gif-loading,
+        .bot-gif-empty {
+          grid-column: 1 / -1;
+          text-align: center;
+          color: #666;
+          font-size: 13px;
+          padding: 20px;
+        }
+
+        .bot-gif-picker-powered {
+          text-align: center;
+          font-size: 10px;
+          color: #555;
+          padding: 4px;
+          border-top: 1px solid #2d313a;
+        }
+
+        .bot-queue-varied-message-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          margin-bottom: 8px;
         }
       `}</style>
     </div>

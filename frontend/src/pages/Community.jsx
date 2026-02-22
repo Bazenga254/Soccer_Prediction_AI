@@ -1248,8 +1248,10 @@ export default function Community() {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
-  const [tab, setTab] = useState('all')
+  const [tab, setTab] = useState('free')
   const [sortBy, setSortBy] = useState('best')
+  const [dailyFreePicks, setDailyFreePicks] = useState([])
+  const [dailyFreeLoading, setDailyFreeLoading] = useState(true)
 
   const tabRef = useRef(tab)
   const pageRef = useRef(page)
@@ -1281,15 +1283,34 @@ export default function Community() {
     if (!silent) setLoading(false)
   }
 
+  const fetchDailyFree = async () => {
+    setDailyFreeLoading(true)
+    try {
+      const res = await axios.get('/api/predictions/daily-free')
+      setDailyFreePicks(res.data.predictions || [])
+    } catch { /* ignore */ }
+    setDailyFreeLoading(false)
+  }
+
+  // Always load daily free count on mount for badge display
   useEffect(() => {
-    if (tab !== 'upcoming') {
+    axios.get('/api/predictions/daily-free').then(res => {
+      setDailyFreePicks(res.data.predictions || [])
+      setDailyFreeLoading(false)
+    }).catch(() => setDailyFreeLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'free') {
+      fetchDailyFree()
+    } else if (tab !== 'upcoming') {
       fetchPredictions(1, tab, false, filterUserId, sortBy)
     }
   }, [tab, filterUserId, sortBy])
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (tabRef.current !== 'upcoming' && tabRef.current !== 'live') {
+      if (tabRef.current !== 'upcoming' && tabRef.current !== 'live' && tabRef.current !== 'free') {
         fetchPredictions(pageRef.current, tabRef.current, true, filterUserIdRef.current, sortByRef.current)
       }
     }, 5000)
@@ -1355,6 +1376,10 @@ export default function Community() {
       )}
 
       <div className="community-tabs">
+        <button className={`community-tab ${tab === 'free' ? 'active' : ''}`} onClick={() => handleTabChange('free')}>
+          {'\u26A1'} Daily Free Picks
+          {dailyFreePicks.length > 0 && <span className="community-tab-badge">{dailyFreePicks.length}</span>}
+        </button>
         <button className={`community-tab ${tab === 'all' ? 'active' : ''}`} onClick={() => handleTabChange('all')}>
           {t('community.allPredictions')}
         </button>
@@ -1370,10 +1395,39 @@ export default function Community() {
         </button>
       </div>
 
+      {tab === 'free' && (
+        <div className="daily-free-section">
+          <div className="daily-free-header">
+            <h3>{'\u26A1'} Today's Free AI Picks</h3>
+            <p className="daily-free-subtitle">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} &middot; Updated daily
+            </p>
+          </div>
+          {dailyFreeLoading ? (
+            <div className="loading-container">
+              <div className="spinner"></div>
+              <p>Loading today's picks...</p>
+            </div>
+          ) : dailyFreePicks.length === 0 ? (
+            <div className="empty-community">
+              <p>{'\u{1F52E}'} Today's predictions are being generated...</p>
+              <p className="empty-hint">Our AI analyzes top matches from the best leagues worldwide. Check back soon!</p>
+            </div>
+          ) : (
+            <div className="community-grid">
+              {dailyFreePicks.map(pred => (
+                <React.Fragment key={pred.id}>
+                  <PredictionCard pred={pred} onRate={handleRateUpdate} onPurchase={handlePurchase} />
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {tab === 'upcoming' && <UpcomingMatchesTab />}
       {tab === 'live' && <LiveBetsTab />}
 
-      {tab !== 'upcoming' && tab !== 'live' && (
+      {tab !== 'upcoming' && tab !== 'live' && tab !== 'free' && (
         <>
           <div className="sort-selector">
             {SORT_OPTIONS.map(opt => (

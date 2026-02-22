@@ -21,6 +21,10 @@ ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
 # Legacy Football-Data.org key (kept for backup)
 FOOTBALL_DATA_API_KEY = os.environ.get("FOOTBALL_DATA_API_KEY", "")
 
+# GIPHY API Key (free tier - 100 requests/hour)
+# Get your free key at: https://developers.giphy.com/dashboard/
+GIPHY_API_KEY = os.environ.get("GIPHY_API_KEY", "")
+
 # API-Football League IDs
 LEAGUE_IDS = {
     # Top 5 European Leagues
@@ -196,15 +200,7 @@ CALENDAR_YEAR_LEAGUE_IDS = {
     113,   # Swedish Allsvenskan (Apr-Nov)
     103,   # Norwegian Eliteserien (Apr-Nov)
     119,   # Danish Superliga (Jul-May, but API often uses start year)
-    # Africa
-    233,   # Egyptian Premier League
-    288,   # South African Premier League
-    200,   # Moroccan Botola Pro
-    186,   # Algerian Ligue 1
-    202,   # Tunisian Ligue 1
-    332,   # Nigerian NPFL
-    276,   # Kenyan Premier League
-    274,   # Ghanaian Premier League
+    # NOTE: African leagues are European-style (Aug/Sep-May), NOT calendar year
 }
 
 

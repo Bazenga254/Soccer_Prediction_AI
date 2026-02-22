@@ -383,13 +383,58 @@ async def fetch_standings(competition: str = "PL") -> Optional[List[Dict]]:
     return _get_cache(cache_key)
 
 
+async def _fetch_fixtures_for_season(league_id: int, season: int, days: int = 14) -> Optional[List[Dict]]:
+    """Try fetching upcoming fixtures for a specific league+season combo."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{BASE_URL}/fixtures"
+            from_date = datetime.now().strftime("%Y-%m-%d")
+            to_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+
+            params = {
+                "league": league_id,
+                "season": season,
+                "from": from_date,
+                "to": to_date,
+            }
+
+            print(f"API Request: GET {url}")
+            print(f"Params: league={league_id}, season={season}, from={from_date}, to={to_date}")
+
+            async with session.get(url, headers=_get_headers(), params=params) as response:
+                print(f"API Response Status: {response.status}")
+
+                if response.status == 200:
+                    data = await response.json()
+                    print(f"API Results: {data.get('results', 0)}")
+                    print(f"API Errors: {data.get('errors', {})}")
+
+                    errors = data.get("errors")
+                    if errors and len(errors) > 0:
+                        print(f"API Error: {errors}")
+                        return None
+
+                    fixtures_data = data.get("response", [])
+                    print(f"Raw fixtures count: {len(fixtures_data)}")
+
+                    if fixtures_data:
+                        return _parse_fixtures(fixtures_data)
+                else:
+                    text = await response.text()
+                    print(f"API Error Response: {text[:500]}")
+    except Exception as e:
+        print(f"Fixtures request failed: {type(e).__name__}: {e}")
+    return None
+
+
 async def fetch_upcoming_fixtures(competition: str = "PL", days: int = 14) -> Optional[List[Dict]]:
     """
     Fetch upcoming fixtures for a competition.
     API Endpoint: GET /fixtures?league={id}&season={year}&from={date}&to={date}
 
     Note: Free tier doesn't support 'next' parameter, so we use date range.
-    If current date is beyond the season, we fetch the last matches of the season.
+    Uses auto-fallback: if the calculated season returns 0 fixtures,
+    tries the alternate season (prev or next year) before giving up.
     """
     league_id = _get_league_id(competition)
     season = config.get_season_for_league(league_id)
@@ -417,80 +462,44 @@ async def fetch_upcoming_fixtures(competition: str = "PL", days: int = 14) -> Op
         if historical:
             _set_cache(cache_key, historical)
             return historical
-        # Try alternate method
         historical = await _fetch_last_season_fixtures(league_id)
         if historical:
             _set_cache(cache_key, historical)
             return historical
-        # Final fallback: return sample fixtures
         print("API failed, returning sample fixtures")
         sample = _generate_sample_fixtures(competition, league_id)
         _set_cache(cache_key, sample)
         return sample
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            url = f"{BASE_URL}/fixtures"
+    # Try primary season
+    fixtures = await _fetch_fixtures_for_season(league_id, season, days)
+    if fixtures:
+        print(f"Processed {len(fixtures)} fixtures for season {season}")
+        _set_cache(cache_key, fixtures)
+        return fixtures
 
-            # Use date range (free tier compatible)
-            from_date = datetime.now().strftime("%Y-%m-%d")
-            to_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+    # Auto-fallback: try alternate season (prev year or next year)
+    # This self-heals if a league is miscategorized as calendar-year vs European
+    alt_season = season - 1 if league_id in config.CALENDAR_YEAR_LEAGUE_IDS else season + 1
+    print(f"No fixtures for season {season}, trying alternate season {alt_season}")
+    fixtures = await _fetch_fixtures_for_season(league_id, alt_season, days)
+    if fixtures:
+        print(f"Found {len(fixtures)} fixtures in alternate season {alt_season}")
+        _set_cache(cache_key, fixtures)
+        return fixtures
 
-            params = {
-                "league": league_id,
-                "season": season,
-                "from": from_date,
-                "to": to_date,
-            }
+    # Still nothing — fetch historical as last resort
+    print("No upcoming fixtures in either season, fetching historical matches")
+    historical = await _fetch_last_season_fixtures(league_id)
+    if historical:
+        _set_cache(cache_key, historical)
+        return historical
 
-            print(f"API Request: GET {url}")
-            print(f"Params: league={league_id}, season={season}, from={from_date}, to={to_date}")
-
-            async with session.get(url, headers=_get_headers(), params=params) as response:
-                print(f"API Response Status: {response.status}")
-
-                if response.status == 200:
-                    data = await response.json()
-
-                    # Log API response info
-                    print(f"API Results: {data.get('results', 0)}")
-                    print(f"API Errors: {data.get('errors', {})}")
-
-                    # Check for API errors
-                    errors = data.get("errors")
-                    if errors and len(errors) > 0:
-                        print(f"API Error: {errors}")
-                        # If free plan limitation, try fetching last matches of season
-                        if "plan" in str(errors).lower() or data.get("results", 0) == 0:
-                            return await _fetch_last_season_fixtures(league_id)
-                        return None
-
-                    fixtures_data = data.get("response", [])
-                    print(f"Raw fixtures count: {len(fixtures_data)}")
-
-                    # If no fixtures found for date range, fetch last matches
-                    if not fixtures_data:
-                        print("No upcoming fixtures, fetching last season matches")
-                        return await _fetch_last_season_fixtures(league_id)
-
-                    fixtures = _parse_fixtures(fixtures_data)
-                    print(f"Processed {len(fixtures)} fixtures")
-                    _set_cache(cache_key, fixtures)
-                    return fixtures
-
-                else:
-                    text = await response.text()
-                    print(f"API Error Response: {text[:500]}")
-
-    except Exception as e:
-        print(f"Fixtures request failed: {type(e).__name__}: {e}")
-
-    # Try cache first, then sample data
+    # Try cache, then sample data
     cached = _get_cache(cache_key)
     if cached:
         return cached
 
-    # Final fallback: return sample fixtures
     print("All API methods failed, returning sample fixtures")
     sample = _generate_sample_fixtures(competition, league_id)
     _set_cache(cache_key, sample)
@@ -929,6 +938,7 @@ async def fetch_head_to_head(team1_id: int, team2_id: int, limit: int = 10) -> O
                         fixture = match.get("fixture", {})
                         teams = match.get("teams", {})
                         goals = match.get("goals", {})
+                        score_data = match.get("score", {})
 
                         home_team = teams.get("home", {})
                         away_team = teams.get("away", {})
@@ -943,6 +953,8 @@ async def fetch_head_to_head(team1_id: int, team2_id: int, limit: int = 10) -> O
                             "away_team": away_team.get("name"),
                             "home_score": goals.get("home"),
                             "away_score": goals.get("away"),
+                            "ht_home_score": score_data.get("halftime", {}).get("home"),
+                            "ht_away_score": score_data.get("halftime", {}).get("away"),
                             # For prediction compatibility
                             "team_a_id": team1_id,
                             "team_b_id": team2_id,
@@ -1208,6 +1220,65 @@ def search_cached_fixtures(query: str, limit: int = 15) -> List[Dict]:
     # Sort by date
     results.sort(key=lambda x: x.get("date") or x.get("timestamp") or "", reverse=True)
     return results[:limit]
+
+
+async def search_team_by_name(name: str) -> Optional[List[Dict]]:
+    """
+    Search for teams by name using API-Football /teams endpoint.
+    API Endpoint: GET /teams?search={name}
+    Returns list of matching teams with id, name, country, logo.
+    Minimum 3 characters required by API.
+    """
+    if not config.API_FOOTBALL_KEY or not name or len(name.strip()) < 3:
+        return None
+
+    clean_name = name.strip()
+    cache_key = f"team_search_{clean_name.lower()}"
+
+    if _is_cache_valid(cache_key, 86400):  # 24-hour cache
+        return _get_cache(cache_key)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{BASE_URL}/teams"
+            params = {"search": clean_name}
+
+            print(f"[TeamSearch] API Request: GET {url}?search={clean_name}")
+
+            async with session.get(url, headers=_get_headers(), params=params,
+                                   timeout=aiohttp.ClientTimeout(total=15)) as response:
+                print(f"[TeamSearch] Response Status: {response.status}")
+
+                if response.status == 200:
+                    data = await response.json()
+
+                    errors = data.get("errors")
+                    if errors and len(errors) > 0:
+                        print(f"[TeamSearch] API Error: {errors}")
+                        return None
+
+                    results = data.get("response", [])
+                    print(f"[TeamSearch] Found {len(results)} teams for '{clean_name}'")
+
+                    teams = []
+                    for item in results:
+                        team = item.get("team", {})
+                        teams.append({
+                            "id": team.get("id"),
+                            "name": team.get("name"),
+                            "code": team.get("code"),
+                            "country": team.get("country"),
+                            "logo": team.get("logo"),
+                            "national": team.get("national", False),
+                        })
+
+                    _set_cache(cache_key, teams)
+                    return teams
+
+    except Exception as e:
+        print(f"[TeamSearch] Request failed: {type(e).__name__}: {e}")
+
+    return _get_cache(cache_key)
 
 
 async def fetch_coach(team_id: int) -> Optional[Dict]:

@@ -33,6 +33,7 @@ const ALL_TABS = [
   { id: 'bots', icon: '🤖', label: 'Bot Accounts', module: 'bots' },
   { id: 'analytics', icon: '📈', label: 'Creator Analytics', module: 'community' },
   { id: 'docs', icon: '📚', label: 'Documentation', module: 'dashboard' },
+  { id: 'extension', icon: '🧩', label: 'Chrome Extension', module: 'dashboard' },
 ]
 
 export default function AdminSidebar({ activeTab, setActiveTab }) {

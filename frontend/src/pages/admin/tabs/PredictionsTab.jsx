@@ -94,14 +94,17 @@ export default function PredictionsTab() {
   }, [fetchAccuracy, fetchPredictions])
 
   // Compute stats from accuracy data
-  const totalPredictions = accuracy?.total || accuracy?.total_predictions || predictions.length
-  const accuracyPct = accuracy?.accuracy != null
-    ? (accuracy.accuracy * 100).toFixed(1)
-    : accuracy?.accuracy_pct != null
-      ? accuracy.accuracy_pct.toFixed(1)
+  const totalPredictions = accuracy?.total_predictions || accuracy?.total || predictions.length
+  const resultAcc = accuracy?.result_accuracy || {}
+  const accuracyPct = resultAcc.percentage != null
+    ? resultAcc.percentage.toFixed(1)
+    : accuracy?.accuracy != null
+      ? (accuracy.accuracy * 100).toFixed(1)
       : '—'
-  const wins = accuracy?.correct || accuracy?.wins || 0
-  const losses = accuracy?.incorrect || accuracy?.losses || 0
+  const wins = resultAcc.correct || accuracy?.correct || 0
+  const losses = resultAcc.total != null && resultAcc.correct != null
+    ? resultAcc.total - resultAcc.correct
+    : accuracy?.incorrect || 0
 
   return (
     <div className="admin-tab-content">
@@ -195,6 +198,7 @@ export default function PredictionsTab() {
                   <thead>
                     <tr>
                       <th>Date</th>
+                      <th>User</th>
                       <th>Match</th>
                       <th>Predicted Outcome</th>
                       <th>Actual Result</th>
@@ -204,7 +208,7 @@ export default function PredictionsTab() {
                   <tbody>
                     {predictions.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="admin-table-empty">
+                        <td colSpan={6} className="admin-table-empty">
                           No predictions tracked yet.
                         </td>
                       </tr>
@@ -220,10 +224,19 @@ export default function PredictionsTab() {
                           pred.status === 'incorrect' ||
                           pred.result === 'loss'
                         const isPending = !isCorrect && !isIncorrect
+                        const userName = pred.user_name || pred.user || 'System'
 
                         return (
                           <tr key={predId}>
                             <td>{formatDate(pred.date || pred.match_date || pred.created_at)}</td>
+                            <td>
+                              <div className="admin-user-cell">
+                                <div className="admin-avatar-sm" style={{ background: userName === 'System' ? '#8b8d97' : '#6c5ce7' }}>
+                                  {userName.charAt(0).toUpperCase()}
+                                </div>
+                                <span>{userName}</span>
+                              </div>
+                            </td>
                             <td>
                               <div className="admin-match-cell">
                                 <strong>
