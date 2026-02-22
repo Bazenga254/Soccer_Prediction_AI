@@ -543,6 +543,24 @@ export default function Upgrade() {
             <span className="pro-value">{t('upgrade.unlimited')}</span>
           </div>
           <div className="comparison-row">
+            <span className="feature-label">Live Score Tracking</span>
+            <span className="pro-value check-value">&#10003;</span>
+            <span className="pro-value check-value">&#10003;</span>
+            <span className="pro-value check-value">&#10003;</span>
+          </div>
+          <div className="comparison-row">
+            <span className="feature-label">40+ Leagues Worldwide</span>
+            <span className="pro-value check-value">&#10003;</span>
+            <span className="pro-value check-value">&#10003;</span>
+            <span className="pro-value check-value">&#10003;</span>
+          </div>
+          <div className="comparison-row">
+            <span className="feature-label">Odds Comparison</span>
+            <span className="no-value">&mdash;</span>
+            <span className="no-value">&mdash;</span>
+            <span className="pro-value check-value">&#10003;</span>
+          </div>
+          <div className="comparison-row">
             <span className="feature-label">{t('upgrade.advancedAnalytics')}</span>
             <span className="no-value">&mdash;</span>
             <span className="no-value">&mdash;</span>
@@ -550,6 +568,24 @@ export default function Upgrade() {
           </div>
           <div className="comparison-row">
             <span className="feature-label">{t('upgrade.valueBetting')}</span>
+            <span className="no-value">&mdash;</span>
+            <span className="no-value">&mdash;</span>
+            <span className="pro-value check-value">&#10003;</span>
+          </div>
+          <div className="comparison-row">
+            <span className="feature-label">Chrome Extension</span>
+            <span>Basic</span>
+            <span>Basic</span>
+            <span className="pro-value">{t('upgrade.unlimited')}</span>
+          </div>
+          <div className="comparison-row">
+            <span className="feature-label">Community Predictions</span>
+            <span>1 share/day</span>
+            <span>1 share/day</span>
+            <span className="pro-value">{t('upgrade.unlimited')}</span>
+          </div>
+          <div className="comparison-row">
+            <span className="feature-label">Sell Predictions</span>
             <span className="no-value">&mdash;</span>
             <span className="no-value">&mdash;</span>
             <span className="pro-value check-value">&#10003;</span>

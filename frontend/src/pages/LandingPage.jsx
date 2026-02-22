@@ -74,17 +74,39 @@ export default function LandingPage() {
     { number: '03', icon: STEP_ICONS[2], title: t('landing.step3Title'), description: t('landing.step3Desc') },
   ]
 
-  const TRIAL_FEATURES = [
-    '10 AI analyses per day',
+  const trialKey = isKenyan ? 'trial_kes' : 'trial_usd'
+  const weeklyKey = isKenyan ? 'weekly_kes' : 'weekly_usd'
+  const monthlyKey = isKenyan ? 'monthly_kes' : 'monthly_usd'
+
+  const TRIAL_FEATURES = pricing?.plans?.[trialKey]?.features || [
+    '10 AI match predictions per day',
     '3 jackpot analyses per day',
-    'Unlimited AI chat usage',
-    'Unlimited game analysis',
-    '3 days access',
+    'Unlimited AI chat assistant',
+    'Live score tracking & goal alerts',
+    '40+ leagues worldwide',
+    'Community predictions feed',
+    'Chrome extension access',
+    '3 days full access',
   ]
 
-  const PRO_FEATURES = [
-    t('landing.proFeature1'), t('landing.proFeature2'), t('landing.proFeature3'),
-    t('landing.proFeature4'), t('landing.proFeature5'), t('landing.proFeature6'),
+  const PRO_FEATURES = pricing?.plans?.[weeklyKey]?.features || [
+    'Unlimited AI match predictions',
+    'Unlimited jackpot analyses',
+    'Unlimited AI chat prompts',
+    'Odds comparison across bookmakers',
+    'Advanced analytics & value betting',
+    'Live score tracking & goal alerts',
+    '40+ leagues worldwide',
+    'Chrome extension unlimited access',
+    'Community & paid predictions',
+    'Ad-free experience',
+    'Priority support',
+  ]
+
+  const MONTHLY_FEATURES = pricing?.plans?.[monthlyKey]?.features || [
+    ...PRO_FEATURES,
+    'Sell your predictions & earn money',
+    'Save 20% vs weekly',
   ]
 
   return (
@@ -221,7 +243,7 @@ export default function LandingPage() {
                 </div>
               </div>
               <ul className="landing-plan-features">
-                {PRO_FEATURES.map((f, i) => (
+                {MONTHLY_FEATURES.map((f, i) => (
                   <li key={i} className="landing-feature-item">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                     {f}
