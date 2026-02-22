@@ -359,13 +359,28 @@ async function handleMatchStats(teamAId, teamBId, competition) {
 // === SUBSCRIPTION & PAYMENT ===
 async function getPlans() {
   try {
-    const resp = await fetch(`${API_BASE}/api/pricing`);
-    if (!resp.ok) return { error: "Failed to load plans" };
-    const data = await resp.json();
+    // Fetch plans and detect currency in parallel
+    const [pricingResp, geoResp] = await Promise.all([
+      fetch(`${API_BASE}/api/pricing`),
+      fetch(`${API_BASE}/api/geo/detect`).catch(() => null),
+    ]);
+    if (!pricingResp.ok) return { error: "Failed to load plans" };
+    const data = await pricingResp.json();
+
+    // Detect user currency (default USD)
+    let currency = "USD";
+    try {
+      if (geoResp && geoResp.ok) {
+        const geo = await geoResp.json();
+        currency = geo.currency || "USD";
+      }
+    } catch { /* fallback to USD */ }
+
     // Convert plans object to array with id field for popup consumption
     if (data.plans && !Array.isArray(data.plans)) {
       data.plans = Object.entries(data.plans).map(([id, plan]) => ({ id, ...plan }));
     }
+    data.detectedCurrency = currency;
     return data;
   } catch {
     return { error: "Connection failed" };

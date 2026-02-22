@@ -125,7 +125,11 @@ async function loadPlans(containerId) {
     return;
   }
 
-  const plans = data.plans.filter((p) => p.id !== "trial_usd" && p.id !== "trial_kes");
+  // Filter by detected currency and exclude trial plans
+  const userCurrency = data.detectedCurrency || "USD";
+  const plans = data.plans.filter(
+    (p) => p.currency === userCurrency && p.id !== "trial_usd" && p.id !== "trial_kes"
+  );
 
   container.innerHTML = plans
     .map(
