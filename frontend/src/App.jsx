@@ -38,6 +38,7 @@ const TermsAcceptance = lazy(() => import('./components/TermsAcceptance'))
 const InstallPrompt = lazy(() => import('./components/InstallPrompt'))
 const CookieConsent = lazy(() => import('./components/CookieConsent'))
 const LanguageBanner = lazy(() => import('./components/LanguageBanner'))
+const NotificationPrompt = lazy(() => import('./components/NotificationPrompt'))
 
 function PageLoader() {
   return (
@@ -119,6 +120,7 @@ function ProtectedApp() {
         <Suspense fallback={null}>
           <BetSlip />
           <SupportChat />
+          <NotificationPrompt />
         </Suspense>
       </div>
     </BetSlipProvider>
