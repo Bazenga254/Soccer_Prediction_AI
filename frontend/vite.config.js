@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.png', 'favicon.ico', 'offline.html'],
+      includeAssets: ['favicon.ico', 'offline.html'],
       manifest: {
         name: 'Spark AI - Soccer Predictions',
         short_name: 'Spark AI',
