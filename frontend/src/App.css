@@ -14700,6 +14700,27 @@ html, body {
   color: #bfdbfe;
 }
 
+.landing-install-app-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  border: none;
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.landing-install-app-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
+}
+
 .landing-cta-btn {
   background: linear-gradient(135deg, #22c55e, #16a34a);
   border: none;
@@ -15447,6 +15468,7 @@ html, body {
   }
 
   .landing-nav-mobile-actions .landing-extension-btn,
+  .landing-nav-mobile-actions .landing-install-app-btn,
   .landing-nav-mobile-actions .landing-signin-btn,
   .landing-nav-mobile-actions .landing-cta-btn {
     width: 100%;

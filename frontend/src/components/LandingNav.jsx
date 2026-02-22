@@ -7,6 +7,8 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
   const { t } = useTranslation()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [canInstall, setCanInstall] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -15,6 +17,32 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  useEffect(() => {
+    if (window.matchMedia('(display-mode: standalone)').matches) return
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    if (isIOS) {
+      setCanInstall(true)
+      return
+    }
+    const handler = (e) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+      setCanInstall(true)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstallApp = async () => {
+    if (installPrompt) {
+      installPrompt.prompt()
+      const { outcome } = await installPrompt.userChoice
+      if (outcome === 'accepted') setCanInstall(false)
+      setInstallPrompt(null)
+    }
+  }
 
   const handleNavClick = (id) => {
     setMobileOpen(false)
@@ -41,6 +69,12 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
               Install Extension
             </a>
             <button className="landing-signin-btn" onClick={() => { setMobileOpen(false); onSignIn() }}>{t('nav.signIn')}</button>
+            {canInstall && (
+              <button className="landing-install-app-btn" onClick={() => { setMobileOpen(false); handleInstallApp() }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Install App
+              </button>
+            )}
             <button className="landing-cta-btn" onClick={() => { setMobileOpen(false); onGetStarted() }}>{t('nav.getStarted')}</button>
           </div>
         </div>
@@ -52,6 +86,12 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
             Install Extension
           </a>
           <button className="landing-signin-btn" onClick={onSignIn}>{t('nav.signIn')}</button>
+          {canInstall && (
+            <button className="landing-install-app-btn" onClick={handleInstallApp}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Install App
+            </button>
+          )}
           <button className="landing-cta-btn" onClick={onGetStarted}>{t('nav.getStarted')}</button>
         </div>
 
