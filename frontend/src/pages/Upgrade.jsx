@@ -52,17 +52,13 @@ export default function Upgrade() {
 
   const [kesRate, setKesRate] = useState(130) // KES per 1 USD
 
-  // Fetch KES exchange rate and min deposit for Kenyan users
+  // Fetch KES exchange rate (min deposit is fixed at KES 100 / $1)
   useEffect(() => {
     if (currency !== 'KES') return
     axios.post('/api/payment/quote', { amount_usd: 1 })
       .then(res => {
         if (res.data.amount_kes) {
-          const rate = res.data.amount_kes
-          setKesRate(rate)
-          const kesMin = Math.ceil(1 * rate)
-          setMinDepositKes(kesMin)
-          setDepositAmount(prev => prev <= 100 ? kesMin : prev)
+          setKesRate(res.data.amount_kes)
         }
       })
       .catch(() => {})
