@@ -1,40 +1,50 @@
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Header from './components/Header'
-import FixturesList from './components/FixturesList'
-import MatchAnalysis from './pages/MatchAnalysis'
-import LiveScores from './pages/LiveScores'
-import TrackRecord from './pages/TrackRecord'
-import AccessGate from './pages/AccessGate'
-import LandingPage from './pages/LandingPage'
-import Admin from './pages/admin/Admin'
-import Employee from './pages/employee/Employee'
-import InviteRegistration from './pages/InviteRegistration'
-import Profile from './pages/Profile'
-import Community from './pages/Community'
-import Upgrade from './pages/Upgrade'
-import CreatorDashboard from './pages/CreatorDashboard'
-import Transactions from './pages/Transactions'
-import JackpotAnalyzer from './pages/JackpotAnalyzer'
-import MyAnalysis from './pages/MyAnalysis'
-import DocsPage from './pages/DocsPage'
-import ReferralLanding from './pages/ReferralLanding'
-import ResetPassword from './pages/ResetPassword'
-import TermsOfService from './pages/TermsOfService'
-import BetSlip from './components/BetSlip'
-import SupportChat from './components/SupportChat'
-import AccountSetup from './components/AccountSetup'
-import TermsAcceptance from './components/TermsAcceptance'
-import LanguageBanner from './components/LanguageBanner'
-import CookieConsent from './components/CookieConsent'
-import InstallPrompt from './components/InstallPrompt'
-import OfflineBanner from './components/OfflineBanner'
 import { useTracking } from './hooks/useTracking'
 import { BetSlipProvider } from './context/BetSlipContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { CurrencyProvider } from './context/CurrencyContext'
+import OfflineBanner from './components/OfflineBanner'
 import './App.css'
+
+// Lazy-load all page components for code splitting
+const LiveScores = lazy(() => import('./pages/LiveScores'))
+const FixturesList = lazy(() => import('./components/FixturesList'))
+const MatchAnalysis = lazy(() => import('./pages/MatchAnalysis'))
+const TrackRecord = lazy(() => import('./pages/TrackRecord'))
+const AccessGate = lazy(() => import('./pages/AccessGate'))
+const LandingPage = lazy(() => import('./pages/LandingPage'))
+const Admin = lazy(() => import('./pages/admin/Admin'))
+const Employee = lazy(() => import('./pages/employee/Employee'))
+const InviteRegistration = lazy(() => import('./pages/InviteRegistration'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Community = lazy(() => import('./pages/Community'))
+const Upgrade = lazy(() => import('./pages/Upgrade'))
+const CreatorDashboard = lazy(() => import('./pages/CreatorDashboard'))
+const Transactions = lazy(() => import('./pages/Transactions'))
+const JackpotAnalyzer = lazy(() => import('./pages/JackpotAnalyzer'))
+const MyAnalysis = lazy(() => import('./pages/MyAnalysis'))
+const DocsPage = lazy(() => import('./pages/DocsPage'))
+const ReferralLanding = lazy(() => import('./pages/ReferralLanding'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const TermsOfService = lazy(() => import('./pages/TermsOfService'))
+const BetSlip = lazy(() => import('./components/BetSlip'))
+const SupportChat = lazy(() => import('./components/SupportChat'))
+const AccountSetup = lazy(() => import('./components/AccountSetup'))
+const TermsAcceptance = lazy(() => import('./components/TermsAcceptance'))
+const InstallPrompt = lazy(() => import('./components/InstallPrompt'))
+const CookieConsent = lazy(() => import('./components/CookieConsent'))
+const LanguageBanner = lazy(() => import('./components/LanguageBanner'))
+
+function PageLoader() {
+  return (
+    <div className="loading-container">
+      <div className="spinner"></div>
+    </div>
+  )
+}
 
 function ProtectedApp() {
   const { isAuthenticated, loading, user, logout } = useAuth()
@@ -42,16 +52,17 @@ function ProtectedApp() {
   if (loading) {
     return (
       <div className="app">
-        <div className="loading-container">
-          <div className="spinner"></div>
-          <p>Loading...</p>
-        </div>
+        <PageLoader />
       </div>
     )
   }
 
   if (!isAuthenticated) {
-    return <LandingPage />
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <LandingPage />
+      </Suspense>
+    )
   }
 
   // Redirect employees to employee portal
@@ -63,7 +74,9 @@ function ProtectedApp() {
   if (user && user.profile_complete === false) {
     return (
       <div className="app">
-        <AccountSetup />
+        <Suspense fallback={<PageLoader />}>
+          <AccountSetup />
+        </Suspense>
       </div>
     )
   }
@@ -72,7 +85,9 @@ function ProtectedApp() {
   if (user && user.terms_accepted === false) {
     return (
       <div className="app">
-        <TermsAcceptance />
+        <Suspense fallback={<PageLoader />}>
+          <TermsAcceptance />
+        </Suspense>
       </div>
     )
   }
@@ -82,24 +97,28 @@ function ProtectedApp() {
       <div className="app">
         <Header user={user} logout={logout} />
         <main className="main-content">
-          <Routes>
-            <Route path="/" element={<LiveScores />} />
-            <Route path="/live" element={<LiveScores />} />
-            <Route path="/competition/:competitionId" element={<FixturesList />} />
-            <Route path="/match/:competitionId/:homeId/:awayId" element={<MatchAnalysis />} />
-            <Route path="/my-predictions" element={<TrackRecord />} />
-            <Route path="/predictions" element={<Community />} />
-            <Route path="/jackpot" element={<JackpotAnalyzer />} />
-            <Route path="/my-analysis" element={<MyAnalysis />} />
-            <Route path="/upgrade" element={<Upgrade />} />
-            <Route path="/creator" element={<CreatorDashboard />} />
-            <Route path="/transactions" element={<Transactions />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/docs" element={<DocsPage />} />
-          </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/" element={<LiveScores />} />
+              <Route path="/live" element={<LiveScores />} />
+              <Route path="/competition/:competitionId" element={<FixturesList />} />
+              <Route path="/match/:competitionId/:homeId/:awayId" element={<MatchAnalysis />} />
+              <Route path="/my-predictions" element={<TrackRecord />} />
+              <Route path="/predictions" element={<Community />} />
+              <Route path="/jackpot" element={<JackpotAnalyzer />} />
+              <Route path="/my-analysis" element={<MyAnalysis />} />
+              <Route path="/upgrade" element={<Upgrade />} />
+              <Route path="/creator" element={<CreatorDashboard />} />
+              <Route path="/transactions" element={<Transactions />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/docs" element={<DocsPage />} />
+            </Routes>
+          </Suspense>
         </main>
-        <BetSlip />
-        <SupportChat />
+        <Suspense fallback={null}>
+          <BetSlip />
+          <SupportChat />
+        </Suspense>
       </div>
     </BetSlipProvider>
   )
@@ -125,21 +144,25 @@ function App() {
     <BrowserRouter>
       <CurrencyProvider>
       <AuthProvider>
-        <LanguageBanner />
-        <CookieConsent />
-        <InstallPrompt />
+        <Suspense fallback={null}>
+          <LanguageBanner />
+          <CookieConsent />
+          <InstallPrompt />
+        </Suspense>
         <TrackingWrapper>
-          <Routes>
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/employee" element={<Employee />} />
-            <Route path="/invite/:token" element={<InviteRegistration />} />
-            <Route path="/ref/:username" element={<ReferralLanding />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/login" element={<AccessGate />} />
-            <Route path="/docs" element={<DocsPage />} />
-            <Route path="/terms" element={<TermsOfService />} />
-            <Route path="*" element={<ProtectedApp />} />
-          </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/employee" element={<Employee />} />
+              <Route path="/invite/:token" element={<InviteRegistration />} />
+              <Route path="/ref/:username" element={<ReferralLanding />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/login" element={<AccessGate />} />
+              <Route path="/docs" element={<DocsPage />} />
+              <Route path="/terms" element={<TermsOfService />} />
+              <Route path="*" element={<ProtectedApp />} />
+            </Routes>
+          </Suspense>
         </TrackingWrapper>
       </AuthProvider>
       </CurrencyProvider>
