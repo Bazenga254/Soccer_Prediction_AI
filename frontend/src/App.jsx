@@ -28,6 +28,8 @@ import AccountSetup from './components/AccountSetup'
 import TermsAcceptance from './components/TermsAcceptance'
 import LanguageBanner from './components/LanguageBanner'
 import CookieConsent from './components/CookieConsent'
+import InstallPrompt from './components/InstallPrompt'
+import OfflineBanner from './components/OfflineBanner'
 import { useTracking } from './hooks/useTracking'
 import { BetSlipProvider } from './context/BetSlipContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -118,11 +120,14 @@ function App() {
   }, [i18n.language])
 
   return (
+    <>
+    <OfflineBanner />
     <BrowserRouter>
       <CurrencyProvider>
       <AuthProvider>
         <LanguageBanner />
         <CookieConsent />
+        <InstallPrompt />
         <TrackingWrapper>
           <Routes>
             <Route path="/admin" element={<Admin />} />
@@ -139,6 +144,7 @@ function App() {
       </AuthProvider>
       </CurrencyProvider>
     </BrowserRouter>
+    </>
   )
 }
 
