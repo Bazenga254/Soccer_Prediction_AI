@@ -95,6 +95,10 @@ export default function Upgrade() {
   const jackpotPrice = currency === 'KES'
     ? (pricingInfo?.pay_per_use?.jackpot_analysis_price_kes ?? 65)
     : (pricingInfo?.pay_per_use?.jackpot_analysis_price_usd ?? 0.65)
+  const chatTopupPrice = currency === 'KES'
+    ? (pricingInfo?.pay_per_use?.chat_topup_price_kes ?? 50)
+    : (pricingInfo?.pay_per_use?.chat_topup_price_usd ?? 0.50)
+  const chatTopupPrompts = pricingInfo?.pay_per_use?.chat_topup_prompts ?? 2
 
   const handleUpgrade = (planId, plan) => {
     if (plan.currency === 'KES' || isKenyan) {
@@ -410,6 +414,10 @@ export default function Upgrade() {
               <div className="paygo-price-item">
                 <span className="paygo-price-label">{t('upgrade.jackpotAnalysis')}</span>
                 <span className="paygo-price-value">{currencySymbol}{jackpotPrice.toFixed(2)}</span>
+              </div>
+              <div className="paygo-price-item">
+                <span className="paygo-price-label">AI Chat Prompts (x{chatTopupPrompts})</span>
+                <span className="paygo-price-value">{currencySymbol}{chatTopupPrice.toFixed(2)}</span>
               </div>
             </div>
             <ul className="plan-features">

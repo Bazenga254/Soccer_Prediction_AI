@@ -1,7 +1,7 @@
 """
-Gemini-powered football data module.
-Uses Google Search grounding to fetch accurate, real-time manager and injury data.
-Falls back to API-Football if Gemini is unavailable.
+AI-powered football data module.
+Uses OpenAI GPT-4o-mini to fetch manager and injury data.
+Falls back to API-Football if OpenAI is unavailable.
 """
 
 import asyncio
@@ -60,24 +60,22 @@ def _set_cached(key: str, data: dict):
 
 async def fetch_team_info(team_name: str, competition_name: str) -> Optional[dict]:
     """
-    Fetch current manager and injury data for a team using Gemini with Google Search.
+    Fetch current manager and injury data for a team using OpenAI GPT-4o-mini.
     Returns dict with 'coach' and 'injuries' keys, or None on failure.
     """
-    cache_key = f"gemini_team_{team_name.lower().replace(' ', '_')}"
+    cache_key = f"ai_team_{team_name.lower().replace(' ', '_')}"
     cached = _get_cached(cache_key)
     if cached:
-        print(f"[GeminiData] Cache hit for {team_name}")
+        print(f"[AIData] Cache hit for {team_name}")
         return cached
 
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    if not gemini_key:
-        print("[GeminiData] No GEMINI_API_KEY set, skipping")
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        print("[AIData] No OPENAI_API_KEY set, skipping")
         return None
 
-    from google import genai
-    from google.genai import types as genai_types
-
-    client = genai.Client(api_key=gemini_key)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
     prompt = TEAM_INFO_PROMPT.format(
         team_name=team_name,
@@ -86,15 +84,14 @@ async def fetch_team_info(team_name: str, competition_name: str) -> Optional[dic
 
     for attempt in range(MAX_RETRIES):
         try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
-                ),
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=1024,
             )
 
-            text = response.text.strip() if response.text else ""
+            text = response.choices[0].message.content.strip() if response.choices[0].message.content else ""
 
             # Strip markdown fences if present
             if text.startswith("```"):
@@ -126,17 +123,17 @@ async def fetch_team_info(team_name: str, competition_name: str) -> Optional[dic
                 "formation": data.get("formation"),
             }
             _set_cached(cache_key, result)
-            print(f"[GeminiData] Fetched data for {team_name}: manager={coach['name']}, injuries={len(injuries)}")
+            print(f"[AIData] Fetched data for {team_name}: manager={coach['name']}, injuries={len(injuries)}")
             return result
 
         except Exception as e:
             error_str = str(e)
-            if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < MAX_RETRIES - 1:
+            if ("429" in error_str or "rate" in error_str.lower()) and attempt < MAX_RETRIES - 1:
                 delay = RETRY_DELAYS[attempt]
-                print(f"[GeminiData] Rate limited for {team_name}, retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})")
+                print(f"[AIData] Rate limited for {team_name}, retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})")
                 await asyncio.sleep(delay)
                 continue
-            print(f"[GeminiData] Failed for {team_name}: {e}")
+            print(f"[AIData] Failed for {team_name}: {e}")
             return None
 
     return None
@@ -151,14 +148,14 @@ async def get_enhanced_team_data(
     league_id: int,
 ) -> Tuple[List[Dict], List[Dict], Optional[Dict], Optional[Dict], Optional[str], Optional[str]]:
     """
-    Fetch coach, injury, and formation data for both teams using Gemini.
-    Falls back to API-Football if Gemini fails for a team.
+    Fetch coach, injury, and formation data for both teams using OpenAI.
+    Falls back to API-Football if OpenAI fails for a team.
 
     Returns: (injuries_a, injuries_b, coach_a, coach_b, formation_a, formation_b)
     """
     comp_name = config.COMPETITION_NAMES.get(competition, competition)
 
-    # Fetch teams sequentially to avoid Gemini rate limits with Google Search grounding
+    # Fetch teams sequentially to avoid rate limits
     result_a = await fetch_team_info(team_a_name, comp_name)
     result_b = await fetch_team_info(team_b_name, comp_name)
 
@@ -169,7 +166,7 @@ async def get_enhanced_team_data(
         coach_a = result_a["coach"]
         formation_a = result_a.get("formation")
     else:
-        print(f"[GeminiData] Falling back to API-Football for {team_a_name}")
+        print(f"[AIData] Falling back to API-Football for {team_a_name}")
         injuries_a, coach_a = await asyncio.gather(
             football_api.fetch_injuries(team_a_id, league_id),
             football_api.fetch_coach(team_a_id),
@@ -183,7 +180,7 @@ async def get_enhanced_team_data(
         coach_b = result_b["coach"]
         formation_b = result_b.get("formation")
     else:
-        print(f"[GeminiData] Falling back to API-Football for {team_b_name}")
+        print(f"[AIData] Falling back to API-Football for {team_b_name}")
         injuries_b, coach_b = await asyncio.gather(
             football_api.fetch_injuries(team_b_id, league_id),
             football_api.fetch_coach(team_b_id),

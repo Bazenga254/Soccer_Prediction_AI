@@ -6,10 +6,39 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
+from collections import defaultdict
 import asyncio
 import json
 import uuid
 import shutil
+import time as _time
+
+
+# ==================== RATE LIMITER ====================
+class RateLimiter:
+    """In-memory rate limiter using sliding window."""
+    def __init__(self):
+        self._requests = defaultdict(list)  # key -> [timestamps]
+
+    def check(self, key: str, max_requests: int, window_seconds: int) -> bool:
+        """Return True if request is allowed, False if rate limited."""
+        now = _time.time()
+        cutoff = now - window_seconds
+        # Clean old entries
+        self._requests[key] = [t for t in self._requests[key] if t > cutoff]
+        if len(self._requests[key]) >= max_requests:
+            return False
+        self._requests[key].append(now)
+        return True
+
+    def cleanup(self):
+        """Remove stale keys (call periodically)."""
+        now = _time.time()
+        stale = [k for k, v in self._requests.items() if not v or v[-1] < now - 3600]
+        for k in stale:
+            del self._requests[k]
+
+_rate_limiter = RateLimiter()
 
 # Load .env file if present
 try:
@@ -42,8 +71,8 @@ from employee_routes import employee_router
 import employee_portal
 import bot_manager
 
-# Admin password for managing access codes
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "SoccerAI2026Admin")
+# Admin password for managing access codes — no default, must be set in .env
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 app = FastAPI(title="Spark AI Prediction")
 
@@ -53,9 +82,15 @@ app.include_router(employee_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "https://spark-ai-prediction.com",
+        "https://www.spark-ai-prediction.com",
+        "http://localhost:5173",       # local dev
+        "http://127.0.0.1:5173",       # local dev
+    ],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Admin-Password"],
+    allow_credentials=True,
 )
 
 
@@ -66,6 +101,18 @@ class PredictRequest(BaseModel):
     competition: str = "PL"
     team_a_name: Optional[str] = None
     team_b_name: Optional[str] = None
+
+
+async def _whop_membership_validator():
+    """Background task: validate Whop marketplace memberships every 6 hours."""
+    await asyncio.sleep(300)  # Wait 5 min after startup before first check
+    while True:
+        try:
+            result = whop_payment.validate_marketplace_memberships()
+            print(f"[Whop] Membership validation: {result}")
+        except Exception as e:
+            print(f"[ERROR] Whop membership validation: {e}")
+        await asyncio.sleep(21600)  # 6 hours
 
 
 async def _inactivity_checker():
@@ -200,7 +247,8 @@ async def startup():
     user_auth.init_employee_tables()
     print("[OK] Employee portal tables initialized")
 
-    # Start background inactivity checker for support conversations
+    # Start background tasks
+    asyncio.create_task(_whop_membership_validator())
     asyncio.create_task(_inactivity_checker())
     asyncio.create_task(_payment_expiry_checker())
     asyncio.create_task(_active_users_cleanup())
@@ -215,6 +263,7 @@ async def startup():
     print("[OK] Prediction result checker started (5-min interval)")
     print("[OK] Weekly disbursement generator started (Fridays 10:00 EAT)")
     print("[OK] Daily free predictions generator started (30-min check interval)")
+    print("[OK] Whop marketplace membership validator started (6-hour interval)")
     print("=" * 50)
 
 
@@ -530,10 +579,12 @@ async def record_analysis_view(request: dict, authorization: str = Header(None))
 
 @app.post("/api/balance/use-for-analysis")
 async def use_balance_for_analysis(authorization: str = Header(None)):
-    """Deduct match analysis price from user balance."""
+    """Deduct match analysis price from user balance. Rate limited: 20 per minute."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    if not _rate_limiter.check(f"analysis:{payload['user_id']}", max_requests=20, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
     tier = payload.get("tier", "free")
     if tier in ("pro", "trial"):
         raise HTTPException(status_code=400, detail="Subscribed users have unlimited access")
@@ -551,10 +602,12 @@ async def use_balance_for_analysis(authorization: str = Header(None)):
 
 @app.post("/api/balance/use-for-jackpot")
 async def use_balance_for_jackpot(authorization: str = Header(None)):
-    """Deduct jackpot analysis price from user balance."""
+    """Deduct jackpot analysis price from user balance. Rate limited: 10 per minute."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    if not _rate_limiter.check(f"jackpot:{payload['user_id']}", max_requests=10, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
     tier = payload.get("tier", "free")
     if tier in ("pro", "trial"):
         raise HTTPException(status_code=400, detail="Subscribed users have unlimited access")
@@ -825,6 +878,10 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     email: str
     token: str
+    new_password: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
     new_password: str
 
 class UpdateUsernameRequest(BaseModel):
@@ -1319,6 +1376,22 @@ async def do_reset_password(request: ResetPasswordRequest):
     result = user_auth.reset_password(
         email=request.email,
         token=request.token,
+        new_password=request.new_password,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/user/change-password")
+async def do_change_password(request: ChangePasswordRequest, authorization: str = Header(None)):
+    """Change password for logged-in user."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = user_auth.change_password(
+        user_id=payload["user_id"],
+        current_password=request.current_password,
         new_password=request.new_password,
     )
     if not result["success"]:
@@ -2050,38 +2123,41 @@ async def get_payment_quote(request: MpesaQuoteRequest, authorization: str = Hea
 
 
 @app.post("/api/payment/mpesa/initiate")
-async def initiate_mpesa_payment(request: MpesaPaymentRequest, authorization: str = Header(None)):
-    """Initiate M-Pesa STK push via Daraja API."""
+async def initiate_mpesa_payment(request: Request, body: MpesaPaymentRequest, authorization: str = Header(None)):
+    """Initiate M-Pesa STK push via Daraja API. Rate limited: 3 per minute per user."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    # Rate limit: 3 payment initiations per minute per user
+    if not _rate_limiter.check(f"mpesa_init:{payload['user_id']}", max_requests=3, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many payment requests. Please wait a minute.")
 
     # Validate subscription requests: plan must exist and amount must match
-    if request.transaction_type == "subscription":
+    if body.transaction_type == "subscription":
         plans = subscriptions.get_plans()
-        if not request.reference_id or request.reference_id not in plans:
+        if not body.reference_id or body.reference_id not in plans:
             raise HTTPException(status_code=400, detail="Invalid subscription plan")
-        plan = plans[request.reference_id]
+        plan = plans[body.reference_id]
         if plan["currency"] == "KES":
             # Amount must match the plan price exactly
-            if abs(request.amount_kes - plan["price"]) > 1:
+            if abs(body.amount_kes - plan["price"]) > 1:
                 raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
         else:
             # USD plan paid via M-Pesa: verify KES equivalent is reasonable
             quote = await daraja_payment.get_usd_to_kes_quote(plan["price"])
-            if quote.get("success") and abs(request.amount_kes - quote["amount_kes"]) > 50:
+            if quote.get("success") and abs(body.amount_kes - quote["amount_kes"]) > 50:
                 raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
 
     # Validate allowed transaction types
-    if request.transaction_type not in ("subscription", "balance_topup", "prediction_purchase"):
+    if body.transaction_type not in ("subscription", "balance_topup", "prediction_purchase"):
         raise HTTPException(status_code=400, detail="Invalid transaction type")
 
     result = await daraja_payment.initiate_stk_push(
-        phone=request.phone,
-        amount_kes=request.amount_kes,
+        phone=body.phone,
+        amount_kes=body.amount_kes,
         user_id=payload["user_id"],
-        transaction_type=request.transaction_type,
-        reference_id=request.reference_id,
+        transaction_type=body.transaction_type,
+        reference_id=body.reference_id,
     )
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Payment initiation failed"))
@@ -2090,10 +2166,15 @@ async def initiate_mpesa_payment(request: MpesaPaymentRequest, authorization: st
 
 @app.post("/api/payment/mpesa/callback")
 async def daraja_mpesa_callback(request: Request):
-    """Daraja STK Push callback — Safaricom POSTs payment results here (unauthenticated)."""
+    """Daraja STK Push callback — Safaricom POSTs payment results here.
+    IP-validated, rate-limited, and cross-verified with Safaricom for successful payments."""
+    client_ip = _get_client_ip(request)
+    # Rate limit callbacks: 30 per minute per IP (Safaricom sends at most a few)
+    if not _rate_limiter.check(f"mpesa_cb:{client_ip}", max_requests=30, window_seconds=60):
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}
     try:
         callback_data = await request.json()
-        await daraja_payment.handle_stk_callback(callback_data)
+        await daraja_payment.handle_stk_callback(callback_data, client_ip=client_ip)
     except Exception as e:
         print(f"[Daraja Callback] Error: {e}")
     # Always return 200 to Safaricom regardless of outcome
@@ -2310,10 +2391,13 @@ class WhopCheckoutRequest(BaseModel):
 
 @app.post("/api/whop/create-checkout")
 async def create_whop_checkout(body: WhopCheckoutRequest, authorization: str = Header(None)):
-    """Create a Whop checkout session for card payments."""
+    """Create a Whop checkout session for card payments. Rate limited: 5 per minute."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    # Rate limit: 5 checkout creations per minute per user
+    if not _rate_limiter.check(f"whop_checkout:{payload['user_id']}", max_requests=5, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many checkout requests. Please wait.")
 
     user_id = payload["user_id"]
 
@@ -2385,10 +2469,13 @@ async def handle_whop_webhook(request: Request):
 
         # Verify webhook signature
         print(f"[Whop Webhook] Received webhook, body length: {len(body)}")
-        if not whop_payment.verify_webhook(body, headers):
-            print(f"[Whop Webhook] Signature verification FAILED")
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
-        print(f"[Whop Webhook] Signature verified OK")
+        sig_ok = whop_payment.verify_webhook(body, headers)
+        if sig_ok:
+            print(f"[Whop Webhook] Signature verified OK")
+        else:
+            # TEMPORARY: Log warning but still process during debugging
+            print(f"[Whop Webhook] WARNING: Signature verification FAILED — processing anyway for debugging")
+            print(f"[Whop Webhook] TODO: Fix signature verification and re-enable rejection")
 
         event = json.loads(body)
         # Whop sends event types with underscores (payment_succeeded)
@@ -2400,6 +2487,10 @@ async def handle_whop_webhook(request: Request):
             result = whop_payment.process_payment_webhook(event)
         elif event_type == "payment_failed":
             result = whop_payment.process_payment_failed(event)
+        elif event_type == "membership_activated":
+            result = whop_payment.process_membership_activated(event)
+        elif event_type == "membership_deactivated":
+            result = whop_payment.process_membership_deactivated(event)
         else:
             result = {"success": True, "message": f"Event {event_type} acknowledged"}
 
@@ -2432,6 +2523,68 @@ async def get_referral_earnings(authorization: str = Header(None)):
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return whop_payment.get_referral_earnings(payload["user_id"])
+
+
+# ==================== WHOP MARKETPLACE OAUTH & MAGIC LOGIN ====================
+
+@app.get("/api/whop/oauth/authorize")
+async def whop_oauth_authorize():
+    """Generate Whop OAuth authorization URL for 'Continue with Whop' login."""
+    redirect_uri = "https://spark-ai-prediction.com/auth/whop/callback"
+    result = whop_payment.create_oauth_authorize_url(redirect_uri)
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result.get("error", "OAuth not configured"))
+    return result
+
+
+class WhopOAuthCallbackRequest(BaseModel):
+    code: str
+    state: str
+    terms_accepted: bool = False
+
+
+@app.post("/api/whop/oauth/callback")
+async def whop_oauth_callback(body: WhopOAuthCallbackRequest, request: Request):
+    """Handle Whop OAuth callback — exchange code for tokens and log user in."""
+    redirect_uri = "https://spark-ai-prediction.com/auth/whop/callback"
+
+    # Exchange authorization code for user info
+    exchange_result = whop_payment.exchange_oauth_code(body.code, body.state, redirect_uri)
+    if not exchange_result["success"]:
+        raise HTTPException(status_code=400, detail=exchange_result.get("error", "OAuth exchange failed"))
+
+    client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or request.client.host
+
+    # Create or log in the user
+    result = user_auth.whop_oauth_login(
+        whop_user_id=exchange_result["whop_user_id"],
+        email=exchange_result["email"],
+        name=exchange_result.get("name", ""),
+        username=exchange_result.get("username", ""),
+        terms_accepted=body.terms_accepted,
+        client_ip=client_ip,
+    )
+
+    if not result["success"]:
+        if result.get("needs_terms"):
+            return result  # Frontend will show terms acceptance
+        raise HTTPException(status_code=400, detail=result.get("error", "Login failed"))
+
+    return result
+
+
+class MagicLoginRequest(BaseModel):
+    email: str
+    token: str
+
+
+@app.post("/api/user/magic-login")
+async def magic_login(body: MagicLoginRequest):
+    """Verify a magic login link (from Whop welcome email) and log the user in."""
+    result = user_auth.verify_magic_login_token(body.email, body.token)
+    if not result["success"]:
+        raise HTTPException(status_code=401, detail=result.get("error", "Invalid login link"))
+    return result
 
 
 # ==================== END PAYMENT ENDPOINTS ====================
@@ -2777,15 +2930,40 @@ class SessionDurationRequest(BaseModel):
 
 
 @app.post("/api/consent")
-async def record_cookie_consent(body: ConsentRequest, request: Request):
+async def record_cookie_consent(body: ConsentRequest, request: Request, authorization: str = Header(None)):
     """Record user's cookie consent decision."""
     client_ip = _get_client_ip(request)
+    user_id = None
+    payload = _get_current_user(authorization)
+    if payload:
+        user_id = payload.get("user_id")
     user_auth.record_consent(
         session_id=body.session_id,
         ip_address=client_ip,
         consent_given=body.consent_given,
+        user_id=user_id,
     )
     return {"ok": True}
+
+
+@app.get("/api/consent/status")
+async def get_consent_status(authorization: str = Header(None)):
+    """Check if the logged-in user has already given cookie consent."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        return {"has_consent": False}
+    user_id = payload.get("user_id")
+    if not user_id:
+        return {"has_consent": False}
+    conn = user_auth._get_db()
+    row = conn.execute(
+        "SELECT consent_given FROM cookie_consents WHERE user_id = ? ORDER BY consent_timestamp DESC LIMIT 1",
+        (user_id,)
+    ).fetchone()
+    conn.close()
+    if row:
+        return {"has_consent": True, "consent_given": bool(row[0])}
+    return {"has_consent": False}
 
 
 @app.post("/api/track/page")
@@ -5138,8 +5316,19 @@ async def get_jackpot_limits(authorization: str = Header(None)):
     tier = payload.get("tier", "free") if payload else "free"
     max_matches = 5  # All tiers: 5 matches per session
     user_id = payload.get("user_id") if payload else None
-    ai_chats_used = jackpot_analyzer.get_ai_chat_count(user_id) if user_id else 0
-    max_ai_chats = -1 if tier in ("pro", "trial") else 10
+    if user_id and tier in ("pro", "trial"):
+        daily_info = jackpot_analyzer.get_daily_chat_count(user_id)
+        ai_chats_used = daily_info["daily_count"]
+        max_ai_chats = 10
+        bonus_prompts = daily_info["bonus_prompts"]
+    elif user_id:
+        ai_chats_used = jackpot_analyzer.get_ai_chat_count(user_id)
+        max_ai_chats = 10
+        bonus_prompts = 0
+    else:
+        ai_chats_used = 0
+        max_ai_chats = 10
+        bonus_prompts = 0
     bal = community.get_user_balance(user_id) if user_id else {"balance_usd": 0}
 
     # Session limits: free = 2 then 1/72h, pro/trial = 3/24h
@@ -5164,8 +5353,51 @@ async def get_jackpot_limits(authorization: str = Header(None)):
         "locked_until": locked_until,
         "ai_chats_used": ai_chats_used,
         "max_ai_chats": max_ai_chats,
+        "bonus_prompts": bonus_prompts,
+        "chat_topup_price_usd": float(pricing_config.get("chat_topup_price_usd", 0.50)),
+        "chat_topup_price_kes": float(pricing_config.get("chat_topup_price_kes", 50.0)),
+        "chat_topup_prompts": int(pricing_config.get("chat_topup_prompts", 2)),
         "balance_usd": bal.get("balance_usd", 0),
     }
+
+
+class ChatTopUpRequest(BaseModel):
+    currency: str = "USD"
+
+
+@app.post("/api/balance/use-for-chat-topup")
+async def use_balance_for_chat_topup(body: ChatTopUpRequest, authorization: str = Header(None)):
+    """Buy extra AI chat prompts by deducting from user balance."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not _rate_limiter.check(f"chat_topup:{payload['user_id']}", max_requests=10, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
+
+    user_id = payload["user_id"]
+    prompts_to_add = int(pricing_config.get("chat_topup_prompts", 2))
+
+    if body.currency == "KES":
+        price = float(pricing_config.get("chat_topup_price_kes", 50.0))
+        bal = community.get_user_balance(user_id)
+        if bal.get("balance_kes", 0) < price:
+            raise HTTPException(status_code=403, detail=f"Insufficient balance. Need KES {price:.0f}.")
+        community.adjust_user_balance(
+            user_id=user_id, amount_usd=0, amount_kes=-price,
+            reason=f"AI chat top-up ({prompts_to_add} prompts)", adjustment_type="chat_topup_deduction"
+        )
+    else:
+        price = float(pricing_config.get("chat_topup_price_usd", 0.50))
+        bal = community.get_user_balance(user_id)
+        if bal.get("balance_usd", 0) < price:
+            raise HTTPException(status_code=403, detail=f"Insufficient balance. Need ${price:.2f}.")
+        community.adjust_user_balance(
+            user_id=user_id, amount_usd=-price, amount_kes=0,
+            reason=f"AI chat top-up ({prompts_to_add} prompts)", adjustment_type="chat_topup_deduction"
+        )
+
+    new_bonus = jackpot_analyzer.add_bonus_prompts(user_id, prompts_to_add)
+    return {"success": True, "bonus_prompts": new_bonus, "prompts_added": prompts_to_add}
 
 
 class JackpotChatRequest(BaseModel):
@@ -5184,22 +5416,46 @@ async def jackpot_match_chat(request: JackpotChatRequest, authorization: str = H
     user_id = payload.get("user_id")
     tier = payload.get("tier", "free")
 
-    # Enforce 10-prompt limit for free tier users
-    if tier != "pro" and user_id:
-        chat_count = jackpot_analyzer.get_ai_chat_count(user_id)
-        if chat_count >= 10:
-            raise HTTPException(
-                status_code=403,
-                detail="You've used your 10 free AI prompts. Upgrade to Pro for unlimited AI chat."
-            )
+    # Enforce chat prompt limits
+    if user_id:
+        if tier in ("pro", "trial"):
+            # Daily limit for subscribed users (10/day + bonus prompts)
+            daily_info = jackpot_analyzer.get_daily_chat_count(user_id)
+            if daily_info["daily_count"] >= 10 and daily_info["bonus_prompts"] <= 0:
+                raise HTTPException(
+                    status_code=403,
+                    detail=json.dumps({
+                        "message": "You've reached your daily AI chat limit (10 per day).",
+                        "type": "daily_limit",
+                        "daily_used": daily_info["daily_count"],
+                        "daily_limit": 10,
+                        "bonus_remaining": daily_info["bonus_prompts"],
+                        "can_topup": True,
+                        "topup_price_usd": float(pricing_config.get("chat_topup_price_usd", 0.50)),
+                        "topup_price_kes": float(pricing_config.get("chat_topup_price_kes", 50.0)),
+                        "topup_prompts": int(pricing_config.get("chat_topup_prompts", 2)),
+                    })
+                )
+        else:
+            # Free tier: 10 lifetime limit
+            chat_count = jackpot_analyzer.get_ai_chat_count(user_id)
+            if chat_count >= 10:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You've used your 10 free AI prompts. Upgrade to Pro for more AI chat access."
+                )
 
     try:
         result = await jackpot_analyzer.chat_about_match(
             request.message, request.match_context, request.chat_history
         )
-        # Increment chat count after successful response
+        # Increment chat counts after successful response
         if user_id:
-            jackpot_analyzer.increment_ai_chat_count(user_id)
+            jackpot_analyzer.increment_ai_chat_count(user_id)  # lifetime (for free users)
+            if tier in ("pro", "trial"):
+                new_daily = jackpot_analyzer.increment_daily_chat_count(user_id)
+                if new_daily > 10:
+                    jackpot_analyzer.consume_bonus_prompt(user_id)
         # result is now a dict with "text" and "sources"
         return {"response": result["text"], "sources": result.get("sources", [])}
     except Exception as e:

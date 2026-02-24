@@ -11,7 +11,7 @@ import hashlib
 import base64
 import sqlite3
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict
 from whop_sdk import Whop
 
@@ -26,6 +26,9 @@ DB_PATH = "community.db"
 WHOP_API_KEY = os.environ.get("WHOP_API_KEY", "")
 WHOP_COMPANY_ID = os.environ.get("WHOP_COMPANY_ID", "")
 WHOP_WEBHOOK_SECRET = os.environ.get("WHOP_WEBHOOK_SECRET", "")
+WHOP_APP_WEBHOOK_SECRET = os.environ.get("WHOP_APP_WEBHOOK_SECRET", "")
+WHOP_OAUTH_CLIENT_ID = os.environ.get("WHOP_OAUTH_CLIENT_ID", "")
+WHOP_OAUTH_CLIENT_SECRET = os.environ.get("WHOP_OAUTH_CLIENT_SECRET", "")
 
 
 def _get_db():
@@ -109,6 +112,9 @@ WHOP_PLAN_MAP = {
     "weekly_usd": "plan_UTFawLBWBaT8e",   # Pro Weekly $15/week
     "monthly_usd": "plan_An2RLnw6zHx3Q",  # Pro Monthly $48/month
 }
+
+# Whop marketplace subscription price (what users pay on whop.com)
+WHOP_MARKETPLACE_PRICE = 2.50
 
 
 def create_checkout_session(
@@ -410,49 +416,89 @@ def _save_whop_user_id(spark_user_id: int, whop_user_id: str):
 
 def verify_webhook(body: bytes, headers: dict) -> bool:
     """Verify Whop webhook signature using Standard Webhooks spec."""
-    if not WHOP_WEBHOOK_SECRET:
-        logger.warning("WHOP_WEBHOOK_SECRET not configured, skipping verification")
-        return True
+    secrets_to_try = [s for s in [WHOP_WEBHOOK_SECRET, WHOP_APP_WEBHOOK_SECRET] if s]
+    if not secrets_to_try:
+        logger.error("No webhook secrets configured — REJECTING webhook for security")
+        return False
 
     try:
+        # Method 1: Use the official standardwebhooks library
+        # Convert ws_ hex secret to whsec_ base64 format that the library expects
+        try:
+            from standardwebhooks.webhooks import Webhook
+            for secret_raw in secrets_to_try:
+                try:
+                    if secret_raw.startswith("ws_"):
+                        hex_part = secret_raw[3:]
+                        raw_bytes = bytes.fromhex(hex_part)
+                        b64_secret = base64.b64encode(raw_bytes).decode()
+                        std_secret = f"whsec_{b64_secret}"
+                    elif secret_raw.startswith("whsec_"):
+                        std_secret = secret_raw
+                    else:
+                        std_secret = f"whsec_{secret_raw}"
+                    wh = Webhook(std_secret)
+                    wh.verify(body, headers)
+                    logger.info(f"Webhook signature VERIFIED (standardwebhooks, secret={secret_raw[:8]}...)")
+                    return True
+                except Exception:
+                    continue
+        except ImportError:
+            pass
+
+        # Method 2: Manual verification with multiple secret decodings
         webhook_id = headers.get("webhook-id", "")
         webhook_timestamp = headers.get("webhook-timestamp", "")
         webhook_signature = headers.get("webhook-signature", "")
 
         if not all([webhook_id, webhook_timestamp, webhook_signature]):
-            logger.error("Missing webhook headers")
+            logger.error(f"Missing webhook headers. id={bool(webhook_id)} ts={bool(webhook_timestamp)} sig={bool(webhook_signature)}")
+            logger.error(f"  All headers: {list(headers.keys())}")
             return False
 
         # Standard Webhooks: sign "{msg_id}.{timestamp}.{body}"
         to_sign = f"{webhook_id}.{webhook_timestamp}.".encode() + body
 
-        # Secret may be prefixed with "whsec_" or "ws_"
-        secret = WHOP_WEBHOOK_SECRET
-        if secret.startswith("whsec_"):
-            secret = secret[6:]
-            secret_bytes = base64.b64decode(secret)
-        elif secret.startswith("ws_"):
-            secret = secret[3:]
-            secret_bytes = bytes.fromhex(secret)
-        else:
-            secret_bytes = base64.b64decode(secret)
-        expected = hmac.new(secret_bytes, to_sign, hashlib.sha256).digest()
-        expected_b64 = base64.b64encode(expected).decode()
-
-        # Signature header may contain multiple signatures separated by space
-        signatures = webhook_signature.split(" ")
-        for sig in signatures:
-            # Remove version prefix (v1,)
+        # Extract actual signature values from header
+        actual_sigs = []
+        for sig in webhook_signature.split(" "):
             if "," in sig:
-                sig = sig.split(",", 1)[1]
-            if hmac.compare_digest(sig, expected_b64):
-                return True
+                actual_sigs.append(sig.split(",", 1)[1])
+            else:
+                actual_sigs.append(sig)
 
-        logger.error("Webhook signature mismatch")
+        # Try multiple secret decodings with BOTH secrets
+        for secret_raw in secrets_to_try:
+            secret_after_prefix = secret_raw[3:] if secret_raw.startswith("ws_") else secret_raw
+
+            decodings = {
+                "hex": bytes.fromhex(secret_after_prefix),
+                "utf8_full": secret_raw.encode("utf-8"),
+                "utf8_after_prefix": secret_after_prefix.encode("utf-8"),
+            }
+            try:
+                decodings["b64_after_prefix"] = base64.b64decode(secret_after_prefix + "==")
+            except Exception:
+                pass
+
+            for method, secret_bytes in decodings.items():
+                expected = hmac.new(secret_bytes, to_sign, hashlib.sha256).digest()
+                expected_b64 = base64.b64encode(expected).decode()
+                for actual_sig in actual_sigs:
+                    if hmac.compare_digest(actual_sig, expected_b64):
+                        logger.info(f"Webhook signature VERIFIED using {method} (secret={secret_raw[:8]}...)")
+                        return True
+
+        # None matched
+        logger.error(f"Webhook signature mismatch after trying all secrets and methods")
+        logger.error(f"  Actual sigs: {[s[:30] for s in actual_sigs]}")
+        logger.error(f"  webhook-id: {webhook_id}, timestamp: {webhook_timestamp}")
         return False
 
     except Exception as e:
         logger.error(f"Webhook verification error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
 
 
@@ -573,6 +619,142 @@ def process_payment_failed(event_data: dict) -> Dict:
 
     except Exception as e:
         logger.error(f"Whop failed webhook error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _record_marketplace_transaction(user_id: int, membership_id: str,
+                                     amount_usd: float, metadata: dict = None):
+    """Record a marketplace subscription purchase in whop_transactions for revenue tracking."""
+    now = datetime.now().isoformat()
+    conn = _get_db()
+    try:
+        existing = conn.execute(
+            "SELECT id FROM whop_transactions WHERE reference_id = ? AND transaction_type = 'marketplace_subscription'",
+            (membership_id,)
+        ).fetchone()
+        if existing:
+            logger.info(f"Marketplace transaction already recorded for membership {membership_id}")
+            return
+        conn.execute("""
+            INSERT INTO whop_transactions
+            (user_id, transaction_type, reference_id, amount_usd,
+             whop_payment_id, payment_status, metadata, created_at, updated_at, completed_at)
+            VALUES (?, 'marketplace_subscription', ?, ?, ?, 'completed', ?, ?, ?, ?)
+        """, (user_id, membership_id, amount_usd, membership_id,
+              json.dumps(metadata or {}), now, now, now))
+        conn.commit()
+        logger.info(f"Recorded marketplace transaction: user={user_id}, membership={membership_id}, amount=${amount_usd}")
+    except Exception as e:
+        logger.error(f"Failed to record marketplace transaction: {e}")
+    finally:
+        conn.close()
+
+
+# ==================== WHOP MARKETPLACE MEMBERSHIP WEBHOOKS ====================
+
+def process_membership_activated(event_data: dict) -> Dict:
+    """Process a membership.activated webhook from Whop marketplace.
+
+    When a user purchases a Spark AI product on Whop.com, this creates
+    or upgrades their Spark AI account and sends a welcome email with a magic login link.
+    """
+    try:
+        data = event_data.get("data", event_data)
+        membership_id = data.get("id", "")
+        user_obj = data.get("user", {})
+        email = (user_obj.get("email", "") or "").lower().strip()
+        name = user_obj.get("name", "") or ""
+        username = user_obj.get("username", "") or ""
+        whop_user_id = user_obj.get("id", "") or ""
+
+        if not email:
+            logger.error(f"Membership activated webhook missing email: {data}")
+            return {"success": False, "error": "No email in webhook data"}
+
+        if not membership_id:
+            logger.error(f"Membership activated webhook missing membership ID")
+            return {"success": False, "error": "No membership ID in webhook data"}
+
+        # Check for duplicate processing (idempotency)
+        users_conn = _get_users_db()
+        existing = users_conn.execute(
+            "SELECT id FROM users WHERE whop_membership_id = ?", (membership_id,)
+        ).fetchone()
+        users_conn.close()
+
+        if existing:
+            logger.info(f"Membership {membership_id} already processed for user {existing['id']}, skipping")
+            return {"success": True, "message": "Already processed"}
+
+        import user_auth
+        result = user_auth.create_account_from_whop(
+            email=email,
+            whop_user_id=whop_user_id,
+            whop_membership_id=membership_id,
+            whop_name=name,
+            whop_username=username,
+        )
+
+        if result.get("success") and result.get("user_id"):
+            # Record marketplace transaction for revenue tracking
+            plan_obj = data.get("plan", {})
+            amount = None
+            if isinstance(plan_obj, dict):
+                for price_field in ("renewal_price", "initial_price", "base_price"):
+                    val = plan_obj.get(price_field)
+                    if val is not None:
+                        try:
+                            amount = float(val)
+                            break
+                        except (ValueError, TypeError):
+                            pass
+            if not amount:
+                amount = WHOP_MARKETPLACE_PRICE
+            _record_marketplace_transaction(
+                user_id=result["user_id"],
+                membership_id=membership_id,
+                amount_usd=amount,
+                metadata={"email": email, "whop_user_id": whop_user_id, "source": "marketplace_webhook"},
+            )
+
+        if result["success"] and result.get("magic_token"):
+            import urllib.parse
+            magic_link = f"https://spark-ai-prediction.com/magic-login?token={result['magic_token']}&email={urllib.parse.quote(email)}"
+            user_auth.send_whop_welcome_email(
+                to_email=email,
+                display_name=result.get("display_name", ""),
+                magic_link=magic_link,
+                is_new=result.get("is_new", True),
+            )
+
+        logger.info(f"Membership activated: {membership_id}, user={result.get('user_id')}, is_new={result.get('is_new')}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Membership activated webhook error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def process_membership_deactivated(event_data: dict) -> Dict:
+    """Process a membership.deactivated webhook from Whop marketplace.
+
+    Revokes Pro access when a user's Whop marketplace subscription is cancelled or expired.
+    """
+    try:
+        data = event_data.get("data", event_data)
+        membership_id = data.get("id", "")
+
+        if not membership_id:
+            logger.error(f"Membership deactivated webhook missing membership ID")
+            return {"success": False, "error": "No membership ID"}
+
+        import user_auth
+        result = user_auth.revoke_whop_marketplace_access(membership_id)
+        logger.info(f"Membership deactivated: {membership_id}, result={result}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Membership deactivated webhook error: {e}")
         return {"success": False, "error": str(e)}
 
 
@@ -823,6 +1005,8 @@ def register_webhook(url: str, events: list = None) -> Dict:
             "payment.succeeded",
             "payment.failed",
             "payment.created",
+            "membership.activated",
+            "membership.deactivated",
         ]
 
     try:
@@ -843,3 +1027,205 @@ def register_webhook(url: str, events: list = None) -> Dict:
     except Exception as e:
         logger.error(f"Whop webhook registration failed: {e}")
         return {"success": False, "error": str(e)}
+
+
+# ==================== WHOP OAUTH ====================
+
+import urllib.request
+import urllib.parse
+
+# In-memory store for PKCE state (short-lived, cleaned up on use)
+_oauth_state_store: Dict[str, dict] = {}
+
+
+def create_oauth_authorize_url(redirect_uri: str) -> Dict:
+    """Generate Whop OAuth authorization URL with PKCE.
+    Embeds code_verifier in HMAC-signed state so any worker can recover it.
+    """
+    if not WHOP_OAUTH_CLIENT_ID:
+        return {"success": False, "error": "Whop OAuth not configured"}
+
+    import secrets as _secrets
+    import time as _time
+
+    # Generate PKCE code_verifier and challenge
+    code_verifier = _secrets.token_urlsafe(43)
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).rstrip(b"=").decode()
+
+    # Embed code_verifier in state with HMAC signature (works across workers)
+    timestamp = str(int(_time.time()))
+    # State format: {timestamp}:{code_verifier}:{hmac_sig}
+    state_payload = f"{timestamp}:{code_verifier}"
+    state_sig = hmac.new(
+        WHOP_OAUTH_CLIENT_SECRET.encode(), state_payload.encode(), hashlib.sha256
+    ).hexdigest()[:24]
+    state = f"{state_payload}:{state_sig}"
+
+    # Generate nonce (required for openid scope)
+    nonce = _secrets.token_urlsafe(16)
+
+    params = urllib.parse.urlencode({
+        "client_id": WHOP_OAUTH_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid profile email",
+        "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+        "nonce": nonce,
+    })
+
+    print(f"[Whop OAuth] Authorize: redirect to api.whop.com/oauth/authorize")
+    print(f"[Whop OAuth] Authorize: code_verifier (len={len(code_verifier)}): {code_verifier[:10]}...")
+
+    return {
+        "success": True,
+        "redirect_url": f"https://api.whop.com/oauth/authorize?{params}",
+        "state": state,
+    }
+
+
+def exchange_oauth_code(code: str, state: str, redirect_uri: str) -> Dict:
+    """Exchange OAuth authorization code for tokens and get user info."""
+    if not WHOP_OAUTH_CLIENT_ID:
+        return {"success": False, "error": "Whop OAuth not configured"}
+
+    import time as _time
+
+    # Extract code_verifier from HMAC-signed state
+    try:
+        parts = state.split(":")
+        if len(parts) != 3:
+            return {"success": False, "error": "Invalid OAuth state format"}
+        timestamp, code_verifier, sig = parts[0], parts[1], parts[2]
+        state_payload = f"{timestamp}:{code_verifier}"
+        expected_sig = hmac.new(
+            WHOP_OAUTH_CLIENT_SECRET.encode(), state_payload.encode(), hashlib.sha256
+        ).hexdigest()[:24]
+        if not hmac.compare_digest(sig, expected_sig):
+            return {"success": False, "error": "Invalid OAuth state signature"}
+        if abs(int(_time.time()) - int(timestamp)) > 600:
+            return {"success": False, "error": "OAuth state expired"}
+    except Exception:
+        return {"success": False, "error": "Invalid OAuth state"}
+
+    # Debug logging
+    print(f"[Whop OAuth] State received (len={len(state)}): {state[:20]}...{state[-20:]}")
+    print(f"[Whop OAuth] code_verifier extracted (len={len(code_verifier)}): {code_verifier[:10]}...")
+    print(f"[Whop OAuth] Authorization code (len={len(code)}): {code[:10]}...")
+    print(f"[Whop OAuth] redirect_uri: {redirect_uri}")
+
+    # Exchange code for tokens — JSON with client_secret + code_verifier
+    token_body = json.dumps({
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "client_id": WHOP_OAUTH_CLIENT_ID,
+        "client_secret": WHOP_OAUTH_CLIENT_SECRET,
+        "code_verifier": code_verifier,
+    }).encode()
+
+    print(f"[Whop OAuth] Sending token exchange (JSON + client_secret + code_verifier)")
+
+    try:
+        req = urllib.request.Request(
+            "https://api.whop.com/oauth/token",
+            data=token_body,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            token_data = json.loads(resp.read().decode())
+        print(f"[Whop OAuth] Token exchange SUCCESS")
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode() if e.fp else "no body"
+        logger.error(f"Whop OAuth token exchange failed: {e.code} {error_body}")
+        print(f"[Whop OAuth] Token exchange FAILED: {e.code} {error_body}")
+        return {"success": False, "error": f"Token exchange failed: {error_body}"}
+    except Exception as e:
+        logger.error(f"Whop OAuth token exchange failed: {e}")
+        print(f"[Whop OAuth] Token exchange FAILED: {e}")
+        return {"success": False, "error": "Failed to exchange authorization code"}
+
+    access_token = token_data.get("access_token", "")
+    if not access_token:
+        return {"success": False, "error": "No access token received from Whop"}
+
+    # Get user info
+    try:
+        req = urllib.request.Request(
+            "https://api.whop.com/oauth/userinfo",
+            method="GET",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            user_info = json.loads(resp.read().decode())
+    except Exception as e:
+        logger.error(f"Whop OAuth userinfo failed: {e}")
+        return {"success": False, "error": "Failed to get user info from Whop"}
+
+    whop_user_id = user_info.get("sub", "")
+    email = (user_info.get("email", "") or "").lower().strip()
+    name = user_info.get("name", "") or ""
+    username = user_info.get("preferred_username", "") or user_info.get("username", "") or ""
+
+    if not email:
+        return {"success": False, "error": "No email returned from Whop"}
+
+    return {
+        "success": True,
+        "whop_user_id": whop_user_id,
+        "email": email,
+        "name": name,
+        "username": username,
+        "access_token": access_token,
+    }
+
+
+# ==================== MARKETPLACE MEMBERSHIP VALIDATOR ====================
+
+def validate_marketplace_memberships() -> Dict:
+    """Background task: validate all marketplace Pro memberships are still active on Whop.
+
+    Queries all users with whop_access_source='marketplace' and tier='pro',
+    then checks each membership via the Whop API.
+    """
+    if not WHOP_API_KEY:
+        return {"success": False, "error": "Whop API not configured"}
+
+    users_conn = _get_users_db()
+    marketplace_users = users_conn.execute("""
+        SELECT id, whop_user_id, whop_membership_id
+        FROM users
+        WHERE whop_access_source = 'marketplace' AND tier = 'pro'
+          AND whop_membership_id IS NOT NULL
+    """).fetchall()
+    users_conn.close()
+
+    if not marketplace_users:
+        return {"success": True, "checked": 0, "revoked": 0}
+
+    client = get_whop_client()
+    checked = 0
+    revoked = 0
+
+    for user_row in marketplace_users:
+        try:
+            membership = client.memberships.retrieve(user_row["whop_membership_id"])
+            status = getattr(membership, "status", "")
+
+            if status not in ("active", "trialing"):
+                import user_auth
+                user_auth.revoke_whop_marketplace_access(user_row["whop_membership_id"])
+                revoked += 1
+                logger.info(f"Validator revoked: user={user_row['id']}, membership={user_row['whop_membership_id']}, status={status}")
+
+            checked += 1
+        except Exception as e:
+            logger.error(f"Validator check failed for user {user_row['id']}: {e}")
+            checked += 1
+
+    logger.info(f"Marketplace membership validation: checked={checked}, revoked={revoked}")
+    return {"success": True, "checked": checked, "revoked": revoked}

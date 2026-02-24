@@ -1,6 +1,6 @@
 """
 AI Support Chat Module for Spark AI
-Uses Google Gemini API to auto-respond to support messages.
+Uses OpenAI GPT-4o-mini to auto-respond to support messages.
 Supports account actions via two-pass tag parsing.
 """
 
@@ -124,31 +124,34 @@ def _check_user_wants_human(message: str) -> bool:
     return any(kw in msg_lower for kw in ESCALATION_KEYWORDS)
 
 
-def _call_gemini_with_retry(prompt: str) -> str:
-    """Call Gemini API with retry logic for rate limit errors."""
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    if not gemini_key:
+def _call_openai_with_retry(prompt: str) -> str:
+    """Call OpenAI API with retry logic for rate limit errors."""
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
         return None
 
-    from google import genai
-    client = genai.Client(api_key=gemini_key)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
     for attempt in range(MAX_RETRIES):
         try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=1024,
             )
-            return response.text.strip() if response.text else None
+            text = response.choices[0].message.content
+            return text.strip() if text else None
         except Exception as e:
             error_str = str(e)
-            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+            if "429" in error_str or "rate" in error_str.lower():
                 if attempt < MAX_RETRIES - 1:
                     delay = RETRY_DELAYS[attempt]
                     print(f"[AI Support] Rate limited, retrying in {delay}s (attempt {attempt + 1}/{MAX_RETRIES})")
                     time.sleep(delay)
                     continue
-            print(f"[AI Support] Gemini API error: {e}")
+            print(f"[AI Support] OpenAI API error: {e}")
             return None
 
     return None
@@ -343,7 +346,7 @@ def get_ai_response(
     # Pass 1: Get initial AI response
     pass1_prompt = f"{SYSTEM_PROMPT}\n\n## Conversation History:\n{chat_context}\n\nRespond to the user's latest message. Use [ACTION:...] tags if you need to look up or modify account data. Include [ESCALATE] at the end ONLY if you cannot help or the situation requires a human agent."
 
-    ai_text = _call_gemini_with_retry(pass1_prompt)
+    ai_text = _call_openai_with_retry(pass1_prompt)
 
     if not ai_text:
         return {
@@ -394,7 +397,7 @@ Based on the action results above, compose a natural, helpful response to the us
 - Include [ESCALATE] only if something went wrong that requires human help
 - Be concise and friendly"""
 
-    final_text = _call_gemini_with_retry(pass2_prompt)
+    final_text = _call_openai_with_retry(pass2_prompt)
 
     if not final_text:
         # Fallback: construct a basic response from action results

@@ -456,11 +456,11 @@ export default function CreatorDashboard() {
               <div className="wallet-label">{t('creator.availableBalance')}</div>
               <div className="wallet-amount">{hidden ? '****' : `$${wallet.balance_usd.toFixed(2)}`}</div>
               <button
-                className={`withdraw-btn ${wallet.balance_usd >= 5 ? 'active' : ''}`}
-                disabled={wallet.balance_usd < 5}
+                className={`withdraw-btn ${wallet.balance_usd >= 10 ? 'active' : ''}`}
+                disabled={wallet.balance_usd < 10}
                 onClick={() => { setShowWithdraw(true); setWithdrawResult(null); setWithdrawAmount('') }}
               >
-                {wallet.balance_usd < 5 ? 'Min $5.00 to withdraw' : t('creator.requestWithdrawal')}
+                {wallet.balance_usd < 10 ? 'Min $10.00 to withdraw' : t('creator.requestWithdrawal')}
               </button>
             </div>
             <div className="wallet-card">
@@ -652,7 +652,7 @@ export default function CreatorDashboard() {
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
                     <div className="withdraw-form-group" style={{ margin: 0, flex: '1 1 120px' }}>
                       <label>Amount (USD)</label>
-                      <input type="number" min="5" step="1" placeholder="10.00" id="fee-preview-amount" />
+                      <input type="number" min="10" step="1" placeholder="10.00" id="fee-preview-amount" />
                     </div>
                     <div className="withdraw-form-group" style={{ margin: 0, flex: '1 1 120px' }}>
                       <label>Method</label>
@@ -836,10 +836,10 @@ export default function CreatorDashboard() {
                   <label>Amount (USD)</label>
                   <input
                     type="number"
-                    min="5"
+                    min="10"
                     max={wallet.balance_usd}
                     step="0.50"
-                    placeholder="5.00"
+                    placeholder="10.00"
                     value={withdrawAmount}
                     onChange={(e) => setWithdrawAmount(e.target.value)}
                   />
@@ -860,8 +860,8 @@ export default function CreatorDashboard() {
 
                 <p className="withdraw-info-text">
                   {withdrawMethod === 'mpesa'
-                    ? "Minimum withdrawal: $5.00. You'll receive the KES equivalent via M-Pesa within 24 hours."
-                    : "Minimum withdrawal: $5.00. USD will be transferred to your Whop account instantly upon admin approval."
+                    ? "Minimum withdrawal: $10.00 (KES 1,000). You'll receive the KES equivalent via M-Pesa within 24 hours."
+                    : "Minimum withdrawal: $10.00. USD will be transferred to your Whop account instantly upon admin approval."
                   }
                 </p>
 
@@ -872,7 +872,7 @@ export default function CreatorDashboard() {
                 <button
                   className="withdraw-submit-btn"
                   onClick={handleWithdraw}
-                  disabled={withdrawing || !withdrawAmount || parseFloat(withdrawAmount) < 5}
+                  disabled={withdrawing || !withdrawAmount || parseFloat(withdrawAmount) < 10}
                 >
                   {withdrawing ? 'Requesting...' : t('creator.requestWithdrawal')}
                 </button>

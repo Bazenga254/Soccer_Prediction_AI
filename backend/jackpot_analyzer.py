@@ -45,6 +45,16 @@ def init_db():
             chat_count INTEGER DEFAULT 0
         )
     """)
+    # Migration: add daily tracking and bonus prompt columns
+    for col, typedef in [
+        ("daily_count", "INTEGER DEFAULT 0"),
+        ("last_reset_date", "TEXT DEFAULT ''"),
+        ("bonus_prompts", "INTEGER DEFAULT 0"),
+    ]:
+        try:
+            c.execute(f"ALTER TABLE ai_chat_usage ADD COLUMN {col} {typedef}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
     c.execute("""
         CREATE TABLE IF NOT EXISTS jackpot_session_locks (
             user_id INTEGER PRIMARY KEY,
@@ -260,6 +270,88 @@ def increment_ai_chat_count(user_id: int) -> int:
     count = c.fetchone()[0]
     conn.close()
     return count
+
+
+def get_daily_chat_count(user_id: int) -> dict:
+    """Get daily AI chat count for pro/trial users. Resets if new day."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    c.execute("SELECT daily_count, last_reset_date, bonus_prompts FROM ai_chat_usage WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+
+    if not row:
+        c.execute("""
+            INSERT INTO ai_chat_usage (user_id, chat_count, daily_count, last_reset_date, bonus_prompts)
+            VALUES (?, 0, 0, ?, 0)
+        """, (user_id, today))
+        conn.commit()
+        conn.close()
+        return {"daily_count": 0, "bonus_prompts": 0}
+
+    daily_count, last_reset_date, bonus_prompts = row
+    bonus_prompts = bonus_prompts or 0
+
+    if last_reset_date != today:
+        c.execute("UPDATE ai_chat_usage SET daily_count = 0, last_reset_date = ? WHERE user_id = ?", (today, user_id))
+        conn.commit()
+        conn.close()
+        return {"daily_count": 0, "bonus_prompts": bonus_prompts}
+
+    conn.close()
+    return {"daily_count": daily_count or 0, "bonus_prompts": bonus_prompts}
+
+
+def increment_daily_chat_count(user_id: int) -> int:
+    """Increment daily chat count for pro/trial users. Returns new daily count."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    today = datetime.now().strftime("%Y-%m-%d")
+    c.execute("""
+        INSERT INTO ai_chat_usage (user_id, chat_count, daily_count, last_reset_date, bonus_prompts)
+        VALUES (?, 1, 1, ?, 0)
+        ON CONFLICT(user_id) DO UPDATE SET
+            daily_count = CASE WHEN last_reset_date != ? THEN 1 ELSE daily_count + 1 END,
+            last_reset_date = ?
+    """, (user_id, today, today, today))
+    conn.commit()
+    c.execute("SELECT daily_count FROM ai_chat_usage WHERE user_id = ?", (user_id,))
+    count = c.fetchone()[0]
+    conn.close()
+    return count
+
+
+def add_bonus_prompts(user_id: int, count: int) -> int:
+    """Add bonus chat prompts from top-up purchase. Returns new bonus total."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    today = datetime.now().strftime("%Y-%m-%d")
+    c.execute("""
+        INSERT INTO ai_chat_usage (user_id, chat_count, daily_count, last_reset_date, bonus_prompts)
+        VALUES (?, 0, 0, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET bonus_prompts = bonus_prompts + ?
+    """, (user_id, today, count, count))
+    conn.commit()
+    c.execute("SELECT bonus_prompts FROM ai_chat_usage WHERE user_id = ?", (user_id,))
+    result = c.fetchone()[0]
+    conn.close()
+    return result
+
+
+def consume_bonus_prompt(user_id: int) -> bool:
+    """Consume one bonus prompt. Returns True if consumed, False if none available."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT bonus_prompts FROM ai_chat_usage WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    if not row or (row[0] or 0) <= 0:
+        conn.close()
+        return False
+    c.execute("UPDATE ai_chat_usage SET bonus_prompts = bonus_prompts - 1 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return True
 
 
 def get_user_sessions(user_id: int, limit: int = 20) -> List[dict]:
@@ -485,9 +577,10 @@ async def analyze_match_for_jackpot(match: dict, league_cache: dict) -> dict:
     # Step 4: Get injuries and coach data
     injuries_home, injuries_away = [], []
     coach_home, coach_away = None, None
+    formation_home, formation_away = None, None
 
     try:
-        injuries_home, injuries_away, coach_home, coach_away = await _fetch_supplementary(
+        injuries_home, injuries_away, coach_home, coach_away, formation_home, formation_away = await _fetch_supplementary(
             home_id, away_id, league_id,
             home_name=match["home_team_name"],
             away_name=match["away_team_name"],
@@ -642,7 +735,7 @@ async def analyze_match_for_jackpot(match: dict, league_cache: dict) -> dict:
 async def _fetch_supplementary(home_id: int, away_id: int, league_id: int,
                                home_name: str = "", away_name: str = "",
                                competition: str = ""):
-    """Fetch injuries and coach data for both teams via Gemini (with API-Football fallback)."""
+    """Fetch injuries and coach data for both teams via OpenAI (with API-Football fallback)."""
     import gemini_football_data
 
     return await gemini_football_data.get_enhanced_team_data(
@@ -650,7 +743,7 @@ async def _fetch_supplementary(home_id: int, away_id: int, league_id: int,
     )
 
 
-# --- Gemini AI Integration ---
+# --- OpenAI GPT Integration ---
 
 JACKPOT_GEMINI_PROMPT = """You are a football/soccer analyst. Analyze this upcoming match concisely.
 
@@ -674,13 +767,13 @@ Return ONLY valid JSON, no markdown."""
 async def get_gemini_match_analysis(
     home_team: str, away_team: str, competition: str
 ) -> Optional[Dict]:
-    """Get supplementary match analysis from Gemini AI."""
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    if not gemini_key:
+    """Get supplementary match analysis from OpenAI GPT-4o-mini."""
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
         return None
 
-    from google import genai
-    client = genai.Client(api_key=gemini_key)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
     comp_name = config.COMPETITION_NAMES.get(competition, competition)
     prompt = JACKPOT_GEMINI_PROMPT.format(
@@ -693,11 +786,13 @@ async def get_gemini_match_analysis(
     retry_delays = [2, 5, 10]
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=1024,
             )
-            text = response.text.strip() if response.text else ""
+            text = response.choices[0].message.content.strip() if response.choices[0].message.content else ""
 
             # Strip markdown fences if present
             if text.startswith("```"):
@@ -706,13 +801,13 @@ async def get_gemini_match_analysis(
             return json.loads(text)
         except Exception as e:
             error_str = str(e)
-            if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < max_retries - 1:
+            if ("429" in error_str or "rate" in error_str.lower()) and attempt < max_retries - 1:
                 import asyncio
                 delay = retry_delays[attempt]
-                print(f"[Jackpot] Gemini rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                print(f"[Jackpot] OpenAI rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
                 await asyncio.sleep(delay)
                 continue
-            print(f"[Jackpot] Gemini analysis failed for {home_team} vs {away_team}: {e}")
+            print(f"[Jackpot] OpenAI analysis failed for {home_team} vs {away_team}: {e}")
             return None
 
     return None
@@ -909,14 +1004,12 @@ def _build_analysis_summary(match_context: dict) -> str:
 
 async def chat_about_match(user_message: str, match_context: dict, chat_history: list) -> dict:
     """Chat with AI about a specific analyzed match. Returns dict with response and sources."""
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    if not gemini_key:
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
         return {"text": "AI chat is currently unavailable. Please try again later.", "sources": []}
 
-    from google import genai
-    from google.genai import types as genai_types
-
-    client = genai.Client(api_key=gemini_key)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
     home = match_context.get("home_team", {}).get("name", "Home")
     away = match_context.get("away_team", {}).get("name", "Away")
@@ -944,51 +1037,25 @@ async def chat_about_match(user_message: str, match_context: dict, chat_history:
     retry_delays = [2, 5, 10]
     for attempt in range(max_retries):
         try:
-            # Use Google Search grounding for real-time web data
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
-                ),
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=1024,
             )
 
-            text = response.text.strip() if response.text else ""
+            text = response.choices[0].message.content.strip() if response.choices[0].message.content else ""
 
-            # Extract grounding sources (web links)
-            sources = []
-            try:
-                for candidate in (response.candidates or []):
-                    gm = candidate.grounding_metadata
-                    if not gm:
-                        continue
-                    for chunk in (gm.grounding_chunks or []):
-                        if chunk.web and chunk.web.uri:
-                            sources.append({
-                                "title": chunk.web.title or chunk.web.uri,
-                                "url": chunk.web.uri,
-                            })
-            except Exception:
-                pass
-
-            # Deduplicate sources by URL
-            seen = set()
-            unique_sources = []
-            for s in sources:
-                if s["url"] not in seen:
-                    seen.add(s["url"])
-                    unique_sources.append(s)
-
-            return {"text": text, "sources": unique_sources[:5]}
+            return {"text": text, "sources": []}
         except Exception as e:
             error_str = str(e)
-            if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < max_retries - 1:
+            if ("429" in error_str or "rate" in error_str.lower()) and attempt < max_retries - 1:
                 import asyncio
                 delay = retry_delays[attempt]
                 print(f"[Jackpot Chat] Rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
                 await asyncio.sleep(delay)
                 continue
-            print(f"[Jackpot Chat] Gemini error: {e}")
+            print(f"[Jackpot Chat] OpenAI error: {e}")
             return {"text": "Sorry, I couldn't process your question right now. Please try again.", "sources": []}
 
     return {"text": "AI is temporarily busy. Please try again in a moment.", "sources": []}

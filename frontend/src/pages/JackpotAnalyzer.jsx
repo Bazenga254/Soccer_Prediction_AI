@@ -3,6 +3,8 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 import { COMPETITIONS } from '../components/Header'
+import { useCurrency } from '../context/CurrencyContext'
+import SEOHead from '../components/SEOHead'
 
 function formatDate(dateStr) {
   const date = new Date(dateStr)
@@ -54,12 +56,14 @@ function JackpotCountdownTimer({ resetAt, onExpire }) {
 
 // --- AI Chat Component ---
 
-function MatchChatBox({ matchResult }) {
+function MatchChatBox({ matchResult, isKenyan }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
   const [chatLocked, setChatLocked] = useState(false)
+  const [chatLimitInfo, setChatLimitInfo] = useState(null)
+  const [topupLoading, setTopupLoading] = useState(false)
   const chatEndRef = useRef(null)
 
   useEffect(() => {
@@ -85,12 +89,36 @@ function MatchChatBox({ matchResult }) {
     } catch (err) {
       if (err.response?.status === 403) {
         setChatLocked(true)
-        setMessages(prev => [...prev, { role: 'ai', content: err.response.data.detail || "You've reached your free AI chat limit. Upgrade to Pro for unlimited access.", sources: [] }])
+        let detail = err.response.data.detail
+        let parsed = null
+        try { parsed = JSON.parse(detail) } catch {}
+        if (parsed?.type === 'daily_limit') {
+          setChatLimitInfo(parsed)
+          setMessages(prev => [...prev, { role: 'ai', content: parsed.message, sources: [] }])
+        } else {
+          setMessages(prev => [...prev, { role: 'ai', content: detail || "You've reached your free AI chat limit. Upgrade to Pro for more access.", sources: [] }])
+        }
       } else {
         setMessages(prev => [...prev, { role: 'ai', content: 'Sorry, something went wrong. Please try again.', sources: [] }])
       }
     }
     setLoading(false)
+  }
+
+  const handleChatTopUp = async () => {
+    setTopupLoading(true)
+    try {
+      const res = await axios.post('/api/balance/use-for-chat-topup', { currency: isKenyan ? 'KES' : 'USD' })
+      if (res.data.success) {
+        setChatLocked(false)
+        setChatLimitInfo(null)
+        setMessages(prev => [...prev, { role: 'ai', content: `+${res.data.prompts_added} chat prompts added! You can continue chatting.`, sources: [] }])
+      }
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Top-up failed. Please deposit funds first.'
+      setMessages(prev => [...prev, { role: 'ai', content: msg, sources: [] }])
+    }
+    setTopupLoading(false)
   }
 
   const handleKeyDown = (e) => {
@@ -159,8 +187,22 @@ function MatchChatBox({ matchResult }) {
           </div>
           {chatLocked ? (
             <div className="jackpot-chat-locked-bar">
-              <span>{'\u{1F512}'} Free AI prompts used up.</span>
-              <Link to="/upgrade" className="jackpot-chat-upgrade-link">{'\u{1F680}'} Upgrade to Pro</Link>
+              {chatLimitInfo ? (
+                <>
+                  <span>{'\u{1F512}'} Daily limit reached ({chatLimitInfo.daily_limit} prompts/day).</span>
+                  <div className="chat-topup-actions">
+                    <button className="chat-topup-btn" onClick={handleChatTopUp} disabled={topupLoading}>
+                      {topupLoading ? 'Processing...' : `Get ${chatLimitInfo.topup_prompts} more (${isKenyan ? 'KES ' + chatLimitInfo.topup_price_kes : '$' + chatLimitInfo.topup_price_usd.toFixed(2)})`}
+                    </button>
+                    <Link to="/upgrade" className="jackpot-chat-upgrade-link">Deposit funds</Link>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span>{'\u{1F512}'} Free AI prompts used up.</span>
+                  <Link to="/upgrade" className="jackpot-chat-upgrade-link">{'\u{1F680}'} Upgrade to Pro</Link>
+                </>
+              )}
             </div>
           ) : (
             <div className="jackpot-chat-input-row">
@@ -192,6 +234,11 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
   const [selectedLeague, setSelectedLeague] = useState('PL')
   const [fixtures, setFixtures] = useState([])
   const [loadingFixtures, setLoadingFixtures] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [allFixturesCache, setAllFixturesCache] = useState(null)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const searchRef = useRef(null)
   const navigate = useNavigate()
   const { t } = useTranslation()
 
@@ -208,6 +255,46 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
       })
   }, [selectedLeague])
 
+  // Search across all leagues
+  useEffect(() => {
+    if (searchQuery.trim().length < 2) {
+      setSearchResults([])
+      return
+    }
+    const doSearch = async () => {
+      let all = allFixturesCache
+      if (!all) {
+        setSearchLoading(true)
+        try {
+          const res = await axios.get('/api/fixtures/upcoming-all?days=7')
+          all = res.data.fixtures || []
+          setAllFixturesCache(all)
+        } catch {
+          all = []
+        }
+        setSearchLoading(false)
+      }
+      const q = searchQuery.toLowerCase()
+      const filtered = all.filter(f =>
+        (f.home_team?.name || '').toLowerCase().includes(q) ||
+        (f.away_team?.name || '').toLowerCase().includes(q)
+      ).slice(0, 10)
+      setSearchResults(filtered)
+    }
+    doSearch()
+  }, [searchQuery, allFixturesCache])
+
+  // Close search dropdown on outside click
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchResults([])
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
   const isSelected = (fixtureId) => selectedMatches.some(m => m.fixture_id === fixtureId)
 
   const handleAdd = (fixture) => {
@@ -222,10 +309,16 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
         away_team_name: fixture.away_team.name,
         home_team_crest: fixture.home_team.crest,
         away_team_crest: fixture.away_team.crest,
-        competition: selectedLeague,
+        competition: fixture.competition?.code || selectedLeague,
         match_date: fixture.date,
       })
     }
+  }
+
+  const handleSearchAdd = (fixture) => {
+    handleAdd(fixture)
+    setSearchQuery('')
+    setSearchResults([])
   }
 
   const grouped = groupByDate(fixtures)
@@ -249,6 +342,62 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
             <span>{'\u2B50'} {maxMatches} matches per session &bull; 3 sessions per day</span>
           )}
         </div>
+      </div>
+
+      <div className="jackpot-search-wrapper" ref={searchRef}>
+        <div className="jackpot-search-bar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            type="text"
+            placeholder="Search any team across all leagues..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="jackpot-search-input"
+          />
+          {searchQuery && (
+            <button className="jackpot-search-clear" onClick={() => { setSearchQuery(''); setSearchResults([]) }}>&times;</button>
+          )}
+        </div>
+        {searchLoading && searchQuery.trim().length >= 2 && (
+          <div className="jackpot-search-dropdown">
+            <div className="jackpot-search-loading">Searching...</div>
+          </div>
+        )}
+        {!searchLoading && searchResults.length > 0 && (
+          <div className="jackpot-search-dropdown">
+            {searchResults.map(fixture => {
+              const selected = isSelected(fixture.id)
+              const atLimit = selectedMatches.length >= maxMatches && !selected
+              return (
+                <div
+                  key={fixture.id}
+                  className={`jackpot-search-result ${selected ? 'selected' : ''} ${atLimit ? 'disabled' : ''}`}
+                  onClick={() => !atLimit && handleSearchAdd(fixture)}
+                >
+                  <div className="jackpot-search-result-teams">
+                    {fixture.home_team.crest && <img src={fixture.home_team.crest} alt="" className="jackpot-search-crest" />}
+                    <span>{fixture.home_team.name}</span>
+                    <span className="jackpot-search-vs">vs</span>
+                    <span>{fixture.away_team.name}</span>
+                    {fixture.away_team.crest && <img src={fixture.away_team.crest} alt="" className="jackpot-search-crest" />}
+                  </div>
+                  <div className="jackpot-search-result-meta">
+                    <span className="jackpot-search-time">{formatDate(fixture.date)} {formatTime(fixture.date)}</span>
+                    {fixture.competition?.name && <span className="jackpot-search-league">{fixture.competition.name}</span>}
+                  </div>
+                  <span className={`jackpot-search-add ${selected ? 'added' : ''} ${atLimit ? 'disabled' : ''}`}>
+                    {selected ? '\u2713' : atLimit ? 'Full' : '+'}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {!searchLoading && searchQuery.trim().length >= 2 && searchResults.length === 0 && allFixturesCache && (
+          <div className="jackpot-search-dropdown">
+            <div className="jackpot-search-empty">No matches found for "{searchQuery}"</div>
+          </div>
+        )}
       </div>
 
       <div className="jackpot-league-tabs">
@@ -414,7 +563,7 @@ function CombinationCard({ combo, accentColor }) {
 }
 
 
-function MatchResultCard({ result, index }) {
+function MatchResultCard({ result, index, isKenyan }) {
   const [expanded, setExpanded] = useState(false)
 
   if (result.status === 'failed') {
@@ -793,7 +942,7 @@ function MatchResultCard({ result, index }) {
           </div>
 
           {/* AI Chat */}
-          <MatchChatBox matchResult={result} />
+          <MatchChatBox matchResult={result} isKenyan={isKenyan} />
         </div>
       )}
     </div>
@@ -801,7 +950,7 @@ function MatchResultCard({ result, index }) {
 }
 
 
-function ResultsPhase({ results, combinations, onReset }) {
+function ResultsPhase({ results, combinations, onReset, isKenyan }) {
   const completed = results.filter(r => r.status === 'completed').length
   const failed = results.filter(r => r.status === 'failed').length
   const { t } = useTranslation()
@@ -834,7 +983,7 @@ function ResultsPhase({ results, combinations, onReset }) {
       <div className="jackpot-match-results">
         <h3>Match-by-Match Analysis</h3>
         {results.map((result, i) => (
-          <MatchResultCard key={result.fixture_id || i} result={result} index={i} />
+          <MatchResultCard key={result.fixture_id || i} result={result} index={i} isKenyan={isKenyan} />
         ))}
       </div>
     </div>
@@ -861,6 +1010,7 @@ export default function JackpotAnalyzer() {
   const [lockedUntil, setLockedUntil] = useState(null)
   const [isLocked, setIsLocked] = useState(false)
   const { t } = useTranslation()
+  const { isKenyan } = useCurrency()
 
   // Fetch tier limits on mount
   useEffect(() => {
@@ -918,6 +1068,11 @@ export default function JackpotAnalyzer() {
 
   return (
     <div className="jackpot-page">
+      <SEOHead
+        title="Jackpot & Accumulator Analyzer — AI-Powered Multi-Bet Predictions"
+        description="Boost your jackpot and accumulator bets with AI analysis. Select fixtures, get probability-weighted predictions, and optimize your multi-bet strategy."
+        path="/jackpot"
+      />
       {error && (
         <div className="jackpot-error">
           <span>{error}</span>
@@ -974,12 +1129,12 @@ export default function JackpotAnalyzer() {
                 setBalanceLoading(false)
               }}
             >
-              {balanceLoading ? 'Processing...' : `Use Balance ($1.00) \u2014 $${balanceUsd.toFixed(2)} available`}
+              {balanceLoading ? 'Processing...' : `Use Balance (${isKenyan ? 'KES 130' : '$1.00'}) \u2014 ${isKenyan ? `KES ${Math.round(balanceUsd * 130)}` : `$${balanceUsd.toFixed(2)}`} available`}
             </button>
           )}
           {tier === 'free' && (
             <Link to="/upgrade" className="jackpot-locked-upgrade-btn">
-              {'\u{1F680}'} {balanceUsd < 1.00 ? 'Deposit $2 to Unlock' : 'Upgrade to Pro for More Sessions'}
+              {'\u{1F680}'} {balanceUsd < 1.00 ? (isKenyan ? 'Deposit KES 100 to Unlock' : 'Deposit $1 to Unlock') : 'Upgrade to Pro for More Sessions'}
             </Link>
           )}
           <Link to="/my-analysis" className="jackpot-locked-history-link">
@@ -1008,6 +1163,7 @@ export default function JackpotAnalyzer() {
           results={analysisResults}
           combinations={combinations}
           onReset={resetJackpot}
+          isKenyan={isKenyan}
         />
       )}
     </div>

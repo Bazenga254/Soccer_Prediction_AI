@@ -27,7 +27,7 @@ import pricing_config
 
 admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "SoccerAI2026Admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 # Support file upload config
 SUPPORT_UPLOADS_DIR = Path(__file__).parent / "uploads" / "support"
@@ -622,7 +622,7 @@ async def admin_transaction_analytics(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     cur = currency.lower()
-    if cur not in ("kes", "usd"):
+    if cur not in ("kes", "usd", "whop"):
         cur = "kes"
 
     # Kenyan time = UTC+3
@@ -666,9 +666,12 @@ async def admin_transaction_analytics(
     if cur == "kes":
         tbl, amt_col = "payment_transactions", "amount_kes"
         status_cond = "payment_status IN ('completed', 'confirmed')"
-    else:
+    elif cur == "whop":
         tbl, amt_col = "whop_transactions", "amount_usd"
-        status_cond = "payment_status = 'completed'"
+        status_cond = "payment_status = 'completed' AND transaction_type = 'marketplace_subscription'"
+    else:  # usd (card)
+        tbl, amt_col = "whop_transactions", "amount_usd"
+        status_cond = "payment_status = 'completed' AND transaction_type != 'marketplace_subscription'"
 
     # Summary cards: today / this week / this month
     daily = _q(f"SELECT COALESCE(SUM({amt_col}), 0) as total, COUNT(*) as count FROM {tbl} WHERE {status_cond} AND datetime(completed_at) >= datetime(?) AND datetime(completed_at) <= datetime(?)", (today_start, now_str))

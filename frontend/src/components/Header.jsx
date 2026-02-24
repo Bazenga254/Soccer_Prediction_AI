@@ -191,12 +191,16 @@ export default function Header({ user, logout }) {
 
         {user && (
           <div className="header-user-controls">
-            <SearchBar />
-            <EarningsDropdown />
-            <NotificationDropdown />
-            <MessagesDropdown />
-            <LanguageSelector />
-            <UserMenuDropdown user={user} logout={logout} />
+            <div className="header-row1-controls">
+              <div className="hdr-ctrl hdr-ctrl-notif"><NotificationDropdown /></div>
+              <div className="hdr-ctrl hdr-ctrl-msgs"><MessagesDropdown /></div>
+              <UserMenuDropdown user={user} logout={logout} />
+            </div>
+            <div className="header-row2-controls">
+              <div className="hdr-ctrl hdr-ctrl-search"><SearchBar /></div>
+              <div className="hdr-ctrl hdr-ctrl-earnings"><EarningsDropdown /></div>
+              <div className="hdr-ctrl hdr-ctrl-lang"><LanguageSelector /></div>
+            </div>
           </div>
         )}
       </div>

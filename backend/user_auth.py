@@ -5,6 +5,7 @@ Handles user registration, login, JWT tokens, and profiles using SQLite.
 
 import sqlite3
 import hashlib
+import hmac
 import secrets
 import random
 import string
@@ -25,7 +26,12 @@ def _get_jwt_secret():
     global JWT_SECRET
     if JWT_SECRET is None:
         import os
-        JWT_SECRET = os.environ.get("JWT_SECRET", "spark-ai-default-secret-change-me")
+        JWT_SECRET = os.environ.get("JWT_SECRET", "")
+        if not JWT_SECRET:
+            raise RuntimeError(
+                "CRITICAL: JWT_SECRET environment variable is not set. "
+                "The server cannot start without a secure JWT secret."
+            )
     return JWT_SECRET
 
 
@@ -218,6 +224,54 @@ def check_password_change_cooldown(user_id: int) -> Dict:
     }
 
 
+def change_password(user_id: int, current_password: str, new_password: str) -> Dict:
+    """Change password for a logged-in user. Requires current password verification."""
+    # Check cooldown
+    cooldown = check_password_change_cooldown(user_id)
+    if not cooldown["allowed"]:
+        return {"success": False, "error": cooldown["message"]}
+
+    conn = _get_db()
+    user = conn.execute(
+        "SELECT password_hash FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "User not found"}
+
+    # Verify current password
+    if not _verify_password(current_password, user["password_hash"]):
+        conn.close()
+        return {"success": False, "error": "Current password is incorrect"}
+
+    # Validate new password strength
+    if len(new_password) < 8:
+        conn.close()
+        return {"success": False, "error": "Password must be at least 8 characters"}
+    if len(re.findall(r'[A-Z]', new_password)) < 2:
+        conn.close()
+        return {"success": False, "error": "Password must contain at least 2 uppercase letters"}
+    if len(re.findall(r'[a-z]', new_password)) < 2:
+        conn.close()
+        return {"success": False, "error": "Password must contain at least 2 lowercase letters"}
+    if len(re.findall(r'[0-9]', new_password)) < 2:
+        conn.close()
+        return {"success": False, "error": "Password must contain at least 2 numbers"}
+    if len(re.findall(r'[^A-Za-z0-9]', new_password)) < 2:
+        conn.close()
+        return {"success": False, "error": "Password must contain at least 2 special characters"}
+
+    # Hash and update
+    new_hash = _hash_password(new_password)
+    conn.execute(
+        "UPDATE users SET password_hash = ?, password_changed_at = ? WHERE id = ?",
+        (new_hash, datetime.now().isoformat(), user_id)
+    )
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
+
 def check_sensitive_action_allowed(user_id: int) -> Dict:
     """Check if user can perform sensitive actions (blocked for 24h after password change)."""
     conn = _get_db()
@@ -334,6 +388,10 @@ def init_user_db():
         "ALTER TABLE users ADD COLUMN suspended_at TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN country TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN has_used_trial INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN whop_membership_id TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN whop_access_source TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN magic_login_token_hash TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN magic_login_expires TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(col_sql)
@@ -935,7 +993,7 @@ def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email:
         try:
             payload = _json.dumps({
                 "fromAddress": from_email,
-                "sender": sender_name,
+
                 "toAddress": to_email,
                 "subject": subject,
                 "content": html_content,
@@ -1839,6 +1897,389 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
                 "department": user["department"],
             },
         }
+
+
+# ==================== WHOP MARKETPLACE INTEGRATION ====================
+
+def create_account_from_whop(
+    email: str,
+    whop_user_id: str,
+    whop_membership_id: str,
+    whop_name: str = "",
+    whop_username: str = "",
+) -> Dict:
+    """Create or upgrade a Spark AI account from a Whop marketplace purchase.
+
+    Called when a membership.activated webhook is received from Whop.
+    If an account with the same email exists, it upgrades it to Pro.
+    If no account exists, creates a new one.
+    Returns a magic login token for the welcome email.
+    """
+    email = email.lower().strip()
+    if not email or "@" not in email:
+        return {"success": False, "error": "Invalid email from Whop"}
+
+    conn = _get_db()
+    now = datetime.now().isoformat()
+
+    existing = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+
+    if existing:
+        # Existing user — upgrade to Pro and link Whop IDs
+        user_id = existing["id"]
+        conn.execute(
+            """UPDATE users SET whop_user_id = COALESCE(NULLIF(whop_user_id, ''), ?),
+               whop_membership_id = ?, whop_access_source = 'marketplace',
+               tier = 'pro', email_verified = 1
+               WHERE id = ?""",
+            (whop_user_id, whop_membership_id, user_id),
+        )
+        conn.commit()
+        conn.close()
+
+        # Create subscription record
+        import subscriptions
+        subscriptions.create_subscription(
+            user_id=user_id,
+            plan_id="weekly_usd",
+            payment_method="whop_marketplace",
+            payment_ref=whop_membership_id,
+        )
+
+        magic_token = generate_magic_login_token(user_id)
+        return {
+            "success": True,
+            "is_new": False,
+            "user_id": user_id,
+            "display_name": existing["display_name"],
+            "magic_token": magic_token,
+        }
+
+    else:
+        # New user — create account (follows google_login pattern)
+        username = _generate_unique_username(conn)
+        password_hash = _hash_password(secrets.token_hex(32))
+        ref_code = _generate_referral_code()
+        avatar_color = random.choice(AVATAR_COLORS)
+        display_name = username
+        full_name = whop_name.strip() if whop_name else None
+
+        conn.execute(
+            """INSERT INTO users (email, password_hash, display_name, username, avatar_color,
+               referral_code, created_at, email_verified, full_name, terms_accepted_at,
+               whop_user_id, whop_membership_id, whop_access_source, tier)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 'marketplace', 'pro')""",
+            (email, password_hash, display_name, username, avatar_color,
+             ref_code, now, full_name, now,
+             whop_user_id, whop_membership_id),
+        )
+        conn.commit()
+
+        user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        user_id = user["id"]
+        conn.close()
+
+        # Create subscription record
+        import subscriptions
+        subscriptions.create_subscription(
+            user_id=user_id,
+            plan_id="weekly_usd",
+            payment_method="whop_marketplace",
+            payment_ref=whop_membership_id,
+        )
+
+        magic_token = generate_magic_login_token(user_id)
+        return {
+            "success": True,
+            "is_new": True,
+            "user_id": user_id,
+            "display_name": display_name,
+            "magic_token": magic_token,
+        }
+
+
+def generate_magic_login_token(user_id: int) -> Optional[str]:
+    """Generate a one-time magic login token for a user. Valid for 72 hours."""
+    raw_token = secrets.token_urlsafe(48)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    expires = (datetime.now() + timedelta(hours=72)).isoformat()
+
+    conn = _get_db()
+    conn.execute(
+        "UPDATE users SET magic_login_token_hash = ?, magic_login_expires = ? WHERE id = ?",
+        (token_hash, expires, user_id),
+    )
+    conn.commit()
+    conn.close()
+    return raw_token
+
+
+def verify_magic_login_token(email: str, token: str) -> Dict:
+    """Verify a magic login token and log the user in. One-time use."""
+    email = email.lower().strip()
+    if not email or not token:
+        return {"success": False, "error": "Missing email or token"}
+
+    conn = _get_db()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+
+    if not user:
+        conn.close()
+        return {"success": False, "error": "Invalid login link"}
+
+    if not user["magic_login_token_hash"] or not user["magic_login_expires"]:
+        conn.close()
+        return {"success": False, "error": "No active login link. Please use the login page."}
+
+    # Check expiry
+    expires = datetime.fromisoformat(user["magic_login_expires"])
+    if datetime.now() > expires:
+        conn.execute(
+            "UPDATE users SET magic_login_token_hash = NULL, magic_login_expires = NULL WHERE id = ?",
+            (user["id"],),
+        )
+        conn.commit()
+        conn.close()
+        return {"success": False, "error": "Login link has expired. Please use the login page or request a new link."}
+
+    # Verify token
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    if not hmac.compare_digest(token_hash, user["magic_login_token_hash"]):
+        conn.close()
+        return {"success": False, "error": "Invalid login link"}
+
+    # Token is valid — clear it (one-time use) and log the user in
+    now = datetime.now().isoformat()
+    conn.execute(
+        """UPDATE users SET magic_login_token_hash = NULL, magic_login_expires = NULL,
+           last_login = ?, login_count = login_count + 1 WHERE id = ?""",
+        (now, user["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    jwt_token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]), user["staff_role"])
+    return {
+        "success": True,
+        "token": jwt_token,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "display_name": user["display_name"],
+            "username": user["username"],
+            "avatar_color": user["avatar_color"],
+            "avatar_url": user["avatar_url"],
+            "tier": user["tier"],
+            "referral_code": user["referral_code"],
+            "is_admin": bool(user["is_admin"]),
+            "created_at": user["created_at"],
+            "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+            "terms_accepted": bool(user["terms_accepted_at"]),
+            "staff_role": user["staff_role"],
+            "role_id": user["role_id"],
+            "department": user["department"],
+        },
+    }
+
+
+def whop_oauth_login(
+    whop_user_id: str,
+    email: str,
+    name: str = "",
+    username: str = "",
+    terms_accepted: bool = False,
+    client_ip: str = "",
+) -> Dict:
+    """Authenticate via Whop OAuth. Creates account if new, logs in if existing."""
+    email = email.lower().strip()
+    if not email:
+        return {"success": False, "error": "No email from Whop"}
+
+    conn = _get_db()
+    now = datetime.now().isoformat()
+
+    # Try to find by whop_user_id first, then by email
+    existing = conn.execute("SELECT * FROM users WHERE whop_user_id = ?", (whop_user_id,)).fetchone()
+    if not existing:
+        existing = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+
+    if existing:
+        # Existing user — log them in
+        if not existing["is_active"]:
+            conn.close()
+            return {"success": False, "error": "Account has been suspended.", "suspended": True}
+
+        # Link whop_user_id if not already set
+        update_fields = "last_login = ?, login_count = login_count + 1, email_verified = 1, last_known_ip = ?"
+        params = [now, client_ip or None]
+        if not existing["whop_user_id"]:
+            update_fields += ", whop_user_id = ?"
+            params.append(whop_user_id)
+        if name and not existing["full_name"]:
+            update_fields += ", full_name = ?"
+            params.append(name.strip())
+        params.append(existing["id"])
+
+        conn.execute(f"UPDATE users SET {update_fields} WHERE id = ?", params)
+        conn.commit()
+        conn.close()
+
+        token = _create_token(existing["id"], existing["username"], existing["tier"], bool(existing["is_admin"]), existing["staff_role"])
+        return {
+            "success": True,
+            "token": token,
+            "user": {
+                "id": existing["id"],
+                "email": existing["email"],
+                "display_name": existing["display_name"],
+                "username": existing["username"],
+                "avatar_color": existing["avatar_color"],
+                "avatar_url": existing["avatar_url"],
+                "tier": existing["tier"],
+                "referral_code": existing["referral_code"],
+                "is_admin": bool(existing["is_admin"]),
+                "created_at": existing["created_at"],
+                "profile_complete": bool(existing["security_question"] and existing["security_answer_hash"]),
+                "terms_accepted": bool(existing["terms_accepted_at"]),
+                "staff_role": existing["staff_role"],
+                "role_id": existing["role_id"],
+                "department": existing["department"],
+            },
+        }
+
+    else:
+        # New user via Whop — require terms acceptance
+        if not terms_accepted:
+            conn.close()
+            return {"success": False, "error": "You must accept the Terms of Service to create an account.", "needs_terms": True}
+
+        new_username = _generate_unique_username(conn)
+        password_hash = _hash_password(secrets.token_hex(32))
+        ref_code = _generate_referral_code()
+        avatar_color = random.choice(AVATAR_COLORS)
+        display_name = new_username
+        full_name = name.strip() if name else None
+
+        conn.execute(
+            """INSERT INTO users (email, password_hash, display_name, username, avatar_color,
+               referral_code, created_at, email_verified, full_name, terms_accepted_at,
+               whop_user_id, last_known_ip)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)""",
+            (email, password_hash, display_name, new_username, avatar_color,
+             ref_code, now, full_name, now, whop_user_id, client_ip or None),
+        )
+        conn.commit()
+
+        user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        conn.close()
+
+        _send_welcome_email(email, display_name)
+
+        token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]), user["staff_role"])
+        return {
+            "success": True,
+            "token": token,
+            "user": {
+                "id": user["id"],
+                "email": user["email"],
+                "display_name": user["display_name"],
+                "username": user["username"],
+                "avatar_color": user["avatar_color"],
+                "avatar_url": user["avatar_url"],
+                "tier": user["tier"],
+                "referral_code": user["referral_code"],
+                "is_admin": bool(user["is_admin"]),
+                "created_at": user["created_at"],
+                "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+                "terms_accepted": bool(user["terms_accepted_at"]),
+                "staff_role": user["staff_role"],
+                "role_id": user["role_id"],
+                "department": user["department"],
+            },
+        }
+
+
+def send_whop_welcome_email(to_email: str, display_name: str, magic_link: str, is_new: bool = True) -> bool:
+    """Send welcome email to a Whop marketplace customer with magic login link."""
+    greeting = display_name or "there"
+
+    if is_new:
+        subject = "Welcome to Spark AI — Your Pro Access is Ready!"
+        intro_text = "Your account has been created and you now have <strong>Pro access</strong> to Spark AI!"
+    else:
+        subject = "Spark AI — Your Account Has Been Upgraded to Pro!"
+        intro_text = "Your existing account has been upgraded to <strong>Pro access</strong> thanks to your Whop purchase!"
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
+                background: #0f172a; color: #f1f5f9; padding: 40px; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <span style="font-size: 48px;">&#9917;</span>
+            <h1 style="color: #f1f5f9; margin: 8px 0;">Spark AI Prediction</h1>
+        </div>
+        <p style="color: #94a3b8;">Hey {greeting},</p>
+        <p style="color: #94a3b8;">{intro_text}</p>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="{magic_link}"
+               style="display: inline-block; background: #3b82f6; color: #ffffff;
+                      padding: 16px 40px; border-radius: 12px; text-decoration: none;
+                      font-weight: bold; font-size: 16px;">
+                Login to Spark AI
+            </a>
+        </div>
+        <p style="color: #94a3b8;">With Pro access, you get:</p>
+        <ul style="color: #94a3b8; line-height: 1.8;">
+            <li>Unlimited AI match predictions &amp; analysis</li>
+            <li>Jackpot Analyzer with AI chat</li>
+            <li>Community predictions &amp; live chat</li>
+            <li>Chrome extension for betting sites</li>
+            <li>Priority support</li>
+        </ul>
+        <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+            This login link expires in 72 hours. You can also visit
+            <a href="https://www.spark-ai-prediction.com/login" style="color: #3b82f6;">spark-ai-prediction.com</a>
+            and use "Continue with Whop" to log in anytime.
+        </p>
+    </div>
+    """
+
+    return _send_zoho_email(to_email, subject, html_body)
+
+
+def revoke_whop_marketplace_access(whop_membership_id: str) -> Dict:
+    """Revoke Pro access when a Whop marketplace membership is deactivated."""
+    if not whop_membership_id:
+        return {"success": False, "error": "No membership ID provided"}
+
+    conn = _get_db()
+    user = conn.execute(
+        "SELECT * FROM users WHERE whop_membership_id = ?", (whop_membership_id,)
+    ).fetchone()
+
+    if not user:
+        conn.close()
+        return {"success": False, "error": "No user found for this membership"}
+
+    # Only revoke if the access came from marketplace
+    if user["whop_access_source"] != "marketplace":
+        conn.close()
+        return {"success": False, "error": "Access source is not marketplace, skipping revocation"}
+
+    user_id = user["id"]
+    conn.execute(
+        """UPDATE users SET tier = 'free', whop_membership_id = NULL, whop_access_source = NULL
+           WHERE id = ?""",
+        (user_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    # Cancel subscription record
+    import subscriptions
+    subscriptions.cancel_subscription(user_id)
+
+    print(f"[Whop Marketplace] Revoked Pro access for user {user_id} (membership: {whop_membership_id})")
+    return {"success": True, "user_id": user_id}
 
 
 def register_user(email: str, password: str, display_name: str = "", referral_code: str = "", captcha_token: str = "") -> Dict:

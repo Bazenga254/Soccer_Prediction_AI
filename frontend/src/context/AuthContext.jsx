@@ -189,6 +189,49 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  const whopLogin = useCallback(async (code, state, termsAccepted = false) => {
+    try {
+      const response = await axios.post('/api/whop/oauth/callback', {
+        code,
+        state,
+        terms_accepted: termsAccepted,
+      })
+      if (response.data.success) {
+        const { token, user: userData } = response.data
+        localStorage.setItem('spark_token', token)
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        setUser(userData)
+        setIsAuthenticated(true)
+        return { success: true }
+      }
+      if (response.data.needs_terms) {
+        return { success: false, needs_terms: true, error: response.data.error }
+      }
+      return { success: false, error: response.data.error }
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Whop login failed. Please try again.'
+      return { success: false, error: msg }
+    }
+  }, [])
+
+  const magicLogin = useCallback(async (email, token) => {
+    try {
+      const response = await axios.post('/api/user/magic-login', { email, token })
+      if (response.data.success) {
+        const { token: jwtToken, user: userData } = response.data
+        localStorage.setItem('spark_token', jwtToken)
+        axios.defaults.headers.common['Authorization'] = `Bearer ${jwtToken}`
+        setUser(userData)
+        setIsAuthenticated(true)
+        return { success: true }
+      }
+      return { success: false, error: response.data.error }
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Login link expired or invalid.'
+      return { success: false, error: msg }
+    }
+  }, [])
+
   const verifyEmail = useCallback(async (email, code) => {
     try {
       const response = await axios.post('/api/user/verify-email', { email, code })
@@ -267,6 +310,8 @@ export function AuthProvider({ children }) {
     login,
     register,
     googleLogin,
+    whopLogin,
+    magicLogin,
     logout,
     updateUser,
     refreshProfile,

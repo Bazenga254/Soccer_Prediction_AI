@@ -17,8 +17,32 @@ from typing import Optional, Dict, List
 
 import community
 import subscriptions
+import ipaddress
 
 logger = logging.getLogger(__name__)
+
+# Safaricom IP ranges (official Daraja callback source IPs)
+# See: https://developer.safaricom.co.ke/Documentation
+SAFARICOM_IP_RANGES = [
+    ipaddress.ip_network("196.201.214.0/24"),
+    ipaddress.ip_network("196.201.212.0/24"),
+    ipaddress.ip_network("196.201.213.0/24"),
+    ipaddress.ip_network("41.215.136.0/24"),
+    ipaddress.ip_network("41.215.137.0/24"),
+    # Sandbox IPs
+    ipaddress.ip_network("104.154.0.0/16"),
+    ipaddress.ip_network("35.190.0.0/16"),
+    ipaddress.ip_network("35.240.0.0/16"),
+]
+
+
+def is_safaricom_ip(ip_str: str) -> bool:
+    """Check if an IP address belongs to Safaricom's known ranges."""
+    try:
+        ip = ipaddress.ip_address(ip_str.strip())
+        return any(ip in network for network in SAFARICOM_IP_RANGES)
+    except (ValueError, AttributeError):
+        return False
 
 DB_PATH = "community.db"
 
@@ -486,9 +510,31 @@ async def initiate_stk_push(
 
 # ==================== CALLBACK HANDLER ====================
 
-async def handle_stk_callback(callback_data: dict) -> Dict:
-    """Process Daraja STK Push callback when payment completes or fails."""
+async def _verify_payment_with_safaricom(checkout_id: str) -> dict:
+    """Cross-verify a payment callback by querying Safaricom STK status API.
+    Returns {'verified': True/False, 'result_code': int|None}."""
     try:
+        result = await _query_stk_status(checkout_id)
+        if result.get("completed"):
+            return {"verified": True, "result_code": 0}
+        elif result.get("failed"):
+            return {"verified": True, "result_code": 1}
+        return {"verified": False, "result_code": None}
+    except Exception as e:
+        logger.warning(f"Safaricom verification failed for {checkout_id}: {e}")
+        return {"verified": False, "result_code": None}
+
+
+async def handle_stk_callback(callback_data: dict, client_ip: str = "") -> Dict:
+    """Process Daraja STK Push callback when payment completes or fails.
+    Validates source IP and cross-verifies successful payments with Safaricom."""
+    try:
+        # Security: validate callback source IP
+        if client_ip and not is_safaricom_ip(client_ip):
+            logger.warning(f"M-Pesa callback from UNTRUSTED IP: {client_ip}")
+            # Don't reject outright (IP ranges may change), but flag and verify
+            # For successful payments, we MUST cross-verify with Safaricom
+
         stk_callback = callback_data.get("Body", {}).get("stkCallback", {})
         checkout_id = stk_callback.get("CheckoutRequestID", "")
         result_code = stk_callback.get("ResultCode")
@@ -514,9 +560,35 @@ async def handle_stk_callback(callback_data: dict) -> Dict:
             conn.close()
             return {"success": True, "status": tx["payment_status"]}
 
+        # Timing check: reject callbacks for transactions older than 10 minutes
+        # (STK push expires in ~60 seconds, 10 min is very generous)
+        try:
+            created = datetime.fromisoformat(tx["created_at"])
+            if (datetime.now() - created).total_seconds() > 600:
+                conn.close()
+                logger.warning(f"Daraja callback rejected: tx={tx['id']} is too old")
+                return {"success": False, "error": "Transaction expired"}
+        except Exception:
+            pass
+
         now = datetime.now().isoformat()
 
         if result_code == 0 or result_code == "0":
+            # SECURITY: Cross-verify successful payments with Safaricom STK query
+            # This prevents forged callbacks from crediting accounts
+            is_trusted_ip = client_ip and is_safaricom_ip(client_ip)
+            if not is_trusted_ip:
+                verification = await _verify_payment_with_safaricom(checkout_id)
+                if not verification.get("verified") or verification.get("result_code") != 0:
+                    conn.close()
+                    logger.error(
+                        f"BLOCKED forged M-Pesa callback: tx={tx['id']}, "
+                        f"checkout={checkout_id}, ip={client_ip}, "
+                        f"verification={verification}"
+                    )
+                    return {"success": False, "error": "Payment verification failed"}
+                logger.info(f"M-Pesa callback from non-Safaricom IP {client_ip} verified via STK query")
+
             # Payment successful — extract metadata
             metadata = {}
             items = stk_callback.get("CallbackMetadata", {}).get("Item", [])
@@ -538,7 +610,7 @@ async def handle_stk_callback(callback_data: dict) -> Dict:
             logger.info(f"Daraja payment completed: tx={tx['id']}, receipt={mpesa_receipt}")
             return {"success": True, "status": "completed"}
         else:
-            # Payment failed or cancelled by user
+            # Payment failed or cancelled by user — no verification needed (no money credited)
             conn.execute("""
                 UPDATE payment_transactions
                 SET payment_status = 'failed', failure_reason = ?, updated_at = ?

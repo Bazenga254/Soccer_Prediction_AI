@@ -153,6 +153,23 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     }
   }, [googlePendingToken, captchaToken, googleLogin, t])
 
+  const handleWhopLogin = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const response = await axios.get('/api/whop/oauth/authorize')
+      if (response.data.redirect_url) {
+        window.location.href = response.data.redirect_url
+      } else {
+        setError('Failed to connect to Whop. Please try again.')
+        setLoading(false)
+      }
+    } catch {
+      setError('Failed to connect to Whop. Please try again.')
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     const initGoogle = () => {
       if (window.google?.accounts?.id && googleBtnRef.current) {
@@ -529,6 +546,38 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
         <div className="google-signin-section">
           <div ref={googleBtnRef} className="google-btn-wrapper"></div>
         </div>
+
+        {/* Whop Sign-In */}
+        <button
+          type="button"
+          className="whop-login-btn"
+          onClick={handleWhopLogin}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: '#7c3aed',
+            color: '#fff',
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            marginTop: '8px',
+            transition: 'background 0.2s',
+          }}
+          onMouseOver={e => e.currentTarget.style.background = '#6d28d9'}
+          onMouseOut={e => e.currentTarget.style.background = '#7c3aed'}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.22.21-1.79L9 13v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" fill="currentColor"/>
+          </svg>
+          Continue with Whop
+        </button>
 
         <div className="auth-divider">
           <span>{t('common.or')}</span>

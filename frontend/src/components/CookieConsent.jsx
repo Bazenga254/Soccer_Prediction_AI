@@ -14,18 +14,41 @@ export default function CookieConsent() {
 
   useEffect(() => {
     const consent = localStorage.getItem('spark_cookie_consent')
-    if (!consent) {
-      // Small delay so it doesn't flash on page load
-      const timer = setTimeout(() => setShow(true), 1000)
-      return () => clearTimeout(timer)
+    if (consent) {
+      // Already have consent in localStorage — init session tracking
+      let sid = sessionStorage.getItem('spark_session_id')
+      if (!sid) {
+        sid = generateSessionId()
+        sessionStorage.setItem('spark_session_id', sid)
+      }
+      sessionIdRef.current = sid
+      return
     }
-    // Initialize session tracking ID
-    let sid = sessionStorage.getItem('spark_session_id')
-    if (!sid) {
-      sid = generateSessionId()
-      sessionStorage.setItem('spark_session_id', sid)
-    }
-    sessionIdRef.current = sid
+    // No localStorage consent — check backend in case user cleared cache
+    let cancelled = false
+    axios.get('/api/consent/status').then(res => {
+      if (cancelled) return
+      if (res.data.has_consent) {
+        // Restore consent from backend
+        const val = res.data.consent_given ? 'accepted' : 'declined'
+        localStorage.setItem('spark_cookie_consent', val)
+        localStorage.setItem('spark_consent_date', new Date().toISOString())
+        let sid = sessionStorage.getItem('spark_session_id')
+        if (!sid) {
+          sid = generateSessionId()
+          sessionStorage.setItem('spark_session_id', sid)
+        }
+        sessionIdRef.current = sid
+        // Don't show banner
+      } else {
+        // No backend consent either — show banner after delay
+        setTimeout(() => { if (!cancelled) setShow(true) }, 1000)
+      }
+    }).catch(() => {
+      // Not logged in or network error — show banner after delay
+      if (!cancelled) setTimeout(() => setShow(true), 1000)
+    })
+    return () => { cancelled = true }
   }, [])
 
   const getOrCreateSessionId = () => {

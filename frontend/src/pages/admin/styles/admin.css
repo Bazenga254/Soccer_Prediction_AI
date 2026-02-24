@@ -2246,6 +2246,12 @@
   color: #60a5fa;
 }
 
+.tx-tab.active.whop {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
 .tx-tab-icon {
   font-size: 15px;
 }

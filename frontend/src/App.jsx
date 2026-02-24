@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from 'react'
+import { useEffect, lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Header from './components/Header'
@@ -6,39 +6,97 @@ import { useTracking } from './hooks/useTracking'
 import { BetSlipProvider } from './context/BetSlipContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { CurrencyProvider } from './context/CurrencyContext'
+import { ThemeProvider } from './context/ThemeContext'
 import OfflineBanner from './components/OfflineBanner'
 import './App.css'
 
+// Retry dynamic imports once by clearing SW caches and reloading on chunk failure
+function lazyRetry(importFn) {
+  return lazy(() =>
+    importFn().catch(async () => {
+      const reloaded = sessionStorage.getItem('chunk_reload')
+      if (!reloaded) {
+        sessionStorage.setItem('chunk_reload', '1')
+        // Clear all service worker caches so stale index.html is purged
+        if ('caches' in window) {
+          const keys = await caches.keys()
+          await Promise.all(keys.map(k => caches.delete(k)))
+        }
+        // Unregister stale service workers
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations()
+          await Promise.all(regs.map(r => r.unregister()))
+        }
+        window.location.reload()
+        return new Promise(() => {}) // never resolves, page is reloading
+      }
+      sessionStorage.removeItem('chunk_reload')
+      return importFn() // second attempt after reload
+    })
+  )
+}
+
+// Error Boundary to catch chunk load failures and render errors
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
+          <h2 style={{ color: '#f1f5f9', marginBottom: 12 }}>Something went wrong</h2>
+          <p>The page failed to load. This usually fixes itself with a refresh.</p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ marginTop: 16, padding: '10px 24px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15 }}
+          >
+            Reload Page
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // Lazy-load all page components for code splitting
-const LiveScores = lazy(() => import('./pages/LiveScores'))
-const FixturesList = lazy(() => import('./components/FixturesList'))
-const MatchAnalysis = lazy(() => import('./pages/MatchAnalysis'))
-const TrackRecord = lazy(() => import('./pages/TrackRecord'))
-const AccessGate = lazy(() => import('./pages/AccessGate'))
-const LandingPage = lazy(() => import('./pages/LandingPage'))
-const Admin = lazy(() => import('./pages/admin/Admin'))
-const Employee = lazy(() => import('./pages/employee/Employee'))
-const InviteRegistration = lazy(() => import('./pages/InviteRegistration'))
-const Profile = lazy(() => import('./pages/Profile'))
-const Community = lazy(() => import('./pages/Community'))
-const Upgrade = lazy(() => import('./pages/Upgrade'))
-const CreatorDashboard = lazy(() => import('./pages/CreatorDashboard'))
-const Transactions = lazy(() => import('./pages/Transactions'))
-const JackpotAnalyzer = lazy(() => import('./pages/JackpotAnalyzer'))
-const MyAnalysis = lazy(() => import('./pages/MyAnalysis'))
-const DocsPage = lazy(() => import('./pages/DocsPage'))
-const ReferralLanding = lazy(() => import('./pages/ReferralLanding'))
-const ResetPassword = lazy(() => import('./pages/ResetPassword'))
-const TermsOfService = lazy(() => import('./pages/TermsOfService'))
-const ExtensionInstall = lazy(() => import('./pages/ExtensionInstall'))
-const BetSlip = lazy(() => import('./components/BetSlip'))
-const SupportChat = lazy(() => import('./components/SupportChat'))
-const AccountSetup = lazy(() => import('./components/AccountSetup'))
-const TermsAcceptance = lazy(() => import('./components/TermsAcceptance'))
-const InstallPrompt = lazy(() => import('./components/InstallPrompt'))
-const CookieConsent = lazy(() => import('./components/CookieConsent'))
-const LanguageBanner = lazy(() => import('./components/LanguageBanner'))
-const NotificationPrompt = lazy(() => import('./components/NotificationPrompt'))
+const LiveScores = lazyRetry(() => import('./pages/LiveScores'))
+const FixturesList = lazyRetry(() => import('./components/FixturesList'))
+const MatchAnalysis = lazyRetry(() => import('./pages/MatchAnalysis'))
+const TrackRecord = lazyRetry(() => import('./pages/TrackRecord'))
+const AccessGate = lazyRetry(() => import('./pages/AccessGate'))
+const LandingPage = lazyRetry(() => import('./pages/LandingPage'))
+const Admin = lazyRetry(() => import('./pages/admin/Admin'))
+const Employee = lazyRetry(() => import('./pages/employee/Employee'))
+const InviteRegistration = lazyRetry(() => import('./pages/InviteRegistration'))
+const Profile = lazyRetry(() => import('./pages/Profile'))
+const Community = lazyRetry(() => import('./pages/Community'))
+const Upgrade = lazyRetry(() => import('./pages/Upgrade'))
+const CreatorDashboard = lazyRetry(() => import('./pages/CreatorDashboard'))
+const Transactions = lazyRetry(() => import('./pages/Transactions'))
+const JackpotAnalyzer = lazyRetry(() => import('./pages/JackpotAnalyzer'))
+const MyAnalysis = lazyRetry(() => import('./pages/MyAnalysis'))
+const DocsPage = lazyRetry(() => import('./pages/DocsPage'))
+const ReferralLanding = lazyRetry(() => import('./pages/ReferralLanding'))
+const ResetPassword = lazyRetry(() => import('./pages/ResetPassword'))
+const TermsOfService = lazyRetry(() => import('./pages/TermsOfService'))
+const ExtensionInstall = lazyRetry(() => import('./pages/ExtensionInstall'))
+const Settings = lazyRetry(() => import('./pages/Settings'))
+const WhopCallback = lazyRetry(() => import('./pages/WhopCallback'))
+const MagicLogin = lazyRetry(() => import('./pages/MagicLogin'))
+const BetSlip = lazyRetry(() => import('./components/BetSlip'))
+const SupportChat = lazyRetry(() => import('./components/SupportChat'))
+const AccountSetup = lazyRetry(() => import('./components/AccountSetup'))
+const TermsAcceptance = lazyRetry(() => import('./components/TermsAcceptance'))
+const InstallPrompt = lazyRetry(() => import('./components/InstallPrompt'))
+const CookieConsent = lazyRetry(() => import('./components/CookieConsent'))
+const LanguageBanner = lazyRetry(() => import('./components/LanguageBanner'))
+const NotificationPrompt = lazyRetry(() => import('./components/NotificationPrompt'))
 
 function PageLoader() {
   return (
@@ -99,23 +157,26 @@ function ProtectedApp() {
       <div className="app">
         <Header user={user} logout={logout} />
         <main className="main-content">
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/" element={<LiveScores />} />
-              <Route path="/live" element={<LiveScores />} />
-              <Route path="/competition/:competitionId" element={<FixturesList />} />
-              <Route path="/match/:competitionId/:homeId/:awayId" element={<MatchAnalysis />} />
-              <Route path="/my-predictions" element={<TrackRecord />} />
-              <Route path="/predictions" element={<Community />} />
-              <Route path="/jackpot" element={<JackpotAnalyzer />} />
-              <Route path="/my-analysis" element={<MyAnalysis />} />
-              <Route path="/upgrade" element={<Upgrade />} />
-              <Route path="/creator" element={<CreatorDashboard />} />
-              <Route path="/transactions" element={<Transactions />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/docs" element={<DocsPage />} />
-            </Routes>
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<LiveScores />} />
+                <Route path="/live" element={<LiveScores />} />
+                <Route path="/competition/:competitionId" element={<FixturesList />} />
+                <Route path="/match/:competitionId/:homeId/:awayId" element={<MatchAnalysis />} />
+                <Route path="/my-predictions" element={<TrackRecord />} />
+                <Route path="/predictions" element={<Community />} />
+                <Route path="/jackpot" element={<JackpotAnalyzer />} />
+                <Route path="/my-analysis" element={<MyAnalysis />} />
+                <Route path="/upgrade" element={<Upgrade />} />
+                <Route path="/creator" element={<CreatorDashboard />} />
+                <Route path="/transactions" element={<Transactions />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/docs" element={<DocsPage />} />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
         </main>
         <Suspense fallback={null}>
           <BetSlip />
@@ -145,6 +206,7 @@ function App() {
     <>
     <OfflineBanner />
     <BrowserRouter>
+      <ThemeProvider>
       <CurrencyProvider>
       <AuthProvider>
         <Suspense fallback={null}>
@@ -153,23 +215,28 @@ function App() {
           <InstallPrompt />
         </Suspense>
         <TrackingWrapper>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/employee" element={<Employee />} />
-              <Route path="/invite/:token" element={<InviteRegistration />} />
-              <Route path="/ref/:username" element={<ReferralLanding />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/login" element={<AccessGate />} />
-              <Route path="/docs" element={<DocsPage />} />
-              <Route path="/terms" element={<TermsOfService />} />
-              <Route path="/extension" element={<ExtensionInstall />} />
-              <Route path="*" element={<ProtectedApp />} />
-            </Routes>
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/employee" element={<Employee />} />
+                <Route path="/invite/:token" element={<InviteRegistration />} />
+                <Route path="/ref/:username" element={<ReferralLanding />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/login" element={<AccessGate />} />
+                <Route path="/docs" element={<DocsPage />} />
+                <Route path="/terms" element={<TermsOfService />} />
+                <Route path="/extension" element={<ExtensionInstall />} />
+                <Route path="/auth/whop/callback" element={<WhopCallback />} />
+                <Route path="/magic-login" element={<MagicLogin />} />
+                <Route path="*" element={<ProtectedApp />} />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
         </TrackingWrapper>
       </AuthProvider>
       </CurrencyProvider>
+      </ThemeProvider>
     </BrowserRouter>
     </>
   )

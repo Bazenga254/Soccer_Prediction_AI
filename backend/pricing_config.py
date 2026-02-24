@@ -121,6 +121,9 @@ def _seed_defaults(conn):
         ("jackpot_analysis_price_usd", "0.65", "pay_per_use", "Jackpot Analysis Price (USD)", "Per-analysis deduction for jackpot analysis", "number"),
         ("match_analysis_price_kes", "25.0", "pay_per_use", "Match Analysis Price (KES)", "Per-analysis price shown to KES users", "number"),
         ("jackpot_analysis_price_kes", "65.0", "pay_per_use", "Jackpot Analysis Price (KES)", "Per-analysis price shown to KES users", "number"),
+        ("chat_topup_price_usd", "0.50", "pay_per_use", "Chat Top-Up Price (USD)", "Price for 2 extra AI chat prompts in USD", "number"),
+        ("chat_topup_price_kes", "50.0", "pay_per_use", "Chat Top-Up Price (KES)", "Price for 2 extra AI chat prompts in KES", "number"),
+        ("chat_topup_prompts", "2", "pay_per_use", "Chat Top-Up Prompts", "Number of extra prompts per top-up purchase", "number"),
         # Free tier
         ("free_predictions_per_day", "3", "free_tier", "Free Predictions Per Day", "Number of free predictions allowed per day", "number"),
         ("free_shares_per_day", "1", "free_tier", "Free Community Shares Per Day", "Number of free community shares allowed per day", "number"),
@@ -315,6 +318,9 @@ def get_public_pricing() -> Dict:
             "jackpot_analysis_price_usd": get("jackpot_analysis_price_usd", 0.65),
             "match_analysis_price_kes": get("match_analysis_price_kes", 25.0),
             "jackpot_analysis_price_kes": get("jackpot_analysis_price_kes", 65.0),
+            "chat_topup_price_usd": get("chat_topup_price_usd", 0.50),
+            "chat_topup_price_kes": get("chat_topup_price_kes", 50.0),
+            "chat_topup_prompts": int(get("chat_topup_prompts", 2)),
         },
         "commissions": {
             "referral_rate": get("referral_commission_rate", 0.30),
