@@ -623,6 +623,112 @@ async def use_balance_for_jackpot(authorization: str = Header(None)):
     return {"success": True, "balance": updated}
 
 
+
+async def _ai_enhance_predictions(
+    team_a, team_b, competition,
+    h2h_total, h2h_team_a_wins, h2h_draws, h2h_team_b_wins,
+    ht_total, ht_team_a_wins, ht_draws_ht, ht_team_b_wins,
+    avg_goals, team_a_win_pct, draw_pct, team_b_win_pct,
+    raw_first_half
+):
+    """Use GPT-4o-mini to produce calibrated first-half probabilities."""
+    import os, json, re as _re
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+
+        h2h_summary = (
+            f"{h2h_total} H2H matches: {team_a} won {h2h_team_a_wins}, "
+            f"draws {h2h_draws}, {team_b} won {h2h_team_b_wins}."
+        ) if h2h_total > 0 else "No H2H data available."
+
+        ht_summary = (
+            f"{ht_total} first-half results: {team_a} led {ht_team_a_wins}, "
+            f"drew {ht_draws_ht}, {team_b} led {ht_team_b_wins}."
+        ) if ht_total > 0 else "No first-half H2H data."
+
+        raw_1x2 = raw_first_half.get("1x2", {})
+
+        prompt = (
+            f"You are an expert football statistician. Produce calibrated probability estimates "
+            f"for the FIRST HALF of {team_a} vs {team_b} ({competition}).\n\n"
+            f"DATA:\n"
+            f"- Full-match H2H: {h2h_summary}\n"
+            f"- Full-match win %: {team_a}={team_a_win_pct:.1f}%, Draw={draw_pct:.1f}%, {team_b}={team_b_win_pct:.1f}%\n"
+            f"- First-half H2H: {ht_summary}\n"
+            f"- Avg goals/match: {avg_goals:.2f}\n"
+            f"- Raw stat first-half 1X2: {team_a}={raw_1x2.get('team_a',0)}%, Draw={raw_1x2.get('draw',0)}%, {team_b}={raw_1x2.get('team_b',0)}%\n\n"
+            f"RULES:\n"
+            f"1. No value can be 100% or 0%. Min 3%, max 92%.\n"
+            f"2. 1X2 must sum to exactly 100%.\n"
+            f"3. Double Chance: 1X = team_a+draw, X2 = draw+team_b, 12 = team_a+team_b (max 97%)\n"
+            f"4. Over/Under must be strictly descending: over_05 > over_15 > over_25\n"
+            f"5. First halves rarely have 3+ goals — over_25 should rarely exceed 22%\n"
+            f"6. Small sample (<4 matches): blend with base rates (35% draw, 32.5/32.5 split)\n"
+            f"7. Use your football knowledge about team strengths and the league.\n\n"
+            f"Return ONLY valid JSON:\n"
+            f'{{ "1x2": {{"team_a": 0.0, "draw": 0.0, "team_b": 0.0}}, '
+            f'"double_chance": {{"1X": 0.0, "X2": 0.0, "12": 0.0}}, '
+            f'"over_05": 0.0, "over_15": 0.0, "over_25": 0.0, '
+            f'"btts": {{"yes": 0.0, "no": 0.0}} }}'
+        )
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            max_tokens=300,
+        )
+        text = response.choices[0].message.content.strip()
+        text = _re.sub(r"^```[a-z]*\n?", "", text)
+        text = _re.sub(r"\n?```$", "", text)
+        data = json.loads(text.strip())
+
+        def clamp(v):
+            return round(max(3.0, min(97.0, float(v))), 1)
+
+        result = {
+            "1x2": {
+                "team_a": clamp(data["1x2"]["team_a"]),
+                "draw":   clamp(data["1x2"]["draw"]),
+                "team_b": clamp(data["1x2"]["team_b"]),
+            },
+            "double_chance": {
+                "1X": clamp(data["double_chance"]["1X"]),
+                "X2": clamp(data["double_chance"]["X2"]),
+                "12": clamp(data["double_chance"]["12"]),
+            },
+            "over_05": clamp(data["over_05"]),
+            "over_15": clamp(data["over_15"]),
+            "over_25": clamp(data["over_25"]),
+            "btts": {
+                "yes": clamp(data["btts"]["yes"]),
+                "no":  clamp(data["btts"]["no"]),
+            },
+        }
+
+        # Normalise 1X2 to sum to 100
+        s = result["1x2"]["team_a"] + result["1x2"]["draw"] + result["1x2"]["team_b"]
+        if s > 0:
+            result["1x2"] = {k: round(v / s * 100, 1) for k, v in result["1x2"].items()}
+
+        # Ensure over values are strictly descending
+        if result["over_05"] <= result["over_15"]:
+            result["over_05"] = round(result["over_15"] + 8, 1)
+        if result["over_15"] <= result["over_25"]:
+            result["over_15"] = round(result["over_25"] + 8, 1)
+
+        return result
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"AI prediction enhancement failed: {e}")
+        return None
+
+
 @app.post("/api/predict")
 async def predict(request: PredictRequest, req: Request = None, authorization: str = Header(None)):
     if request.team_a_id == request.team_b_id:
@@ -4298,7 +4404,15 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
 
     # Helper for HT percentage calculations
     def ht_pct(count):
-        return round((count / ht_matches) * 100, 1) if ht_matches > 0 else 0
+        # Bayesian (Laplace) smoothing: blend with a weak prior of 33% to
+        # prevent 100% / 0% from small sample sizes.
+        # With 1 match: 1-win -> 80% (not 100%), 0-wins -> 20% (not 0%)
+        # With 5+ matches the raw percentage dominates.
+        if ht_matches <= 0:
+            return 0
+        alpha = max(0.5, 3.0 / ht_matches)  # stronger smoothing for small samples
+        smoothed = (count + alpha) / (ht_matches + 3 * alpha)
+        return round(min(97.0, max(3.0, smoothed * 100)), 1)
 
     # First Half analysis - use actual HT data if available, else estimate
     if ht_matches > 0:
@@ -4399,6 +4513,33 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
                 "is_estimate": True,
             },
         }
+
+    # ── AI-enhanced first-half probabilities ─────────────────────────────────
+    try:
+        ai_fh = await _ai_enhance_predictions(
+            team_a=team_a.get("name", f"Team {team_a_id}"),
+            team_b=team_b.get("name", f"Team {team_b_id}"),
+            competition=competition,
+            h2h_total=total_matches,
+            h2h_team_a_wins=team_a_wins, h2h_draws=draws, h2h_team_b_wins=team_b_wins,
+            ht_total=ht_matches,
+            ht_team_a_wins=ht_team_a_wins, ht_draws_ht=ht_draws, ht_team_b_wins=ht_team_b_wins,
+            avg_goals=avg_goals,
+            team_a_win_pct=team_a_win_pct, draw_pct=draw_pct, team_b_win_pct=team_b_win_pct,
+            raw_first_half=first_half_analysis,
+        )
+        if ai_fh:
+            first_half_analysis["1x2"] = ai_fh["1x2"]
+            first_half_analysis["double_chance"] = ai_fh["double_chance"]
+            first_half_analysis["over_05"] = ai_fh["over_05"]
+            first_half_analysis["over_15"] = ai_fh["over_15"]
+            first_half_analysis["over_25"] = ai_fh["over_25"]
+            first_half_analysis["btts"]["yes"] = ai_fh["btts"]["yes"]
+            first_half_analysis["btts"]["no"] = ai_fh["btts"]["no"]
+            first_half_analysis["ai_enhanced"] = True
+    except Exception as _ai_err:
+        import logging
+        logging.getLogger(__name__).warning(f"AI first-half enhancement skipped: {_ai_err}")
 
     # 2nd Half combined markets
     second_half_analysis = {
