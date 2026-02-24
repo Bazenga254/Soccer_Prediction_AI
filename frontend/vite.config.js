@@ -87,14 +87,12 @@ export default defineConfig({
             },
           },
           {
+            // API calls must always go directly to the network.
+            // NetworkFirst with networkTimeoutSeconds would silently kill POST
+            // requests (e.g. STK push) after 10 s and return a cache miss,
+            // showing "Failed to initiate payment" even when the server is fine.
             urlPattern: /\/api\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-responses',
-              networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 100, maxAgeSeconds: 5 * 60 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
+            handler: 'NetworkOnly',
           },
           {
             urlPattern: /\/assets\/hero-.*\.jpg$/i,
@@ -123,7 +121,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8001',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },
