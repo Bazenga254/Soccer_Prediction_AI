@@ -132,6 +132,12 @@ def init_payment_db():
         "ALTER TABLE payment_transactions ADD COLUMN daraja_merchant_id TEXT DEFAULT ''",
         "ALTER TABLE payment_transactions ADD COLUMN mpesa_receipt TEXT DEFAULT ''",
         "ALTER TABLE payment_transactions ADD COLUMN failure_reason TEXT DEFAULT ''",
+        # Columns added when switching from Swypt to Daraja — may be absent on
+        # production databases that were initialised with the old schema.
+        "ALTER TABLE payment_transactions ADD COLUMN amount_usd REAL DEFAULT 0",
+        "ALTER TABLE payment_transactions ADD COLUMN exchange_rate REAL DEFAULT 0",
+        "ALTER TABLE payment_transactions ADD COLUMN reference_id TEXT DEFAULT ''",
+        "ALTER TABLE payment_transactions ADD COLUMN completed_at TEXT",
     ]
     for col_sql in migration_cols:
         try:
@@ -382,23 +388,24 @@ async def initiate_stk_push(
         f"{DARAJA_SHORTCODE}{DARAJA_PASSKEY}{timestamp}".encode()
     ).decode()
 
-    # Create transaction record
-    conn = _get_db()
-    cursor = conn.execute("""
-        INSERT INTO payment_transactions
-            (user_id, transaction_type, reference_id, amount_kes, amount_usd,
-             exchange_rate, phone_number, payment_status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-    """, (
-        user_id, transaction_type, reference_id,
-        amount_kes, quote["amount_usd"], quote["exchange_rate"],
-        phone, now.isoformat(), now.isoformat(),
-    ))
-    transaction_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-
     try:
+        # Create transaction record first — inside try so a schema error returns
+        # a clean 400 rather than crashing the route handler with a 500.
+        conn = _get_db()
+        cursor = conn.execute("""
+            INSERT INTO payment_transactions
+                (user_id, transaction_type, reference_id, amount_kes, amount_usd,
+                 exchange_rate, phone_number, payment_status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        """, (
+            user_id, transaction_type, reference_id,
+            amount_kes, quote["amount_usd"], quote["exchange_rate"],
+            phone, now.isoformat(), now.isoformat(),
+        ))
+        transaction_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
         token = await _get_daraja_token()
         _timeout = aiohttp.ClientTimeout(total=30)
         async with aiohttp.ClientSession(timeout=_timeout) as session:
@@ -460,15 +467,20 @@ async def initiate_stk_push(
                     return {"success": False, "error": error_msg}
 
     except Exception as e:
-        logger.error(f"STK push failed for tx={transaction_id}: {e}", exc_info=True)
-        conn = _get_db()
-        conn.execute("""
-            UPDATE payment_transactions
-            SET payment_status = 'failed', failure_reason = ?, updated_at = ?
-            WHERE id = ?
-        """, (str(e), datetime.now().isoformat(), transaction_id))
-        conn.commit()
-        conn.close()
+        tx_id = locals().get("transaction_id")
+        logger.error(f"STK push failed for tx={tx_id}: {e}", exc_info=True)
+        if tx_id:
+            try:
+                conn = _get_db()
+                conn.execute("""
+                    UPDATE payment_transactions
+                    SET payment_status = 'failed', failure_reason = ?, updated_at = ?
+                    WHERE id = ?
+                """, (str(e), datetime.now().isoformat(), tx_id))
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
         return {"success": False, "error": f"Payment service unavailable: {str(e)}"}
 
 
