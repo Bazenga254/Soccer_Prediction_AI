@@ -249,6 +249,9 @@ async def _get_daraja_token() -> str:
             headers={"Authorization": f"Basic {credentials}"},
         ) as resp:
             data = await resp.json(content_type=None)
+            if "access_token" not in data:
+                err = data.get("errorMessage") or data.get("error_description") or f"HTTP {resp.status}"
+                raise Exception(f"Daraja auth failed: {err}")
             token = data["access_token"]
             _daraja_token_cache["token"] = token
             _daraja_token_cache["expires_at"] = datetime.now() + timedelta(seconds=3500)
@@ -494,7 +497,7 @@ async def handle_stk_callback(callback_data: dict) -> Dict:
 
         now = datetime.now().isoformat()
 
-        if result_code == 0:
+        if result_code == 0 or result_code == "0":
             # Payment successful — extract metadata
             metadata = {}
             items = stk_callback.get("CallbackMetadata", {}).get("Item", [])
@@ -551,6 +554,23 @@ async def check_payment_status(transaction_id: int, user_id: int) -> Dict:
         return {
             "success": True,
             "status": tx["payment_status"],
+            "transaction": _tx_to_dict(tx),
+        }
+
+    # Callback was received and receipt recorded, but fulfillment may not have completed.
+    # Re-attempt _complete_transaction to avoid the user being stuck on "processing" forever.
+    if tx["payment_status"] == "confirmed":
+        complete_result = _complete_transaction(transaction_id)
+        if complete_result.get("success"):
+            return {
+                "success": True,
+                "status": "completed",
+                "transaction": complete_result.get("transaction", _tx_to_dict(tx)),
+            }
+        return {
+            "success": True,
+            "status": "processing",
+            "message": "Payment confirmed, processing your order...",
             "transaction": _tx_to_dict(tx),
         }
 
