@@ -243,7 +243,8 @@ async def _get_daraja_token() -> str:
         f"{DARAJA_CONSUMER_KEY}:{DARAJA_CONSUMER_SECRET}".encode()
     ).decode()
 
-    async with aiohttp.ClientSession() as session:
+    _timeout = aiohttp.ClientTimeout(total=30)
+    async with aiohttp.ClientSession(timeout=_timeout) as session:
         async with session.get(
             f"{DARAJA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials",
             headers={"Authorization": f"Basic {credentials}"},
@@ -271,12 +272,16 @@ async def _get_b2c_token() -> str:
         f"{DARAJA_B2C_CONSUMER_KEY}:{DARAJA_B2C_CONSUMER_SECRET}".encode()
     ).decode()
 
-    async with aiohttp.ClientSession() as session:
+    _timeout = aiohttp.ClientTimeout(total=30)
+    async with aiohttp.ClientSession(timeout=_timeout) as session:
         async with session.get(
             f"{DARAJA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials",
             headers={"Authorization": f"Basic {credentials}"},
         ) as resp:
             data = await resp.json(content_type=None)
+            if "access_token" not in data:
+                err = data.get("errorMessage") or data.get("error_description") or f"HTTP {resp.status}"
+                raise Exception(f"Daraja B2C auth failed: {err}")
             token = data["access_token"]
             _daraja_b2c_token_cache["token"] = token
             _daraja_b2c_token_cache["expires_at"] = datetime.now() + timedelta(seconds=3500)
@@ -395,7 +400,8 @@ async def initiate_stk_push(
 
     try:
         token = await _get_daraja_token()
-        async with aiohttp.ClientSession() as session:
+        _timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=_timeout) as session:
             async with session.post(
                 f"{DARAJA_BASE_URL}/mpesa/stkpush/v1/processrequest",
                 json={
@@ -454,6 +460,7 @@ async def initiate_stk_push(
                     return {"success": False, "error": error_msg}
 
     except Exception as e:
+        logger.error(f"STK push failed for tx={transaction_id}: {e}", exc_info=True)
         conn = _get_db()
         conn.execute("""
             UPDATE payment_transactions

@@ -93,7 +93,22 @@ export default function MpesaPaymentModal({
       setTransactionId(res.data.transaction_id)
       startPolling(res.data.transaction_id)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to initiate payment')
+      let msg
+      if (!err.response) {
+        // Network error — request never reached the server (wrong port, service worker, ad-blocker, offline)
+        msg = 'Network error — could not reach the server. Please check your connection and try again.'
+      } else {
+        const detail = err.response.data?.detail
+        if (typeof detail === 'string' && detail) {
+          msg = detail
+        } else if (Array.isArray(detail)) {
+          // FastAPI 422 validation error
+          msg = detail.map(d => d.msg || d.message || JSON.stringify(d)).join('; ')
+        } else {
+          msg = `Server error (${err.response.status}) — please try again.`
+        }
+      }
+      setError(msg)
       setStep('failed')
     }
   }
