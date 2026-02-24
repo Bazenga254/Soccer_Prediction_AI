@@ -124,7 +124,7 @@ export default function LandingPage() {
   const TRIAL_FEATURES = pricing?.plans?.[trialKey]?.features || [
     '10 AI match predictions per day',
     '3 jackpot analyses per day',
-    '10 AI chat prompts per day',
+    'Unlimited AI chat assistant',
     'Live score tracking & goal alerts',
     '40+ leagues worldwide',
     'Community predictions feed',
@@ -135,7 +135,7 @@ export default function LandingPage() {
   const PRO_FEATURES = pricing?.plans?.[weeklyKey]?.features || [
     '20 AI match predictions per day',
     '5 jackpot analyses per day',
-    '10 AI chat prompts per day',
+    '50 AI chat prompts per day',
     'Odds comparison across bookmakers',
     'Advanced analytics & value betting',
     'Live score tracking & goal alerts',
@@ -161,7 +161,11 @@ export default function LandingPage() {
         <h1 className="hero-title">{t('landing.heroTitle')}</h1>
         <p className="hero-subtitle">{t('landing.heroSubtitle')}</p>
         <div className="hero-actions">
-          <button className="hero-cta-btn" onClick={scrollToPricing}>Try for KES 100</button>
+          <button className="hero-cta-btn" onClick={scrollToPricing}>
+            {isKenyan
+              ? 'Try for KES 100'
+              : `Try for ${currencySymbol}${pricing?.plans?.trial_usd?.price ?? 1}`}
+          </button>
           <button className="hero-secondary-btn" onClick={() => {
             document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
           }}>{t('landing.seeHowItWorks')}</button>
