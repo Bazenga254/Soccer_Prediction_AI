@@ -6,39 +6,10 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
-from collections import defaultdict
 import asyncio
 import json
 import uuid
 import shutil
-import time as _time
-
-
-# ==================== RATE LIMITER ====================
-class RateLimiter:
-    """In-memory rate limiter using sliding window."""
-    def __init__(self):
-        self._requests = defaultdict(list)  # key -> [timestamps]
-
-    def check(self, key: str, max_requests: int, window_seconds: int) -> bool:
-        """Return True if request is allowed, False if rate limited."""
-        now = _time.time()
-        cutoff = now - window_seconds
-        # Clean old entries
-        self._requests[key] = [t for t in self._requests[key] if t > cutoff]
-        if len(self._requests[key]) >= max_requests:
-            return False
-        self._requests[key].append(now)
-        return True
-
-    def cleanup(self):
-        """Remove stale keys (call periodically)."""
-        now = _time.time()
-        stale = [k for k, v in self._requests.items() if not v or v[-1] < now - 3600]
-        for k in stale:
-            del self._requests[k]
-
-_rate_limiter = RateLimiter()
 
 # Load .env file if present
 try:
@@ -64,6 +35,7 @@ import ai_support
 import daraja_payment
 import whop_payment
 import jackpot_analyzer
+import data_verifier
 import admin_rbac
 import activity_logger
 from admin_routes import admin_router
@@ -71,8 +43,8 @@ from employee_routes import employee_router
 import employee_portal
 import bot_manager
 
-# Admin password for managing access codes — no default, must be set in .env
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+# Admin password for managing access codes
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "SoccerAI2026Admin")
 
 app = FastAPI(title="Spark AI Prediction")
 
@@ -82,15 +54,9 @@ app.include_router(employee_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://spark-ai-prediction.com",
-        "https://www.spark-ai-prediction.com",
-        "http://localhost:5173",       # local dev
-        "http://127.0.0.1:5173",       # local dev
-    ],
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Admin-Password"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -101,18 +67,6 @@ class PredictRequest(BaseModel):
     competition: str = "PL"
     team_a_name: Optional[str] = None
     team_b_name: Optional[str] = None
-
-
-async def _whop_membership_validator():
-    """Background task: validate Whop marketplace memberships every 6 hours."""
-    await asyncio.sleep(300)  # Wait 5 min after startup before first check
-    while True:
-        try:
-            result = whop_payment.validate_marketplace_memberships()
-            print(f"[Whop] Membership validation: {result}")
-        except Exception as e:
-            print(f"[ERROR] Whop membership validation: {e}")
-        await asyncio.sleep(21600)  # 6 hours
 
 
 async def _inactivity_checker():
@@ -237,6 +191,10 @@ async def startup():
     # Initialize jackpot analyzer
     jackpot_analyzer.init_db()
 
+    # Initialize AI data verification cache
+    data_verifier.init_verified_cache()
+    print("[OK] AI data verification cache initialized")
+
     # Initialize RBAC system
     admin_rbac.seed_default_roles()
     admin_rbac.seed_default_permissions()
@@ -247,8 +205,7 @@ async def startup():
     user_auth.init_employee_tables()
     print("[OK] Employee portal tables initialized")
 
-    # Start background tasks
-    asyncio.create_task(_whop_membership_validator())
+    # Start background inactivity checker for support conversations
     asyncio.create_task(_inactivity_checker())
     asyncio.create_task(_payment_expiry_checker())
     asyncio.create_task(_active_users_cleanup())
@@ -263,7 +220,6 @@ async def startup():
     print("[OK] Prediction result checker started (5-min interval)")
     print("[OK] Weekly disbursement generator started (Fridays 10:00 EAT)")
     print("[OK] Daily free predictions generator started (30-min check interval)")
-    print("[OK] Whop marketplace membership validator started (6-hour interval)")
     print("=" * 50)
 
 
@@ -579,12 +535,10 @@ async def record_analysis_view(request: dict, authorization: str = Header(None))
 
 @app.post("/api/balance/use-for-analysis")
 async def use_balance_for_analysis(authorization: str = Header(None)):
-    """Deduct match analysis price from user balance. Rate limited: 20 per minute."""
+    """Deduct match analysis price from user balance."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    if not _rate_limiter.check(f"analysis:{payload['user_id']}", max_requests=20, window_seconds=60):
-        raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
     tier = payload.get("tier", "free")
     if tier in ("pro", "trial"):
         raise HTTPException(status_code=400, detail="Subscribed users have unlimited access")
@@ -602,12 +556,10 @@ async def use_balance_for_analysis(authorization: str = Header(None)):
 
 @app.post("/api/balance/use-for-jackpot")
 async def use_balance_for_jackpot(authorization: str = Header(None)):
-    """Deduct jackpot analysis price from user balance. Rate limited: 10 per minute."""
+    """Deduct jackpot analysis price from user balance."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    if not _rate_limiter.check(f"jackpot:{payload['user_id']}", max_requests=10, window_seconds=60):
-        raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
     tier = payload.get("tier", "free")
     if tier in ("pro", "trial"):
         raise HTTPException(status_code=400, detail="Subscribed users have unlimited access")
@@ -621,112 +573,6 @@ async def use_balance_for_jackpot(authorization: str = Header(None)):
         reason="Jackpot analysis", adjustment_type="jackpot_deduction"
     )
     return {"success": True, "balance": updated}
-
-
-
-async def _ai_enhance_predictions(
-    team_a, team_b, competition,
-    h2h_total, h2h_team_a_wins, h2h_draws, h2h_team_b_wins,
-    ht_total, ht_team_a_wins, ht_draws_ht, ht_team_b_wins,
-    avg_goals, team_a_win_pct, draw_pct, team_b_win_pct,
-    raw_first_half
-):
-    """Use GPT-4o-mini to produce calibrated first-half probabilities."""
-    import os, json, re as _re
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    if not api_key:
-        return None
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key)
-
-        h2h_summary = (
-            f"{h2h_total} H2H matches: {team_a} won {h2h_team_a_wins}, "
-            f"draws {h2h_draws}, {team_b} won {h2h_team_b_wins}."
-        ) if h2h_total > 0 else "No H2H data available."
-
-        ht_summary = (
-            f"{ht_total} first-half results: {team_a} led {ht_team_a_wins}, "
-            f"drew {ht_draws_ht}, {team_b} led {ht_team_b_wins}."
-        ) if ht_total > 0 else "No first-half H2H data."
-
-        raw_1x2 = raw_first_half.get("1x2", {})
-
-        prompt = (
-            f"You are an expert football statistician. Produce calibrated probability estimates "
-            f"for the FIRST HALF of {team_a} vs {team_b} ({competition}).\n\n"
-            f"DATA:\n"
-            f"- Full-match H2H: {h2h_summary}\n"
-            f"- Full-match win %: {team_a}={team_a_win_pct:.1f}%, Draw={draw_pct:.1f}%, {team_b}={team_b_win_pct:.1f}%\n"
-            f"- First-half H2H: {ht_summary}\n"
-            f"- Avg goals/match: {avg_goals:.2f}\n"
-            f"- Raw stat first-half 1X2: {team_a}={raw_1x2.get('team_a',0)}%, Draw={raw_1x2.get('draw',0)}%, {team_b}={raw_1x2.get('team_b',0)}%\n\n"
-            f"RULES:\n"
-            f"1. No value can be 100% or 0%. Min 3%, max 92%.\n"
-            f"2. 1X2 must sum to exactly 100%.\n"
-            f"3. Double Chance: 1X = team_a+draw, X2 = draw+team_b, 12 = team_a+team_b (max 97%)\n"
-            f"4. Over/Under must be strictly descending: over_05 > over_15 > over_25\n"
-            f"5. First halves rarely have 3+ goals — over_25 should rarely exceed 22%\n"
-            f"6. Small sample (<4 matches): blend with base rates (35% draw, 32.5/32.5 split)\n"
-            f"7. Use your football knowledge about team strengths and the league.\n\n"
-            f"Return ONLY valid JSON:\n"
-            f'{{ "1x2": {{"team_a": 0.0, "draw": 0.0, "team_b": 0.0}}, '
-            f'"double_chance": {{"1X": 0.0, "X2": 0.0, "12": 0.0}}, '
-            f'"over_05": 0.0, "over_15": 0.0, "over_25": 0.0, '
-            f'"btts": {{"yes": 0.0, "no": 0.0}} }}'
-        )
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-            max_tokens=300,
-        )
-        text = response.choices[0].message.content.strip()
-        text = _re.sub(r"^```[a-z]*\n?", "", text)
-        text = _re.sub(r"\n?```$", "", text)
-        data = json.loads(text.strip())
-
-        def clamp(v):
-            return round(max(3.0, min(97.0, float(v))), 1)
-
-        result = {
-            "1x2": {
-                "team_a": clamp(data["1x2"]["team_a"]),
-                "draw":   clamp(data["1x2"]["draw"]),
-                "team_b": clamp(data["1x2"]["team_b"]),
-            },
-            "double_chance": {
-                "1X": clamp(data["double_chance"]["1X"]),
-                "X2": clamp(data["double_chance"]["X2"]),
-                "12": clamp(data["double_chance"]["12"]),
-            },
-            "over_05": clamp(data["over_05"]),
-            "over_15": clamp(data["over_15"]),
-            "over_25": clamp(data["over_25"]),
-            "btts": {
-                "yes": clamp(data["btts"]["yes"]),
-                "no":  clamp(data["btts"]["no"]),
-            },
-        }
-
-        # Normalise 1X2 to sum to 100
-        s = result["1x2"]["team_a"] + result["1x2"]["draw"] + result["1x2"]["team_b"]
-        if s > 0:
-            result["1x2"] = {k: round(v / s * 100, 1) for k, v in result["1x2"].items()}
-
-        # Ensure over values are strictly descending
-        if result["over_05"] <= result["over_15"]:
-            result["over_05"] = round(result["over_15"] + 8, 1)
-        if result["over_15"] <= result["over_25"]:
-            result["over_15"] = round(result["over_25"] + 8, 1)
-
-        return result
-
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"AI prediction enhancement failed: {e}")
-        return None
 
 
 @app.post("/api/predict")
@@ -772,6 +618,22 @@ async def predict(request: PredictRequest, req: Request = None, authorization: s
 
     raw_players_a = await get_team_players(request.team_a_id, predict_league_id)
     raw_players_b = await get_team_players(request.team_b_id, predict_league_id)
+
+    # AI-verify coaches, injuries, player transfers via Gemini + Google Search
+    _verified_data = None
+    try:
+        _verified_data = await data_verifier.get_verified_match_data(
+            team_a_id=request.team_a_id, team_a_name=team_a["name"],
+            team_b_id=request.team_b_id, team_b_name=team_b["name"],
+            competition=request.competition, league_id=predict_league_id,
+            api_players_a=raw_players_a, api_players_b=raw_players_b,
+        )
+        if _verified_data:
+            raw_players_a = data_verifier.apply_player_corrections(raw_players_a, _verified_data.get("team_a", {}))
+            raw_players_b = data_verifier.apply_player_corrections(raw_players_b, _verified_data.get("team_b", {}))
+    except Exception as _ve:
+        print(f"[WARN] Data verification skipped: {_ve}")
+
     players_a = analyze_players(raw_players_a, team_a)
     players_b = analyze_players(raw_players_b, team_b)
     # Detect if player data came from live API (live players have 'photo' URLs from API-Football)
@@ -823,7 +685,24 @@ async def predict(request: PredictRequest, req: Request = None, authorization: s
             "odds": "The Odds API (Live)" if odds.get("using_live_odds") else "Simulated",
             "h2h": "API-Football (Live)" if is_using_live_data() else "Sample Data",
             "players": "API-Football (Live)" if _players_live else "Sample Data",
-        }
+            "verification": _verified_data.get("source", "none") if _verified_data else "none",
+        },
+        "verified_data": {
+            "team_a": {
+                "coach": _verified_data["team_a"].get("coach") if _verified_data else None,
+                "injuries": _verified_data["team_a"].get("injuries", []) if _verified_data else [],
+                "transfers_in": _verified_data["team_a"].get("transfers_in", []) if _verified_data else [],
+                "transfers_out": _verified_data["team_a"].get("transfers_out", []) if _verified_data else [],
+            },
+            "team_b": {
+                "coach": _verified_data["team_b"].get("coach") if _verified_data else None,
+                "injuries": _verified_data["team_b"].get("injuries", []) if _verified_data else [],
+                "transfers_in": _verified_data["team_b"].get("transfers_in", []) if _verified_data else [],
+                "transfers_out": _verified_data["team_b"].get("transfers_out", []) if _verified_data else [],
+            },
+            "verified_at": _verified_data.get("verified_at") if _verified_data else None,
+            "source": _verified_data.get("source", "none") if _verified_data else "none",
+        } if _verified_data else None,
     }
 
 
@@ -984,10 +863,6 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     email: str
     token: str
-    new_password: str
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str
     new_password: str
 
 class UpdateUsernameRequest(BaseModel):
@@ -1482,22 +1357,6 @@ async def do_reset_password(request: ResetPasswordRequest):
     result = user_auth.reset_password(
         email=request.email,
         token=request.token,
-        new_password=request.new_password,
-    )
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
-
-
-@app.post("/api/user/change-password")
-async def do_change_password(request: ChangePasswordRequest, authorization: str = Header(None)):
-    """Change password for logged-in user."""
-    payload = _get_current_user(authorization)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    result = user_auth.change_password(
-        user_id=payload["user_id"],
-        current_password=request.current_password,
         new_password=request.new_password,
     )
     if not result["success"]:
@@ -2229,41 +2088,38 @@ async def get_payment_quote(request: MpesaQuoteRequest, authorization: str = Hea
 
 
 @app.post("/api/payment/mpesa/initiate")
-async def initiate_mpesa_payment(request: Request, body: MpesaPaymentRequest, authorization: str = Header(None)):
-    """Initiate M-Pesa STK push via Daraja API. Rate limited: 3 per minute per user."""
+async def initiate_mpesa_payment(request: MpesaPaymentRequest, authorization: str = Header(None)):
+    """Initiate M-Pesa STK push via Daraja API."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    # Rate limit: 3 payment initiations per minute per user
-    if not _rate_limiter.check(f"mpesa_init:{payload['user_id']}", max_requests=3, window_seconds=60):
-        raise HTTPException(status_code=429, detail="Too many payment requests. Please wait a minute.")
 
     # Validate subscription requests: plan must exist and amount must match
-    if body.transaction_type == "subscription":
+    if request.transaction_type == "subscription":
         plans = subscriptions.get_plans()
-        if not body.reference_id or body.reference_id not in plans:
+        if not request.reference_id or request.reference_id not in plans:
             raise HTTPException(status_code=400, detail="Invalid subscription plan")
-        plan = plans[body.reference_id]
+        plan = plans[request.reference_id]
         if plan["currency"] == "KES":
             # Amount must match the plan price exactly
-            if abs(body.amount_kes - plan["price"]) > 1:
+            if abs(request.amount_kes - plan["price"]) > 1:
                 raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
         else:
             # USD plan paid via M-Pesa: verify KES equivalent is reasonable
             quote = await daraja_payment.get_usd_to_kes_quote(plan["price"])
-            if quote.get("success") and abs(body.amount_kes - quote["amount_kes"]) > 50:
+            if quote.get("success") and abs(request.amount_kes - quote["amount_kes"]) > 50:
                 raise HTTPException(status_code=400, detail="Payment amount does not match plan price")
 
     # Validate allowed transaction types
-    if body.transaction_type not in ("subscription", "balance_topup", "prediction_purchase"):
+    if request.transaction_type not in ("subscription", "balance_topup", "prediction_purchase"):
         raise HTTPException(status_code=400, detail="Invalid transaction type")
 
     result = await daraja_payment.initiate_stk_push(
-        phone=body.phone,
-        amount_kes=body.amount_kes,
+        phone=request.phone,
+        amount_kes=request.amount_kes,
         user_id=payload["user_id"],
-        transaction_type=body.transaction_type,
-        reference_id=body.reference_id,
+        transaction_type=request.transaction_type,
+        reference_id=request.reference_id,
     )
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result.get("error", "Payment initiation failed"))
@@ -2272,15 +2128,10 @@ async def initiate_mpesa_payment(request: Request, body: MpesaPaymentRequest, au
 
 @app.post("/api/payment/mpesa/callback")
 async def daraja_mpesa_callback(request: Request):
-    """Daraja STK Push callback — Safaricom POSTs payment results here.
-    IP-validated, rate-limited, and cross-verified with Safaricom for successful payments."""
-    client_ip = _get_client_ip(request)
-    # Rate limit callbacks: 30 per minute per IP (Safaricom sends at most a few)
-    if not _rate_limiter.check(f"mpesa_cb:{client_ip}", max_requests=30, window_seconds=60):
-        return {"ResultCode": 0, "ResultDesc": "Accepted"}
+    """Daraja STK Push callback — Safaricom POSTs payment results here (unauthenticated)."""
     try:
         callback_data = await request.json()
-        await daraja_payment.handle_stk_callback(callback_data, client_ip=client_ip)
+        await daraja_payment.handle_stk_callback(callback_data)
     except Exception as e:
         print(f"[Daraja Callback] Error: {e}")
     # Always return 200 to Safaricom regardless of outcome
@@ -2497,13 +2348,10 @@ class WhopCheckoutRequest(BaseModel):
 
 @app.post("/api/whop/create-checkout")
 async def create_whop_checkout(body: WhopCheckoutRequest, authorization: str = Header(None)):
-    """Create a Whop checkout session for card payments. Rate limited: 5 per minute."""
+    """Create a Whop checkout session for card payments."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    # Rate limit: 5 checkout creations per minute per user
-    if not _rate_limiter.check(f"whop_checkout:{payload['user_id']}", max_requests=5, window_seconds=60):
-        raise HTTPException(status_code=429, detail="Too many checkout requests. Please wait.")
 
     user_id = payload["user_id"]
 
@@ -2575,13 +2423,10 @@ async def handle_whop_webhook(request: Request):
 
         # Verify webhook signature
         print(f"[Whop Webhook] Received webhook, body length: {len(body)}")
-        sig_ok = whop_payment.verify_webhook(body, headers)
-        if sig_ok:
-            print(f"[Whop Webhook] Signature verified OK")
-        else:
-            # TEMPORARY: Log warning but still process during debugging
-            print(f"[Whop Webhook] WARNING: Signature verification FAILED — processing anyway for debugging")
-            print(f"[Whop Webhook] TODO: Fix signature verification and re-enable rejection")
+        if not whop_payment.verify_webhook(body, headers):
+            print(f"[Whop Webhook] Signature verification FAILED")
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+        print(f"[Whop Webhook] Signature verified OK")
 
         event = json.loads(body)
         # Whop sends event types with underscores (payment_succeeded)
@@ -2593,10 +2438,6 @@ async def handle_whop_webhook(request: Request):
             result = whop_payment.process_payment_webhook(event)
         elif event_type == "payment_failed":
             result = whop_payment.process_payment_failed(event)
-        elif event_type == "membership_activated":
-            result = whop_payment.process_membership_activated(event)
-        elif event_type == "membership_deactivated":
-            result = whop_payment.process_membership_deactivated(event)
         else:
             result = {"success": True, "message": f"Event {event_type} acknowledged"}
 
@@ -2629,68 +2470,6 @@ async def get_referral_earnings(authorization: str = Header(None)):
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return whop_payment.get_referral_earnings(payload["user_id"])
-
-
-# ==================== WHOP MARKETPLACE OAUTH & MAGIC LOGIN ====================
-
-@app.get("/api/whop/oauth/authorize")
-async def whop_oauth_authorize():
-    """Generate Whop OAuth authorization URL for 'Continue with Whop' login."""
-    redirect_uri = "https://spark-ai-prediction.com/auth/whop/callback"
-    result = whop_payment.create_oauth_authorize_url(redirect_uri)
-    if not result["success"]:
-        raise HTTPException(status_code=500, detail=result.get("error", "OAuth not configured"))
-    return result
-
-
-class WhopOAuthCallbackRequest(BaseModel):
-    code: str
-    state: str
-    terms_accepted: bool = False
-
-
-@app.post("/api/whop/oauth/callback")
-async def whop_oauth_callback(body: WhopOAuthCallbackRequest, request: Request):
-    """Handle Whop OAuth callback — exchange code for tokens and log user in."""
-    redirect_uri = "https://spark-ai-prediction.com/auth/whop/callback"
-
-    # Exchange authorization code for user info
-    exchange_result = whop_payment.exchange_oauth_code(body.code, body.state, redirect_uri)
-    if not exchange_result["success"]:
-        raise HTTPException(status_code=400, detail=exchange_result.get("error", "OAuth exchange failed"))
-
-    client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or request.client.host
-
-    # Create or log in the user
-    result = user_auth.whop_oauth_login(
-        whop_user_id=exchange_result["whop_user_id"],
-        email=exchange_result["email"],
-        name=exchange_result.get("name", ""),
-        username=exchange_result.get("username", ""),
-        terms_accepted=body.terms_accepted,
-        client_ip=client_ip,
-    )
-
-    if not result["success"]:
-        if result.get("needs_terms"):
-            return result  # Frontend will show terms acceptance
-        raise HTTPException(status_code=400, detail=result.get("error", "Login failed"))
-
-    return result
-
-
-class MagicLoginRequest(BaseModel):
-    email: str
-    token: str
-
-
-@app.post("/api/user/magic-login")
-async def magic_login(body: MagicLoginRequest):
-    """Verify a magic login link (from Whop welcome email) and log the user in."""
-    result = user_auth.verify_magic_login_token(body.email, body.token)
-    if not result["success"]:
-        raise HTTPException(status_code=401, detail=result.get("error", "Invalid login link"))
-    return result
 
 
 # ==================== END PAYMENT ENDPOINTS ====================
@@ -3036,40 +2815,15 @@ class SessionDurationRequest(BaseModel):
 
 
 @app.post("/api/consent")
-async def record_cookie_consent(body: ConsentRequest, request: Request, authorization: str = Header(None)):
+async def record_cookie_consent(body: ConsentRequest, request: Request):
     """Record user's cookie consent decision."""
     client_ip = _get_client_ip(request)
-    user_id = None
-    payload = _get_current_user(authorization)
-    if payload:
-        user_id = payload.get("user_id")
     user_auth.record_consent(
         session_id=body.session_id,
         ip_address=client_ip,
         consent_given=body.consent_given,
-        user_id=user_id,
     )
     return {"ok": True}
-
-
-@app.get("/api/consent/status")
-async def get_consent_status(authorization: str = Header(None)):
-    """Check if the logged-in user has already given cookie consent."""
-    payload = _get_current_user(authorization)
-    if not payload:
-        return {"has_consent": False}
-    user_id = payload.get("user_id")
-    if not user_id:
-        return {"has_consent": False}
-    conn = user_auth._get_db()
-    row = conn.execute(
-        "SELECT consent_given FROM cookie_consents WHERE user_id = ? ORDER BY consent_timestamp DESC LIMIT 1",
-        (user_id,)
-    ).fetchone()
-    conn.close()
-    if row:
-        return {"has_consent": True, "consent_given": bool(row[0])}
-    return {"has_consent": False}
 
 
 @app.post("/api/track/page")
@@ -4404,15 +4158,7 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
 
     # Helper for HT percentage calculations
     def ht_pct(count):
-        # Bayesian (Laplace) smoothing: blend with a weak prior of 33% to
-        # prevent 100% / 0% from small sample sizes.
-        # With 1 match: 1-win -> 80% (not 100%), 0-wins -> 20% (not 0%)
-        # With 5+ matches the raw percentage dominates.
-        if ht_matches <= 0:
-            return 0
-        alpha = max(0.5, 3.0 / ht_matches)  # stronger smoothing for small samples
-        smoothed = (count + alpha) / (ht_matches + 3 * alpha)
-        return round(min(97.0, max(3.0, smoothed * 100)), 1)
+        return round((count / ht_matches) * 100, 1) if ht_matches > 0 else 0
 
     # First Half analysis - use actual HT data if available, else estimate
     if ht_matches > 0:
@@ -4513,33 +4259,6 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
                 "is_estimate": True,
             },
         }
-
-    # ── AI-enhanced first-half probabilities ─────────────────────────────────
-    try:
-        ai_fh = await _ai_enhance_predictions(
-            team_a=team_a.get("name", f"Team {team_a_id}"),
-            team_b=team_b.get("name", f"Team {team_b_id}"),
-            competition=competition,
-            h2h_total=total_matches,
-            h2h_team_a_wins=team_a_wins, h2h_draws=draws, h2h_team_b_wins=team_b_wins,
-            ht_total=ht_matches,
-            ht_team_a_wins=ht_team_a_wins, ht_draws_ht=ht_draws, ht_team_b_wins=ht_team_b_wins,
-            avg_goals=avg_goals,
-            team_a_win_pct=team_a_win_pct, draw_pct=draw_pct, team_b_win_pct=team_b_win_pct,
-            raw_first_half=first_half_analysis,
-        )
-        if ai_fh:
-            first_half_analysis["1x2"] = ai_fh["1x2"]
-            first_half_analysis["double_chance"] = ai_fh["double_chance"]
-            first_half_analysis["over_05"] = ai_fh["over_05"]
-            first_half_analysis["over_15"] = ai_fh["over_15"]
-            first_half_analysis["over_25"] = ai_fh["over_25"]
-            first_half_analysis["btts"]["yes"] = ai_fh["btts"]["yes"]
-            first_half_analysis["btts"]["no"] = ai_fh["btts"]["no"]
-            first_half_analysis["ai_enhanced"] = True
-    except Exception as _ai_err:
-        import logging
-        logging.getLogger(__name__).warning(f"AI first-half enhancement skipped: {_ai_err}")
 
     # 2nd Half combined markets
     second_half_analysis = {
@@ -5077,11 +4796,26 @@ async def get_match_stats(team_a_id: int, team_b_id: int, competition: str = "PL
     # Calculate card predictions
     card_analysis = _calculate_card_predictions(team_a_stats, team_b_stats, team_a, team_b)
 
-    # Fetch injuries, coaches, and formations via Gemini (with API-Football fallback)
-    import gemini_football_data
-    injuries_a, injuries_b, coach_a, coach_b, gemini_formation_a, gemini_formation_b = await gemini_football_data.get_enhanced_team_data(
-        team_a["name"], team_b["name"], competition, team_a_id, team_b_id, league_id
-    )
+    # Fetch injuries, coaches, and formations via AI-verified data (with Gemini/API-Football fallback)
+    _ms_verified = None
+    try:
+        _ms_verified = await data_verifier.get_verified_match_data(
+            team_a_id=team_a_id, team_a_name=team_a["name"],
+            team_b_id=team_b_id, team_b_name=team_b["name"],
+            competition=competition, league_id=league_id,
+        )
+        if _ms_verified:
+            injuries_a, injuries_b, coach_a, coach_b, gemini_formation_a, gemini_formation_b = \
+                data_verifier.extract_for_match_stats(_ms_verified)
+        else:
+            raise ValueError("Verification returned None")
+    except Exception as _ms_ve:
+        print(f"[match-stats] Verification fallback: {_ms_ve}")
+        import gemini_football_data
+        injuries_a, injuries_b, coach_a, coach_b, gemini_formation_a, gemini_formation_b = \
+            await gemini_football_data.get_enhanced_team_data(
+                team_a["name"], team_b["name"], competition, team_a_id, team_b_id, league_id
+            )
 
     # If API-Football returned no formation data, use Gemini's formation as fallback
     if not team_a_stats.get("formations") and gemini_formation_a:
@@ -5114,7 +4848,17 @@ async def get_match_stats(team_a_id: int, team_b_id: int, competition: str = "PL
             "team_a": coach_a,
             "team_b": coach_b,
         },
-        "data_source": "API-Football" if stats_a or stats_b else "Sample Data"
+        "transfers": {
+            "team_a": {
+                "in": _ms_verified["team_a"].get("transfers_in", []) if _ms_verified else [],
+                "out": _ms_verified["team_a"].get("transfers_out", []) if _ms_verified else [],
+            },
+            "team_b": {
+                "in": _ms_verified["team_b"].get("transfers_in", []) if _ms_verified else [],
+                "out": _ms_verified["team_b"].get("transfers_out", []) if _ms_verified else [],
+            },
+        } if _ms_verified else None,
+        "data_source": "AI-Verified" if _ms_verified and _ms_verified.get("source") == "gemini_verified" else ("API-Football" if stats_a or stats_b else "Sample Data"),
     }
 
 
@@ -5457,19 +5201,8 @@ async def get_jackpot_limits(authorization: str = Header(None)):
     tier = payload.get("tier", "free") if payload else "free"
     max_matches = 5  # All tiers: 5 matches per session
     user_id = payload.get("user_id") if payload else None
-    if user_id and tier in ("pro", "trial"):
-        daily_info = jackpot_analyzer.get_daily_chat_count(user_id)
-        ai_chats_used = daily_info["daily_count"]
-        max_ai_chats = 10
-        bonus_prompts = daily_info["bonus_prompts"]
-    elif user_id:
-        ai_chats_used = jackpot_analyzer.get_ai_chat_count(user_id)
-        max_ai_chats = 10
-        bonus_prompts = 0
-    else:
-        ai_chats_used = 0
-        max_ai_chats = 10
-        bonus_prompts = 0
+    ai_chats_used = jackpot_analyzer.get_ai_chat_count(user_id) if user_id else 0
+    max_ai_chats = -1 if tier in ("pro", "trial") else 10
     bal = community.get_user_balance(user_id) if user_id else {"balance_usd": 0}
 
     # Session limits: free = 2 then 1/72h, pro/trial = 3/24h
@@ -5494,51 +5227,8 @@ async def get_jackpot_limits(authorization: str = Header(None)):
         "locked_until": locked_until,
         "ai_chats_used": ai_chats_used,
         "max_ai_chats": max_ai_chats,
-        "bonus_prompts": bonus_prompts,
-        "chat_topup_price_usd": float(pricing_config.get("chat_topup_price_usd", 0.50)),
-        "chat_topup_price_kes": float(pricing_config.get("chat_topup_price_kes", 50.0)),
-        "chat_topup_prompts": int(pricing_config.get("chat_topup_prompts", 2)),
         "balance_usd": bal.get("balance_usd", 0),
     }
-
-
-class ChatTopUpRequest(BaseModel):
-    currency: str = "USD"
-
-
-@app.post("/api/balance/use-for-chat-topup")
-async def use_balance_for_chat_topup(body: ChatTopUpRequest, authorization: str = Header(None)):
-    """Buy extra AI chat prompts by deducting from user balance."""
-    payload = _get_current_user(authorization)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    if not _rate_limiter.check(f"chat_topup:{payload['user_id']}", max_requests=10, window_seconds=60):
-        raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
-
-    user_id = payload["user_id"]
-    prompts_to_add = int(pricing_config.get("chat_topup_prompts", 2))
-
-    if body.currency == "KES":
-        price = float(pricing_config.get("chat_topup_price_kes", 50.0))
-        bal = community.get_user_balance(user_id)
-        if bal.get("balance_kes", 0) < price:
-            raise HTTPException(status_code=403, detail=f"Insufficient balance. Need KES {price:.0f}.")
-        community.adjust_user_balance(
-            user_id=user_id, amount_usd=0, amount_kes=-price,
-            reason=f"AI chat top-up ({prompts_to_add} prompts)", adjustment_type="chat_topup_deduction"
-        )
-    else:
-        price = float(pricing_config.get("chat_topup_price_usd", 0.50))
-        bal = community.get_user_balance(user_id)
-        if bal.get("balance_usd", 0) < price:
-            raise HTTPException(status_code=403, detail=f"Insufficient balance. Need ${price:.2f}.")
-        community.adjust_user_balance(
-            user_id=user_id, amount_usd=-price, amount_kes=0,
-            reason=f"AI chat top-up ({prompts_to_add} prompts)", adjustment_type="chat_topup_deduction"
-        )
-
-    new_bonus = jackpot_analyzer.add_bonus_prompts(user_id, prompts_to_add)
-    return {"success": True, "bonus_prompts": new_bonus, "prompts_added": prompts_to_add}
 
 
 class JackpotChatRequest(BaseModel):
@@ -5557,46 +5247,22 @@ async def jackpot_match_chat(request: JackpotChatRequest, authorization: str = H
     user_id = payload.get("user_id")
     tier = payload.get("tier", "free")
 
-    # Enforce chat prompt limits
-    if user_id:
-        if tier in ("pro", "trial"):
-            # Daily limit for subscribed users (10/day + bonus prompts)
-            daily_info = jackpot_analyzer.get_daily_chat_count(user_id)
-            if daily_info["daily_count"] >= 10 and daily_info["bonus_prompts"] <= 0:
-                raise HTTPException(
-                    status_code=403,
-                    detail=json.dumps({
-                        "message": "You've reached your daily AI chat limit (10 per day).",
-                        "type": "daily_limit",
-                        "daily_used": daily_info["daily_count"],
-                        "daily_limit": 10,
-                        "bonus_remaining": daily_info["bonus_prompts"],
-                        "can_topup": True,
-                        "topup_price_usd": float(pricing_config.get("chat_topup_price_usd", 0.50)),
-                        "topup_price_kes": float(pricing_config.get("chat_topup_price_kes", 50.0)),
-                        "topup_prompts": int(pricing_config.get("chat_topup_prompts", 2)),
-                    })
-                )
-        else:
-            # Free tier: 10 lifetime limit
-            chat_count = jackpot_analyzer.get_ai_chat_count(user_id)
-            if chat_count >= 10:
-                raise HTTPException(
-                    status_code=403,
-                    detail="You've used your 10 free AI prompts. Upgrade to Pro for more AI chat access."
-                )
+    # Enforce 10-prompt limit for free tier users
+    if tier != "pro" and user_id:
+        chat_count = jackpot_analyzer.get_ai_chat_count(user_id)
+        if chat_count >= 10:
+            raise HTTPException(
+                status_code=403,
+                detail="You've used your 10 free AI prompts. Upgrade to Pro for unlimited AI chat."
+            )
 
     try:
         result = await jackpot_analyzer.chat_about_match(
             request.message, request.match_context, request.chat_history
         )
-        # Increment chat counts after successful response
+        # Increment chat count after successful response
         if user_id:
-            jackpot_analyzer.increment_ai_chat_count(user_id)  # lifetime (for free users)
-            if tier in ("pro", "trial"):
-                new_daily = jackpot_analyzer.increment_daily_chat_count(user_id)
-                if new_daily > 10:
-                    jackpot_analyzer.consume_bonus_prompt(user_id)
+            jackpot_analyzer.increment_ai_chat_count(user_id)
         # result is now a dict with "text" and "sources"
         return {"response": result["text"], "sources": result.get("sources", [])}
     except Exception as e:
