@@ -666,7 +666,7 @@ async def _fetch_supplementary(home_id: int, away_id: int, league_id: int,
 
 # --- Gemini AI Integration ---
 
-JACKPOT_GEMINI_PROMPT = """You are a football/soccer analyst. Analyze this upcoming match concisely.
+JACKPOT_MATCH_PROMPT = """You are a football/soccer analyst. Analyze this upcoming match concisely.
 
 Match: {home_team} vs {away_team}
 Competition: {competition}
@@ -688,16 +688,17 @@ Return ONLY valid JSON, no markdown."""
 async def get_gemini_match_analysis(
     home_team: str, away_team: str, competition: str
 ) -> Optional[Dict]:
-    """Get supplementary match analysis from Gemini AI."""
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    if not gemini_key:
+    """Get supplementary match analysis from OpenAI GPT-4o-mini."""
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        print("[Jackpot] No OPENAI_API_KEY set, skipping match analysis")
         return None
 
-    from google import genai
-    client = genai.Client(api_key=gemini_key)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
     comp_name = config.COMPETITION_NAMES.get(competition, competition)
-    prompt = JACKPOT_GEMINI_PROMPT.format(
+    prompt = JACKPOT_MATCH_PROMPT.format(
         home_team=home_team,
         away_team=away_team,
         competition=comp_name
@@ -707,11 +708,13 @@ async def get_gemini_match_analysis(
     retry_delays = [2, 5, 10]
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=1024,
             )
-            text = response.text.strip() if response.text else ""
+            text = response.choices[0].message.content.strip() if response.choices[0].message.content else ""
 
             # Strip markdown fences if present
             if text.startswith("```"):
@@ -720,13 +723,13 @@ async def get_gemini_match_analysis(
             return json.loads(text)
         except Exception as e:
             error_str = str(e)
-            if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < max_retries - 1:
+            if ("429" in error_str or "rate" in error_str.lower()) and attempt < max_retries - 1:
                 import asyncio
                 delay = retry_delays[attempt]
-                print(f"[Jackpot] Gemini rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                print(f"[Jackpot] OpenAI rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
                 await asyncio.sleep(delay)
                 continue
-            print(f"[Jackpot] Gemini analysis failed for {home_team} vs {away_team}: {e}")
+            print(f"[Jackpot] OpenAI analysis failed for {home_team} vs {away_team}: {e}")
             return None
 
     return None
@@ -922,15 +925,13 @@ def _build_analysis_summary(match_context: dict) -> str:
 
 
 async def chat_about_match(user_message: str, match_context: dict, chat_history: list) -> dict:
-    """Chat with AI about a specific analyzed match. Returns dict with response and sources."""
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    if not gemini_key:
+    """Chat with AI about a specific analyzed match using OpenAI with web search. Returns dict with response and sources."""
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
         return {"text": "AI chat is currently unavailable. Please try again later.", "sources": []}
 
-    from google import genai
-    from google.genai import types as genai_types
-
-    client = genai.Client(api_key=gemini_key)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
 
     home = match_context.get("home_team", {}).get("name", "Home")
     away = match_context.get("away_team", {}).get("name", "Away")
@@ -958,32 +959,32 @@ async def chat_about_match(user_message: str, match_context: dict, chat_history:
     retry_delays = [2, 5, 10]
     for attempt in range(max_retries):
         try:
-            # Use Google Search grounding for real-time web data
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
-                ),
+            # Use OpenAI Responses API with web search for real-time data
+            response = client.responses.create(
+                model="gpt-4o-mini",
+                tools=[{"type": "web_search_preview"}],
+                input=[
+                    {"role": "system", "content": "You are an expert football/soccer analyst. Use web search to provide current, accurate information."},
+                    {"role": "user", "content": prompt},
+                ],
             )
 
-            text = response.text.strip() if response.text else ""
-
-            # Extract grounding sources (web links)
+            # Extract text output from the Responses API format
+            text = ""
             sources = []
-            try:
-                for candidate in (response.candidates or []):
-                    gm = candidate.grounding_metadata
-                    if not gm:
-                        continue
-                    for chunk in (gm.grounding_chunks or []):
-                        if chunk.web and chunk.web.uri:
-                            sources.append({
-                                "title": chunk.web.title or chunk.web.uri,
-                                "url": chunk.web.uri,
-                            })
-            except Exception:
-                pass
+            for item in response.output:
+                if item.type == "message":
+                    for content in item.content:
+                        if content.type == "output_text":
+                            text = content.text.strip()
+                            # Extract annotations/citations as sources
+                            if hasattr(content, 'annotations') and content.annotations:
+                                for ann in content.annotations:
+                                    if hasattr(ann, 'url') and ann.url:
+                                        sources.append({
+                                            "title": getattr(ann, 'title', ann.url) or ann.url,
+                                            "url": ann.url,
+                                        })
 
             # Deduplicate sources by URL
             seen = set()
@@ -993,16 +994,16 @@ async def chat_about_match(user_message: str, match_context: dict, chat_history:
                     seen.add(s["url"])
                     unique_sources.append(s)
 
-            return {"text": text, "sources": unique_sources[:5]}
+            return {"text": text or "I couldn't generate a response. Please try again.", "sources": unique_sources[:5]}
         except Exception as e:
             error_str = str(e)
-            if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < max_retries - 1:
+            if ("429" in error_str or "rate" in error_str.lower()) and attempt < max_retries - 1:
                 import asyncio
                 delay = retry_delays[attempt]
                 print(f"[Jackpot Chat] Rate limited, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
                 await asyncio.sleep(delay)
                 continue
-            print(f"[Jackpot Chat] Gemini error: {e}")
+            print(f"[Jackpot Chat] OpenAI error: {e}")
             return {"text": "Sorry, I couldn't process your question right now. Please try again.", "sources": []}
 
     return {"text": "AI is temporarily busy. Please try again in a moment.", "sources": []}
