@@ -131,7 +131,7 @@ def get_active_users_list() -> List[Dict]:
         cutoff = time.time() - ACTIVE_TIMEOUT
         now = time.time()
         rows = conn.execute(
-            "SELECT * FROM active_users WHERE last_seen >= ? ORDER BY last_seen DESC", (cutoff,)
+            "SELECT * FROM active_users WHERE last_seen >= ? ORDER BY online_since ASC", (cutoff,)
         ).fetchall()
         conn.close()
         users = []
