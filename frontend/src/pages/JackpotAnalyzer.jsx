@@ -1142,7 +1142,7 @@ export default function JackpotAnalyzer() {
           </Link>
           <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 16 }}>
             Still want to continue?{' '}
-            <Link to="/upgrade" style={{ color: '#60a5fa', textDecoration: 'underline', fontWeight: 600 }}>
+            <Link to="/upgrade?paygo=true" style={{ color: '#60a5fa', textDecoration: 'underline', fontWeight: 600 }}>
               Click here to see our flexible plans
             </Link>
           </p>

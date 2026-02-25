@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
 import { useCurrency } from '../context/CurrencyContext'
@@ -7,6 +8,8 @@ import MpesaPaymentModal from '../components/MpesaPaymentModal'
 import WhopCheckoutModal from '../components/WhopCheckoutModal'
 
 export default function Upgrade() {
+  const [searchParams] = useSearchParams()
+  const paygoOnly = searchParams.get('paygo') === 'true'
   const { t } = useTranslation()
   const { user } = useAuth()
   const { currency, currencySymbol, isKenyan } = useCurrency()
@@ -221,6 +224,15 @@ export default function Upgrade() {
         </div>
       )}
 
+      {paygoOnly && (
+        <div className="upgrade-header">
+          <h2>Pay on the Go</h2>
+          <p className="upgrade-subtitle">Top up your balance and pay only for what you use</p>
+        </div>
+      )}
+
+      {!paygoOnly && (
+      <>
       <div className="upgrade-header">
         <h2>{hasActiveSub ? t('upgrade.manageSub') : t('upgrade.title')}</h2>
         <p className="upgrade-subtitle">
@@ -393,9 +405,11 @@ export default function Upgrade() {
           </div>
         ))}
       </div>
+      </>
+      )}
 
       {/* Pay on the Go - separate section */}
-      {(
+      {paygoOnly && (
         <div className="paygo-section">
           <div className="plan-card paygo">
             <div className="plan-ribbon paygo-ribbon">{t('upgrade.flexible')}</div>
@@ -468,11 +482,15 @@ export default function Upgrade() {
               )}
             </div>
           </div>
+          <Link to="/upgrade" style={{ display: 'block', textAlign: 'center', marginTop: 20, color: '#94a3b8', fontSize: 14, textDecoration: 'none' }}>
+            Looking for more options?{' '}
+            <span style={{ color: '#60a5fa', textDecoration: 'underline', fontWeight: 600 }}>Click here to see our subscription plans</span>
+          </Link>
         </div>
       )}
 
       {/* Payment Methods Info */}
-      {!isPro && !isTrial && (
+      {!paygoOnly && !isPro && !isTrial && (
         <div className="payment-methods-info">
           <h3>{t('upgrade.paymentMethods')}</h3>
           <div className="payment-methods-grid">
