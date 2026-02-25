@@ -722,6 +722,15 @@ async def admin_referral_stats(x_admin_password: str = Header(None), authorizati
     return {"referrals": user_auth.get_all_referral_stats()}
 
 
+@admin_router.get("/referral-stats/{referrer_id}/referred-users")
+async def admin_referred_users(referrer_id: int, x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get detailed list of users referred by a specific referrer."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="referrals", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"referred_users": user_auth.get_referred_users_detail(referrer_id)}
+
+
 # ═══════════════════════════════════════════════════════════
 #  USER MANAGEMENT
 # ═══════════════════════════════════════════════════════════

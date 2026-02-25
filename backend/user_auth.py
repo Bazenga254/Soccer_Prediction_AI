@@ -3262,3 +3262,65 @@ def get_all_referral_stats() -> List[Dict]:
         "referral_count": r["referral_count"],
         "pro_referrals": r["pro_referrals"],
     } for r in rows]
+
+
+def get_referred_users_detail(referrer_id: int) -> List[Dict]:
+    """Get detailed info about all users referred by a specific user (for admin)."""
+    conn = _get_db()
+    referred = conn.execute(
+        """SELECT id, email, display_name, username, avatar_color, tier,
+               is_active, created_at, last_login, login_count, has_used_trial,
+               country, email_verified
+           FROM users WHERE referred_by = ? ORDER BY created_at DESC""",
+        (referrer_id,)
+    ).fetchall()
+    conn.close()
+
+    # Fetch balances and subscription info from other DBs
+    results = []
+    for u in referred:
+        user_data = {
+            "id": u["id"],
+            "email": u["email"],
+            "display_name": u["display_name"],
+            "username": u["username"],
+            "avatar_color": u["avatar_color"],
+            "tier": u["tier"],
+            "is_active": bool(u["is_active"]),
+            "email_verified": bool(u["email_verified"]),
+            "created_at": u["created_at"],
+            "last_login": u["last_login"],
+            "login_count": u["login_count"] or 0,
+            "country": u["country"],
+            "has_used_trial": bool(u["has_used_trial"]),
+            "balance_usd": 0,
+            "balance_kes": 0,
+            "subscription": None,
+        }
+
+        # Get balance
+        try:
+            import community
+            bal = community.get_user_balance(u["id"])
+            if bal:
+                user_data["balance_usd"] = bal.get("balance_usd", 0)
+                user_data["balance_kes"] = bal.get("balance_kes", 0)
+        except Exception:
+            pass
+
+        # Get active subscription
+        try:
+            import subscriptions
+            sub = subscriptions.get_active_subscription(u["id"])
+            if sub:
+                user_data["subscription"] = {
+                    "plan": sub.get("plan_id") or sub.get("plan", ""),
+                    "status": sub.get("status", ""),
+                    "expires_at": sub.get("expires_at", ""),
+                }
+        except Exception:
+            pass
+
+        results.append(user_data)
+
+    return results
