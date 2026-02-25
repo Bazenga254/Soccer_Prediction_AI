@@ -22,9 +22,38 @@ _notification_events: Dict[int, list] = {}
 _support_signals: Dict[int, int] = {}
 _support_events: Dict[int, list] = {}
 
-# Active user tracking: {user_id: (last_seen_timestamp, online_since_timestamp, display_name, username, avatar_color)}
-_active_users: Dict[int, tuple] = {}
+# Active user tracking via SQLite (shared across all workers)
 ACTIVE_TIMEOUT = 300  # 5 minutes
+_ACTIVE_DB_PATH = "active_users.db"
+
+
+def _get_active_db():
+    conn = sqlite3.connect(_ACTIVE_DB_PATH, timeout=5)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=3000")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _init_active_users_db():
+    conn = _get_active_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS active_users (
+            user_id INTEGER PRIMARY KEY,
+            last_seen REAL NOT NULL,
+            online_since REAL NOT NULL,
+            display_name TEXT DEFAULT '',
+            username TEXT DEFAULT '',
+            avatar_color TEXT DEFAULT '#6c5ce7'
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_active_last_seen ON active_users(last_seen)")
+    conn.commit()
+    conn.close()
+
+
+# Initialize on import
+_init_active_users_db()
 
 
 def _send_notif_email(user_id: int, notif_type: str, title: str, message: str, metadata: dict = None, from_email: str = ""):
@@ -52,54 +81,99 @@ def _send_notif_email(user_id: int, notif_type: str, title: str, message: str, m
 
 
 def record_heartbeat(user_id: int, display_name: str = "", username: str = "", avatar_color: str = "#6c5ce7"):
-    """Record that a user is currently active."""
+    """Record that a user is currently active (SQLite - shared across workers)."""
     now = time.time()
-    existing = _active_users.get(user_id)
-    if existing and (now - existing[0]) < ACTIVE_TIMEOUT:
-        # Still active - update last_seen but keep online_since
-        _active_users[user_id] = (now, existing[1], display_name, username, avatar_color)
-    else:
-        # New session - set online_since to now
-        _active_users[user_id] = (now, now, display_name, username, avatar_color)
+    try:
+        conn = _get_active_db()
+        existing = conn.execute(
+            "SELECT last_seen, online_since FROM active_users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        if existing and (now - existing["last_seen"]) < ACTIVE_TIMEOUT:
+            # Still active - update last_seen but keep online_since
+            conn.execute(
+                "UPDATE active_users SET last_seen=?, display_name=?, username=?, avatar_color=? WHERE user_id=?",
+                (now, display_name, username, avatar_color, user_id),
+            )
+        else:
+            # New session or returning after timeout
+            conn.execute(
+                """INSERT INTO active_users (user_id, last_seen, online_since, display_name, username, avatar_color)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET last_seen=?, online_since=?, display_name=?, username=?, avatar_color=?""",
+                (user_id, now, now, display_name, username, avatar_color,
+                 now, now, display_name, username, avatar_color),
+            )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[WARN] record_heartbeat error: {e}")
 
 
 def get_active_user_count() -> int:
-    """Return count of users active in the last 5 minutes."""
-    cutoff = time.time() - ACTIVE_TIMEOUT
-    return sum(1 for ts, *_ in _active_users.values() if ts >= cutoff)
+    """Return count of users active in the last 5 minutes (from SQLite)."""
+    try:
+        conn = _get_active_db()
+        cutoff = time.time() - ACTIVE_TIMEOUT
+        count = conn.execute(
+            "SELECT COUNT(*) as cnt FROM active_users WHERE last_seen >= ?", (cutoff,)
+        ).fetchone()["cnt"]
+        conn.close()
+        return count
+    except Exception as e:
+        print(f"[WARN] get_active_user_count error: {e}")
+        return 0
 
 
 def get_active_users_list() -> List[Dict]:
-    """Return list of currently active users (for admin)."""
-    cutoff = time.time() - ACTIVE_TIMEOUT
-    now = time.time()
-    users = []
-    for uid, (ts, online_since, dname, uname, color) in _active_users.items():
-        if ts >= cutoff:
+    """Return list of currently active users (from SQLite - consistent across workers)."""
+    try:
+        conn = _get_active_db()
+        cutoff = time.time() - ACTIVE_TIMEOUT
+        now = time.time()
+        rows = conn.execute(
+            "SELECT * FROM active_users WHERE last_seen >= ? ORDER BY last_seen DESC", (cutoff,)
+        ).fetchall()
+        conn.close()
+        users = []
+        for r in rows:
             users.append({
-                "user_id": uid,
-                "display_name": dname,
-                "username": uname,
-                "avatar_color": color,
-                "last_seen": int(now - ts),  # seconds ago
-                "online_duration": int(now - online_since),  # seconds since session started
+                "user_id": r["user_id"],
+                "display_name": r["display_name"],
+                "username": r["username"],
+                "avatar_color": r["avatar_color"],
+                "last_seen": int(now - r["last_seen"]),
+                "online_duration": int(now - r["online_since"]),
             })
-    users.sort(key=lambda u: u["last_seen"])
-    return users
+        return users
+    except Exception as e:
+        print(f"[WARN] get_active_users_list error: {e}")
+        return []
 
 
 def cleanup_inactive_users():
-    """Remove users inactive for over 10 minutes from tracking."""
-    cutoff = time.time() - ACTIVE_TIMEOUT * 2
-    stale = [uid for uid, (ts, *_) in _active_users.items() if ts < cutoff]
-    for uid in stale:
-        del _active_users[uid]
+    """Remove users inactive for over 10 minutes from tracking (SQLite)."""
+    try:
+        conn = _get_active_db()
+        cutoff = time.time() - ACTIVE_TIMEOUT * 2
+        conn.execute("DELETE FROM active_users WHERE last_seen < ?", (cutoff,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[WARN] cleanup_inactive_users error: {e}")
 
 
 def remove_active_users(user_ids: list):
     """Immediately remove specific users from active tracking (for bot deactivation)."""
-    for uid in user_ids:
-        _active_users.pop(uid, None)
+    if not user_ids:
+        return
+    try:
+        conn = _get_active_db()
+        placeholders = ",".join("?" for _ in user_ids)
+        conn.execute(f"DELETE FROM active_users WHERE user_id IN ({placeholders})", user_ids)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[WARN] remove_active_users error: {e}")
 
 
 def get_notification_signal(user_id: int) -> int:

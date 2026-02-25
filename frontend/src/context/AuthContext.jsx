@@ -274,7 +274,7 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  // Heartbeat: ping every 60s while authenticated
+  // Heartbeat: ping every 60s while authenticated + on tab/app return
   useEffect(() => {
     if (!isAuthenticated) return
     const sendHeartbeat = () => {
@@ -282,7 +282,15 @@ export function AuthProvider({ children }) {
     }
     sendHeartbeat()
     const interval = setInterval(sendHeartbeat, 60000)
-    return () => clearInterval(interval)
+    // Send heartbeat immediately when user returns to tab/app
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') sendHeartbeat()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [isAuthenticated])
 
   const logout = useCallback(() => {
