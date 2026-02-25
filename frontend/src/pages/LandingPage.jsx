@@ -121,15 +121,14 @@ export default function LandingPage() {
   const weeklyKey = isKenyan ? 'weekly_kes' : 'weekly_usd'
   const monthlyKey = isKenyan ? 'monthly_kes' : 'monthly_usd'
 
-  const TRIAL_FEATURES = pricing?.plans?.[trialKey]?.features || [
-    '10 AI match predictions per day',
-    '3 jackpot analyses per day',
-    'Unlimited AI chat assistant',
+  const FREE_FEATURES = [
+    '3 AI match predictions per day',
+    '1 jackpot analysis per day',
+    '5 AI chat prompts per day',
     'Live score tracking & goal alerts',
     '40+ leagues worldwide',
     'Community predictions feed',
     'Chrome extension access',
-    '3 days full access',
   ]
 
   const PRO_FEATURES = pricing?.plans?.[weeklyKey]?.features || [
@@ -162,9 +161,7 @@ export default function LandingPage() {
         <p className="hero-subtitle">{t('landing.heroSubtitle')}</p>
         <div className="hero-actions">
           <button className="hero-cta-btn" onClick={scrollToPricing}>
-            {isKenyan
-              ? 'Try for KES 100'
-              : `Try for ${currencySymbol}${pricing?.plans?.trial_usd?.price ?? 1}`}
+Try for Free
           </button>
           <button className="hero-secondary-btn" onClick={() => {
             document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
@@ -237,25 +234,25 @@ export default function LandingPage() {
           <h2 className="landing-section-title">{t('landing.pricingTitle')}</h2>
           <p className="landing-section-subtitle">{t('landing.pricingSubtitle')}</p>
           <div className="landing-plans-grid">
-            {/* 3-Day Trial */}
+            {/* Free Tier */}
             <div className="landing-plan-card trial">
-              <div className="landing-plan-ribbon trial-ribbon">Try It Out!</div>
+              <div className="landing-plan-ribbon trial-ribbon">Free</div>
               <div className="landing-plan-header">
-                <h3 className="landing-plan-name">3-Day Trial</h3>
+                <h3 className="landing-plan-name">Free</h3>
                 <div className="landing-plan-price">
-                  <span className="landing-price-amount">{isKenyan ? 'KES' : currencySymbol}{isKenyan ? ' 100' : (pricing?.plans?.trial_usd?.price || '1')}</span>
-                  <span className="landing-price-period">/ 3 days</span>
+                  <span className="landing-price-amount">Free</span>
+                  <span className="landing-price-period">forever</span>
                 </div>
               </div>
               <ul className="landing-plan-features">
-                {TRIAL_FEATURES.map((f, i) => (
+                {FREE_FEATURES.map((f, i) => (
                   <li key={i} className="landing-feature-item">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                     {f}
                   </li>
                 ))}
               </ul>
-              <button className="landing-plan-btn trial" onClick={openSignUp}>Start Free Trial</button>
+              <button className="landing-plan-btn trial" onClick={openSignUp}>Get Started Free</button>
             </div>
 
             {/* Pro Weekly */}
