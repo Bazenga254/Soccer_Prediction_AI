@@ -395,7 +395,7 @@ export default function Upgrade() {
       </div>
 
       {/* Pay on the Go - separate section */}
-      {!hasActiveSub && (
+      {(
         <div className="paygo-section">
           <div className="plan-card paygo">
             <div className="plan-ribbon paygo-ribbon">{t('upgrade.flexible')}</div>
