@@ -88,6 +88,7 @@ export default function ReferralsTab() {
   const [expandedUser, setExpandedUser] = useState(null)
   const [referredUsers, setReferredUsers] = useState({})
   const [loadingReferred, setLoadingReferred] = useState(null)
+  const [referredPage, setReferredPage] = useState({})
 
   const fetchReferrals = useCallback(async () => {
     setLoading(true)
@@ -106,6 +107,7 @@ export default function ReferralsTab() {
       return
     }
     setExpandedUser(userId)
+    if (!referredPage[userId]) setReferredPage(prev => ({ ...prev, [userId]: 1 }))
     if (!referredUsers[userId]) {
       setLoadingReferred(userId)
       try {
@@ -204,9 +206,34 @@ export default function ReferralsTab() {
                       <div style={{ padding: 16, textAlign: 'center', color: '#64748b' }}>
                         No referred users found.
                       </div>
-                    ) : (
-                      users.map(u => <ReferredUserRow key={u.id} user={u} />)
-                    )}
+                    ) : (() => {
+                      const perPage = 10
+                      const currentPage = referredPage[r.user_id] || 1
+                      const totalPages = Math.ceil(users.length / perPage)
+                      const pageUsers = users.slice((currentPage - 1) * perPage, currentPage * perPage)
+                      return (
+                        <>
+                          {pageUsers.map(u => <ReferredUserRow key={u.id} user={u} />)}
+                          {totalPages > 1 && (
+                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '10px 0' }}>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setReferredPage(prev => ({ ...prev, [r.user_id]: Math.max(1, currentPage - 1) })) }}
+                                disabled={currentPage <= 1}
+                                style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#94a3b8', cursor: currentPage <= 1 ? 'default' : 'pointer', opacity: currentPage <= 1 ? 0.4 : 1, fontSize: 12 }}
+                              >Prev</button>
+                              <span style={{ color: '#64748b', fontSize: 12 }}>
+                                Page {currentPage} of {totalPages} ({users.length} users)
+                              </span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setReferredPage(prev => ({ ...prev, [r.user_id]: Math.min(totalPages, currentPage + 1) })) }}
+                                disabled={currentPage >= totalPages}
+                                style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#94a3b8', cursor: currentPage >= totalPages ? 'default' : 'pointer', opacity: currentPage >= totalPages ? 0.4 : 1, fontSize: 12 }}
+                              >Next</button>
+                            </div>
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
                 )}
               </div>

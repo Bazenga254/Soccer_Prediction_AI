@@ -18,6 +18,7 @@ export default function Profile() {
   const [commissionRate, setCommissionRate] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [referralPage, setReferralPage] = useState(1)
   const fileInputRef = useRef(null)
 
   // Personal info state
@@ -414,18 +415,41 @@ export default function Profile() {
               </div>
             </div>
 
-            {referralStats?.referrals?.length > 0 && (
-              <div className="referral-list">
-                <span className="referral-list-title">{t('profile.yourReferrals')}</span>
-                {referralStats.referrals.map(r => (
-                  <div key={r.id} className="referral-list-item">
-                    <span className="referral-list-name">{r.display_name}</span>
-                    <span className={`tier-tag ${r.tier}`}>{r.tier.toUpperCase()}</span>
-                    <span className="referral-list-date">{new Date(r.joined).toLocaleDateString()}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            {referralStats?.referrals?.length > 0 && (() => {
+              const perPage = 10
+              const allRefs = referralStats.referrals
+              const totalPages = Math.ceil(allRefs.length / perPage)
+              const pageRefs = allRefs.slice((referralPage - 1) * perPage, referralPage * perPage)
+              return (
+                <div className="referral-list">
+                  <span className="referral-list-title">{t('profile.yourReferrals')}</span>
+                  {pageRefs.map(r => (
+                    <div key={r.id} className="referral-list-item">
+                      <span className="referral-list-name">{r.display_name}</span>
+                      <span className={`tier-tag ${r.tier}`}>{r.tier.toUpperCase()}</span>
+                      <span className="referral-list-date">{new Date(r.joined).toLocaleDateString()}</span>
+                    </div>
+                  ))}
+                  {totalPages > 1 && (
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 12 }}>
+                      <button
+                        onClick={() => setReferralPage(p => Math.max(1, p - 1))}
+                        disabled={referralPage <= 1}
+                        style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#94a3b8', cursor: referralPage <= 1 ? 'default' : 'pointer', opacity: referralPage <= 1 ? 0.4 : 1, fontSize: 13 }}
+                      >Prev</button>
+                      <span style={{ color: '#64748b', fontSize: 13 }}>
+                        {referralPage} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setReferralPage(p => Math.min(totalPages, p + 1))}
+                        disabled={referralPage >= totalPages}
+                        style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#94a3b8', cursor: referralPage >= totalPages ? 'default' : 'pointer', opacity: referralPage >= totalPages ? 0.4 : 1, fontSize: 13 }}
+                      >Next</button>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             <p className="referral-hint">
               {t('profile.referralHint')}
