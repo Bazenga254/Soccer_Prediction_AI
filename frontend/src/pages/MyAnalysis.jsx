@@ -183,6 +183,8 @@ export default function MyAnalysis() {
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState(null)
   const [loadingSession, setLoadingSession] = useState(null)
+  const [page, setPage] = useState(1)
+  const perPage = 10
   const { t } = useTranslation()
 
   useEffect(() => {
@@ -250,14 +252,39 @@ export default function MyAnalysis() {
         </div>
       ) : (
         <div className="my-analysis-list">
-          {sessions.map(session => (
-            <SessionCard
-              key={session.id}
-              session={session}
-              isExpanded={expandedId === session.id}
-              onToggle={() => toggleSession(session)}
-            />
-          ))}
+          {(() => {
+            const totalPages = Math.ceil(sessions.length / perPage)
+            const pageSessions = sessions.slice((page - 1) * perPage, page * perPage)
+            return (
+              <>
+                {pageSessions.map(session => (
+                  <SessionCard
+                    key={session.id}
+                    session={session}
+                    isExpanded={expandedId === session.id}
+                    onToggle={() => toggleSession(session)}
+                  />
+                ))}
+                {totalPages > 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 20, paddingBottom: 20 }}>
+                    <button
+                      onClick={() => { setPage(p => Math.max(1, p - 1)); setExpandedId(null) }}
+                      disabled={page <= 1}
+                      style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: page <= 1 ? 'rgba(255,255,255,0.03)' : 'rgba(59,130,246,0.15)', color: page <= 1 ? '#475569' : '#93c5fd', cursor: page <= 1 ? 'default' : 'pointer', fontSize: 14, fontWeight: 600, transition: 'all 0.2s' }}
+                    >Prev</button>
+                    <span style={{ color: '#94a3b8', fontSize: 14 }}>
+                      Page {page} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => { setPage(p => Math.min(totalPages, p + 1)); setExpandedId(null) }}
+                      disabled={page >= totalPages}
+                      style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: page >= totalPages ? 'rgba(255,255,255,0.03)' : 'rgba(59,130,246,0.15)', color: page >= totalPages ? '#475569' : '#93c5fd', cursor: page >= totalPages ? 'default' : 'pointer', fontSize: 14, fontWeight: 600, transition: 'all 0.2s' }}
+                    >Next</button>
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </div>
       )}
     </div>
