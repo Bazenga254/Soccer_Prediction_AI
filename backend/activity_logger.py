@@ -45,6 +45,37 @@ def log_action(
     conn.close()
 
 
+def log_system_event(
+    action: str,
+    module: str,
+    details: dict = None,
+    user_id: int = 0,
+    target_type: str = None,
+    target_id: int = None,
+    severity: str = "error",
+):
+    """Log a system event (OTP failure, payment error, etc.) visible to admin/HOD.
+    Uses user_id=0 for system-level events, or the affected user's ID when known.
+    Severity is stored in details for filtering: 'error', 'warning', 'info'."""
+    if details is None:
+        details = {}
+    details["severity"] = severity
+    details["system_event"] = True
+    try:
+        log_action(
+            user_id=user_id,
+            action=action,
+            module=module,
+            target_type=target_type,
+            target_id=target_id,
+            details=details,
+            ip_address=None,
+            user_agent="system",
+        )
+    except Exception as e:
+        print(f"[WARN] Failed to write system event log: {e}")
+
+
 # ─── Query Functions ───
 
 def get_activity_logs(
@@ -345,11 +376,18 @@ def get_activity_stats(days: int = 7) -> Dict:
         (cutoff,),
     ).fetchone()["cnt"]
 
+    # Count system errors (OTP failures, email failures, payment failures)
+    system_errors = conn.execute(
+        "SELECT COUNT(*) as cnt FROM activity_logs WHERE user_agent = 'system' AND created_at >= ?",
+        (cutoff,),
+    ).fetchone()["cnt"]
+
     conn.close()
 
     return {
         "total_actions": total,
         "failed_logins": failed_logins,
+        "system_errors": system_errors,
         "by_action": [dict(r) for r in by_action],
         "by_module": [dict(r) for r in by_module],
         "top_users": [dict(r) for r in by_user],

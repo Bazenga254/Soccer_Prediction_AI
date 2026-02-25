@@ -14,6 +14,18 @@ const ACTION_COLORS = {
   login: '#9b59b6',
   logout: '#95a5a6',
   export: '#1abc9c',
+  // System events
+  otp_delivery_failed: '#e74c3c',
+  email_send_failed: '#e74c3c',
+  verification_code_expired: '#f39c12',
+  verification_code_wrong: '#f39c12',
+  verification_max_attempts: '#e74c3c',
+  stk_push_failed: '#e74c3c',
+  stk_push_exception: '#e74c3c',
+  payment_failed: '#f39c12',
+  payment_forged_callback: '#e74c3c',
+  payment_callback_error: '#e74c3c',
+  payment_completion_failed: '#e74c3c',
 }
 
 const ACTION_TYPES = [
@@ -26,6 +38,15 @@ const ACTION_TYPES = [
   { value: 'login', label: 'Login' },
   { value: 'logout', label: 'Logout' },
   { value: 'export', label: 'Export' },
+  { value: 'otp_delivery_failed', label: 'OTP Failed' },
+  { value: 'email_send_failed', label: 'Email Failed' },
+  { value: 'verification_code_expired', label: 'Code Expired' },
+  { value: 'verification_code_wrong', label: 'Wrong Code' },
+  { value: 'verification_max_attempts', label: 'Max Attempts' },
+  { value: 'stk_push_failed', label: 'STK Failed' },
+  { value: 'payment_failed', label: 'Payment Failed' },
+  { value: 'payment_forged_callback', label: 'Forged Payment' },
+  { value: 'payment_completion_failed', label: 'Completion Failed' },
 ]
 
 const MODULE_OPTIONS = [
@@ -43,6 +64,11 @@ const MODULE_OPTIONS = [
   { value: 'predictions', label: 'Predictions' },
   { value: 'sales', label: 'Sales' },
   { value: 'settings', label: 'Settings' },
+  { value: 'email', label: 'Email' },
+  { value: 'registration', label: 'Registration' },
+  { value: 'authentication', label: 'Authentication' },
+  { value: 'verification', label: 'Verification' },
+  { value: 'payments', label: 'Payments' },
 ]
 
 function formatTimestamp(ts) {
@@ -276,10 +302,10 @@ export default function ActivityLogsTab() {
           color="#e74c3c"
         />
         <StatCard
-          label="Active Staff"
-          value={stats?.active_staff ?? stats?.unique_users ?? '—'}
-          icon="👥"
-          color="#9b59b6"
+          label="System Issues (7d)"
+          value={stats?.system_errors ?? '—'}
+          icon="⚠️"
+          color="#f39c12"
         />
       </div>
 
@@ -397,11 +423,11 @@ export default function ActivityLogsTab() {
                             <div className="admin-user-cell">
                               <div
                                 className="admin-avatar-sm"
-                                style={{ background: getActionColor(log.action) }}
+                                style={{ background: log.user_agent === 'system' ? '#f39c12' : getActionColor(log.action) }}
                               >
-                                {getUserInitials(log.user_name || log.user)}
+                                {log.user_agent === 'system' ? '⚙' : getUserInitials(log.display_name || log.user_name || log.user)}
                               </div>
-                              <span>{log.user_name || log.user || 'System'}</span>
+                              <span>{log.user_agent === 'system' ? (log.display_name || log.email || 'System') : (log.display_name || log.user_name || log.user || 'System')}</span>
                             </div>
                           </td>
                           <td>

@@ -19,6 +19,19 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 
 DB_PATH = "users.db"
+
+# System event logger for admin visibility
+def _log_system_event(action, module, details=None, user_id=0, target_type=None, target_id=None, severity="error"):
+    """Log system events to activity_logs for admin/HOD visibility."""
+    try:
+        import activity_logger
+        activity_logger.log_system_event(
+            action=action, module=module, details=details,
+            user_id=user_id, target_type=target_type, target_id=target_id,
+            severity=severity,
+        )
+    except Exception as e:
+        print(f"[WARN] Could not log system event: {e}")
 JWT_SECRET = None  # Set on startup from env
 
 
@@ -1028,6 +1041,12 @@ def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email:
         if attempt == 0:
             _time_mod.sleep(2)
 
+    _log_system_event(
+        action="email_send_failed",
+        module="email",
+        details={"recipient": to_email, "subject": subject[:100], "error": "All retry attempts failed"},
+        severity="error",
+    )
     return False
 
 
@@ -2323,7 +2342,15 @@ def register_user(email: str, password: str, display_name: str = "", referral_co
             )
             conn.commit()
             conn.close()
-            _send_verification_email(email, code, display_name or email.split("@")[0])
+            email_sent = _send_verification_email(email, code, display_name or email.split("@")[0])
+            if not email_sent:
+                _log_system_event(
+                    action="otp_delivery_failed",
+                    module="registration",
+                    details={"email": email, "context": "re-registration of unverified account"},
+                    user_id=existing["id"],
+                    severity="error",
+                )
             return {
                 "success": True,
                 "requires_verification": True,
@@ -2364,7 +2391,14 @@ def register_user(email: str, password: str, display_name: str = "", referral_co
     conn.close()
 
     # Send verification email
-    _send_verification_email(email, code, display_name)
+    email_sent = _send_verification_email(email, code, display_name)
+    if not email_sent:
+        _log_system_event(
+            action="otp_delivery_failed",
+            module="registration",
+            details={"email": email, "context": "new account registration"},
+            severity="error",
+        )
 
     return {
         "success": True,
@@ -2478,7 +2512,15 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
         )
         conn.commit()
         conn.close()
-        _send_verification_email(email, code, user["display_name"])
+        email_sent = _send_verification_email(email, code, user["display_name"])
+        if not email_sent:
+            _log_system_event(
+                action="otp_delivery_failed",
+                module="authentication",
+                details={"email": email, "context": "login with unverified email"},
+                user_id=user["id"],
+                severity="error",
+            )
         return {
             "success": False,
             "error": "Please verify your email. A new code has been sent.",
@@ -2540,12 +2582,26 @@ def verify_email(email: str, code: str) -> Dict:
     # Check attempts (max 5 to prevent brute force)
     if (user["verification_attempts"] or 0) >= 5:
         conn.close()
+        _log_system_event(
+            action="verification_max_attempts",
+            module="verification",
+            details={"email": email, "attempts": user["verification_attempts"]},
+            user_id=user["id"],
+            severity="error",
+        )
         return {"success": False, "error": "Too many failed attempts. Request a new code."}
 
     # Check expiry
     expires = user["verification_code_expires"]
     if not expires or datetime.fromisoformat(expires) < datetime.now():
         conn.close()
+        _log_system_event(
+            action="verification_code_expired",
+            module="verification",
+            details={"email": email, "expired_at": expires},
+            user_id=user["id"],
+            severity="warning",
+        )
         return {"success": False, "error": "Verification code has expired. Request a new one."}
 
     # Check code
@@ -2557,6 +2613,13 @@ def verify_email(email: str, code: str) -> Dict:
         conn.commit()
         remaining = 5 - (user["verification_attempts"] or 0) - 1
         conn.close()
+        _log_system_event(
+            action="verification_code_wrong",
+            module="verification",
+            details={"email": email, "attempts_remaining": remaining},
+            user_id=user["id"],
+            severity="warning",
+        )
         return {"success": False, "error": f"Invalid code. {remaining} attempts remaining."}
 
     # Success - mark as verified, clear code
@@ -2632,7 +2695,15 @@ def resend_verification_code(email: str) -> Dict:
     conn.commit()
     conn.close()
 
-    _send_verification_email(email, code, user["display_name"])
+    email_sent = _send_verification_email(email, code, user["display_name"])
+    if not email_sent:
+        _log_system_event(
+            action="otp_delivery_failed",
+            module="verification",
+            details={"email": email, "context": "resend verification code"},
+            user_id=user["id"],
+            severity="error",
+        )
 
     return {"success": True, "message": "A new verification code has been sent to your email."}
 

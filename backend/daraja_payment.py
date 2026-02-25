@@ -21,6 +21,19 @@ import ipaddress
 
 logger = logging.getLogger(__name__)
 
+# System event logger for admin visibility
+def _log_system_event(action, module, details=None, user_id=0, target_type=None, target_id=None, severity="error"):
+    """Log payment system events to activity_logs for admin/HOD visibility."""
+    try:
+        import activity_logger
+        activity_logger.log_system_event(
+            action=action, module=module, details=details,
+            user_id=user_id, target_type=target_type, target_id=target_id,
+            severity=severity,
+        )
+    except Exception as e:
+        print(f"[WARN] Could not log system event: {e}")
+
 # Safaricom IP ranges (official Daraja callback source IPs)
 # See: https://developer.safaricom.co.ke/Documentation
 SAFARICOM_IP_RANGES = [
@@ -488,6 +501,13 @@ async def initiate_stk_push(
                     """, (error_msg, datetime.now().isoformat(), transaction_id))
                     conn.commit()
                     conn.close()
+                    _log_system_event(
+                        action="stk_push_failed",
+                        module="payments",
+                        details={"transaction_id": transaction_id, "phone": phone, "amount_kes": amount_kes, "error": error_msg},
+                        user_id=user_id,
+                        severity="error",
+                    )
                     return {"success": False, "error": error_msg}
 
     except Exception as e:
@@ -505,6 +525,13 @@ async def initiate_stk_push(
                 conn.close()
             except Exception:
                 pass
+        _log_system_event(
+            action="stk_push_exception",
+            module="payments",
+            details={"transaction_id": tx_id, "phone": phone, "amount_kes": amount_kes, "error": str(e)},
+            user_id=user_id,
+            severity="error",
+        )
         return {"success": False, "error": f"Payment service unavailable: {str(e)}"}
 
 
@@ -586,6 +613,13 @@ async def handle_stk_callback(callback_data: dict, client_ip: str = "") -> Dict:
                         f"checkout={checkout_id}, ip={client_ip}, "
                         f"verification={verification}"
                     )
+                    _log_system_event(
+                        action="payment_forged_callback",
+                        module="payments",
+                        details={"transaction_id": tx["id"], "checkout_id": checkout_id, "ip": client_ip, "verification": str(verification)},
+                        user_id=tx["user_id"],
+                        severity="error",
+                    )
                     return {"success": False, "error": "Payment verification failed"}
                 logger.info(f"M-Pesa callback from non-Safaricom IP {client_ip} verified via STK query")
 
@@ -619,10 +653,23 @@ async def handle_stk_callback(callback_data: dict, client_ip: str = "") -> Dict:
             conn.commit()
             conn.close()
             logger.info(f"Daraja payment failed: tx={tx['id']}, reason={result_desc}")
+            _log_system_event(
+                action="payment_failed",
+                module="payments",
+                details={"transaction_id": tx["id"], "reason": result_desc, "checkout_id": checkout_id},
+                user_id=tx["user_id"],
+                severity="warning",
+            )
             return {"success": True, "status": "failed"}
 
     except Exception as e:
         logger.error(f"Daraja callback error: {e}")
+        _log_system_event(
+            action="payment_callback_error",
+            module="payments",
+            details={"error": str(e), "callback_data_keys": list(callback_data.keys()) if callback_data else []},
+            severity="error",
+        )
         return {"success": False, "error": str(e)}
 
 
@@ -775,6 +822,13 @@ def _complete_transaction(transaction_id: int) -> Dict:
         plan_id = tx["reference_id"]
         if plan_id not in plans:
             logger.error(f"[Callback] Invalid plan_id '{plan_id}' for transaction {transaction_id}. Marking failed.")
+            _log_system_event(
+                action="payment_completion_failed",
+                module="payments",
+                details={"transaction_id": transaction_id, "plan_id": plan_id, "error": "Invalid plan"},
+                user_id=tx["user_id"],
+                severity="error",
+            )
             conn.execute("""
                 UPDATE payment_transactions
                 SET payment_status = 'failed', failure_reason = 'Invalid plan', updated_at = ?
