@@ -8,7 +8,7 @@ import CountryPicker from './CountryPicker'
 
 const GOOGLE_CLIENT_ID = '905871526482-4i8pfv8435p4eq10226j0agks7j007ag.apps.googleusercontent.com'
 const HCAPTCHA_SITE_KEY = '93726ad0-1700-48aa-8aa6-77825d4cfbee'
-const TOTAL_SIGNUP_STEPS = 7
+const TOTAL_SIGNUP_STEPS = 6
 
 export default function AuthForm({ initialMode = 'login', onClose = null, compact = false }) {
   const [mode, setMode] = useState(initialMode)
@@ -364,7 +364,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     setSignupStep(2)
   }
 
-  // Step 2: Password + CAPTCHA → Register
+  // Step 2: Password + CAPTCHA + Terms → Register
   const handleStep2Register = async () => {
     setError('')
     if (password !== confirmPassword) {
@@ -380,9 +380,15 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
       setError(t('auth.captchaRequired'))
       return
     }
+    if (!termsAccepted) {
+      setError('You must accept the Terms of Service to continue.')
+      return
+    }
     setLoading(true)
     try {
-      const result = await register(email, password, '', referralCode, captchaToken)
+      const result = await register(email, password, '', referralCode, captchaToken, {
+        terms_accepted: true,
+      })
       if (result.requires_verification) {
         setResendCooldown(60)
         setSignupStep(3)
@@ -487,7 +493,23 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     setPhoneLoading(true)
     try {
       await axios.post('/api/user/whatsapp/verify-confirm', { code: phoneCode.trim() })
-      setSignupStep(7)
+      // Phone verified — now save personal info and complete setup
+      setSavingFinal(true)
+      try {
+        await axios.put('/api/user/personal-info', {
+          full_name: fullName.trim() || undefined,
+          date_of_birth: dateOfBirth || undefined,
+          security_question: securityQuestion || undefined,
+          security_answer: securityAnswer.trim() || undefined,
+          country: country || undefined,
+        })
+        await axios.post('/api/user/accept-terms')
+        await refreshProfile()
+        navigate('/')
+      } catch (saveErr) {
+        setPhoneError(saveErr.response?.data?.detail || 'Setup failed. Please try again.')
+        setSavingFinal(false)
+      }
     } catch (err) {
       setPhoneError(err.response?.data?.detail || 'Invalid code. Please try again.')
     }
@@ -505,34 +527,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     }
   }
 
-  // Step 7: Terms — save everything and complete
-  const handleCompleteSetup = async () => {
-    setError('')
-    if (!termsAccepted) {
-      setError('You must accept the Terms of Service to continue.')
-      return
-    }
-    setSavingFinal(true)
-    try {
-      // Save personal info
-      await axios.put('/api/user/personal-info', {
-        full_name: fullName.trim() || undefined,
-        date_of_birth: dateOfBirth || undefined,
-        security_question: securityQuestion || undefined,
-        security_answer: securityAnswer.trim() || undefined,
-        country: country || undefined,
-      })
-      // Accept terms
-      await axios.post('/api/user/accept-terms')
-      // Activate session: refreshProfile sets user + isAuthenticated
-      await refreshProfile()
-      // Navigate to the app (works from both /login and landing page modal)
-      navigate('/')
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to complete setup. Please try again.')
-    }
-    setSavingFinal(false)
-  }
+
 
   // ====== STEP ICONS ======
   const stepIcons = {
@@ -542,7 +537,6 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     4: <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
     5: <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
     6: <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>,
-    7: <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
   }
 
   // ====== RENDER: Verification screen for LOGIN mode (existing flow) ======
@@ -709,12 +703,24 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
                   onExpire={handleCaptchaExpire} onError={handleCaptchaError} theme="dark" size="normal" />
               </div>
 
+              <div className="terms-checkbox-section" style={{ marginTop: 12, marginBottom: 8 }}>
+                <label className="terms-checkbox-label">
+                  <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} />
+                  <span>
+                    I agree to the{' '}
+                    <a href="/terms" target="_blank" rel="noopener noreferrer" className="terms-link">
+                      Terms of Service
+                    </a>
+                  </span>
+                </label>
+              </div>
+
               {error && <div className="gate-error">{error}</div>}
 
               <div className="wizard-btn-row">
                 <button type="button" className="wizard-back-btn" onClick={() => setSignupStep(1)}>&larr; Back</button>
                 <button type="button" className="gate-submit-btn wizard-next-btn" onClick={handleStep2Register}
-                  disabled={loading || !captchaToken || !password || !confirmPassword}>
+                  disabled={loading || !captchaToken || !password || !confirmPassword || !termsAccepted}>
                   {loading ? t('auth.creatingAccount') : 'Create Account \u2192'}
                 </button>
               </div>
@@ -878,35 +884,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           </div>
         )}
 
-        {/* ===== STEP 7: TERMS & CONDITIONS ===== */}
-        {signupStep === 7 && (
-          <div className="wizard-step" key="step7">
-            <div className="wizard-step-icon">{stepIcons[7]}</div>
-            <h2 className="wizard-step-title">Almost done!</h2>
-            <p className="wizard-step-subtitle">Review and accept our terms to get started</p>
 
-            <div className="access-form">
-              <div className="terms-checkbox-section" style={{ marginBottom: 20 }}>
-                <label className="terms-checkbox-label">
-                  <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} />
-                  <span>
-                    I agree to the{' '}
-                    <a href="/terms" target="_blank" rel="noopener noreferrer" className="terms-link">
-                      Terms of Service
-                    </a>
-                  </span>
-                </label>
-              </div>
-
-              {error && <div className="gate-error">{error}</div>}
-
-              <button type="button" className="gate-submit-btn wizard-next-btn wizard-complete-btn"
-                onClick={handleCompleteSetup} disabled={!termsAccepted || savingFinal}>
-                {savingFinal ? 'Setting up...' : 'Complete Setup \u2713'}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     )
   }
