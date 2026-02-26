@@ -24544,3 +24544,133 @@ html, body {
   color: #25D366;
   font-weight: 500;
 }
+
+/* ==================== Signup Wizard ==================== */
+.wizard-progress {
+  height: 4px;
+  background: #1e293b;
+  border-radius: 2px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.wizard-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.wizard-step-label {
+  text-align: center;
+  color: #64748b;
+  font-size: 12px;
+  margin-bottom: 20px;
+}
+
+/* Step container animation */
+.wizard-step {
+  animation: wizardFadeIn 0.35s ease;
+}
+@keyframes wizardFadeIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Step icon */
+.wizard-step-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+/* Step title & subtitle */
+.wizard-step-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-bottom: 6px;
+  text-align: center;
+}
+.wizard-step-subtitle {
+  font-size: 14px;
+  color: #94a3b8;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+/* Button row (back + next side by side) */
+.wizard-btn-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+.wizard-back-btn {
+  background: transparent;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 12px 20px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.wizard-back-btn:hover {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: #475569;
+  color: #cbd5e1;
+}
+
+/* Next / action button in wizard (extends gate-submit-btn) */
+.wizard-next-btn {
+  flex: 1;
+}
+
+/* Complete button green glow */
+.wizard-complete-btn:not(:disabled) {
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.25);
+}
+.wizard-complete-btn:not(:disabled):hover {
+  background: linear-gradient(135deg, #059669, #047857) !important;
+  box-shadow: 0 0 28px rgba(16, 185, 129, 0.35);
+}
+
+/* Field hints */
+.wizard-field-hint {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+/* Terms checkbox in wizard */
+.terms-checkbox-section {
+  padding: 16px;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid #334155;
+  border-radius: 10px;
+}
+.terms-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  color: #cbd5e1;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.terms-checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: #3b82f6;
+  flex-shrink: 0;
+}
+.terms-link {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+.terms-link:hover {
+  color: #60a5fa;
+}
