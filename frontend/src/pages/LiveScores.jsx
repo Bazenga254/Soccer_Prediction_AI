@@ -85,12 +85,11 @@ const SUB_MESSAGES = {
 // Pre-selected GIF pools (instant load, no API call needed)
 const PRESELECTED_GIFS = {
   tracking_started: [
-    'https://media.giphy.com/media/l0MYt5jPR6QX5APm0/200.gif',
-    'https://media.giphy.com/media/3oEjHV0z8S7WM4MwnK/200.gif',
-    'https://media.giphy.com/media/xTiTnEHBh7qapSf11u/200.gif',
-    'https://media.giphy.com/media/YRuFixSNWFVcXaxpmX/200.gif',
-    'https://media.giphy.com/media/artj92V8o75VPL7AeQ/200.gif',
-    'https://media.giphy.com/media/3oz8xIsloV320wXd6M/200.gif',
+    'https://media0.giphy.com/media/d3mlE7uhX8KFgEmY/200.gif',
+    'https://media1.tenor.com/m/oym8quGMVa8AAAAC/clap-clapping.gif',
+    'https://media1.tenor.com/m/6-151WYmqfkAAAAC/very-smart-move-sander-bos.gif',
+    'https://media1.tenor.com/m/w6J9ANCqIcIAAAAC/thats-good-smart-too-ego-nwodim.gif',
+    'https://media1.tenor.com/m/-7z_hl4R9qUAAAAC/trump-maga.gif',
   ],
   celebration: [
     'https://media.giphy.com/media/3o7bu2D938PkrKrcYw/200.gif',
@@ -125,20 +124,18 @@ const PRESELECTED_GIFS = {
     'https://media.giphy.com/media/l4pTcr7Nbt29Hpx72/200.gif',
   ],
   match_won: [
-    'https://media.giphy.com/media/26u4exk4zsAqPcq08/200.gif',
-    'https://media.giphy.com/media/cuKExiRZlVoPK92Bth/200.gif',
-    'https://media.giphy.com/media/oIGXtRBYxIYyXTnSnm/200.gif',
-    'https://media.giphy.com/media/2vlkAmFl8FOTogdUx0/200.gif',
-    'https://media.giphy.com/media/QR4UX8k7bQX1gKJp6i/200.gif',
-    'https://media.giphy.com/media/QAIGlJZqbnc0UYQn7U/200.gif',
+    'https://media3.giphy.com/media/ddHhhUBn25cuQ/200.gif',
+    'https://media1.tenor.com/m/sLjUbG5BVikAAAAC/trump-dance-trump-2024.gif',
+    'https://media1.giphy.com/media/7OVCzBQkDSyU4tBZrA/200.gif',
+    'https://media1.giphy.com/media/AGd0FlElEhcRy/200.gif',
+    'https://media4.giphy.com/media/FA74MFGdGKKnC/200.gif',
   ],
   match_lost: [
-    'https://media.giphy.com/media/l1OBiDMmjQqXPpcSa4/200.gif',
-    'https://media.giphy.com/media/naKDoT6SAIqDavX3WQ/200.gif',
-    'https://media.giphy.com/media/6rLNAzFoLz3aIy41r9/200.gif',
-    'https://media.giphy.com/media/BE2wVc1nuX0tvxbGCL/200.gif',
-    'https://media.giphy.com/media/7kJ49xKZsckr8yV87R/200.gif',
-    'https://media.giphy.com/media/Tzl5kPytktnDqNu6tZ/200.gif',
+    'https://media4.giphy.com/media/2ilegKh8fMdJAVqbG2/200.gif',
+    'https://media2.giphy.com/media/USbYNzaNRPcMbMwgCz/200.gif',
+    'https://media1.tenor.com/m/xaepTcNT4moAAAAC/don%27t-give-up-hope-yet-iroh.gif',
+    'https://media3.giphy.com/media/bGPTxLislwm3u/200.gif',
+    'https://media4.giphy.com/media/qOqqZq27NReUM/200.gif',
   ],
   match_draw: [
     'https://media.giphy.com/media/JRhS6WoswF8FxE0g2R/200.gif',
