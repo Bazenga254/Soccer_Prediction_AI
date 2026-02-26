@@ -884,6 +884,12 @@ class PersonalInfoRequest(BaseModel):
 class DeleteAccountRequest(BaseModel):
     password: str
 
+class WhatsAppVerifySendRequest(BaseModel):
+    phone_number: str
+
+class WhatsAppVerifyConfirmRequest(BaseModel):
+    code: str
+
 
 def _get_client_ip(request: Request) -> str:
     """Extract client IP, checking X-Forwarded-For for proxied requests."""
@@ -1571,6 +1577,30 @@ async def update_personal_info(req: PersonalInfoRequest, authorization: str = He
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
     return {"success": True}
+
+
+@app.post("/api/user/whatsapp/verify-send")
+async def whatsapp_verify_send(req: WhatsAppVerifySendRequest, authorization: str = Header(None)):
+    """Send a WhatsApp OTP verification code to the user's number."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = user_auth.send_whatsapp_verification(payload["user_id"], req.phone_number)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/user/whatsapp/verify-confirm")
+async def whatsapp_verify_confirm(req: WhatsAppVerifyConfirmRequest, authorization: str = Header(None)):
+    """Confirm the WhatsApp OTP code."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    result = user_auth.verify_whatsapp(payload["user_id"], req.code)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 
 @app.delete("/api/user/account")

@@ -24460,3 +24460,87 @@ html, body {
     border-color: #1e3a5f !important;
   }
 }
+
+/* ==================== WhatsApp Verification (AccountSetup) ==================== */
+.wa-otp-input {
+  text-align: center !important;
+  font-size: 28px !important;
+  letter-spacing: 10px;
+  font-weight: 600;
+  padding: 14px 16px !important;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.account-setup-resend-btn {
+  background: transparent;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #3b82f6;
+  cursor: pointer;
+  font-size: 13px;
+  margin-top: 8px;
+  padding: 10px 16px;
+  transition: all 0.2s;
+  width: 100%;
+}
+.account-setup-resend-btn:hover:not(:disabled) {
+  background: rgba(59,130,246,0.1);
+  border-color: #3b82f6;
+}
+.account-setup-resend-btn:disabled {
+  color: #64748b;
+  cursor: not-allowed;
+  border-color: #1e293b;
+}
+
+.account-setup-back-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 13px;
+  margin-top: 4px;
+  padding: 8px;
+}
+.account-setup-back-btn:hover {
+  color: #cbd5e1;
+}
+
+/* ==================== Broadcast Channel Selector ==================== */
+.broadcast-channel-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 0 2px;
+}
+.broadcast-channel-selector label {
+  color: #94a3b8;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.broadcast-channel-select {
+  background: #1e293b;
+  color: #f1f5f9;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.broadcast-channel-select:hover {
+  border-color: #475569;
+}
+.broadcast-channel-select:focus {
+  border-color: #3b82f6;
+  outline: none;
+}
+.broadcast-channel-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(37,211,102,0.15);
+  color: #25D366;
+  font-weight: 500;
+}

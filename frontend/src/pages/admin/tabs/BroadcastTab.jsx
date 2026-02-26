@@ -13,6 +13,7 @@ export default function BroadcastTab() {
   const [filter, setFilter] = useState('all')
   const [rejectingId, setRejectingId] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
+  const [channel, setChannel] = useState('email')
 
   const isSuperAdmin = roleInfo?.level <= 1 || roleInfo?.name === 'owner'
 
@@ -36,6 +37,7 @@ export default function BroadcastTab() {
       const res = await axios.post('/api/admin/broadcast', {
         title: title.trim(),
         message: message.trim(),
+        channel,
       }, { headers: getAuthHeaders() })
       if (res.data.success) {
         if (res.data.status === 'pending_approval') {
@@ -128,6 +130,14 @@ export default function BroadcastTab() {
             maxLength={1000}
             rows={4}
           />
+          <div className="broadcast-channel-selector">
+            <label>Send via:</label>
+            <select value={channel} onChange={e => setChannel(e.target.value)} className="broadcast-channel-select">
+              <option value="email">Email Only</option>
+              <option value="whatsapp">WhatsApp Only</option>
+              <option value="both">Email + WhatsApp</option>
+            </select>
+          </div>
           <div className="broadcast-form-footer">
             <span className="broadcast-char-count">{message.length}/1000</span>
             <button type="submit" className="broadcast-send-btn" disabled={!title.trim() || !message.trim() || sending}>
@@ -173,6 +183,7 @@ export default function BroadcastTab() {
                     <span>By: {b.sender_name}</span>
                     <span>{timeAgo(b.created_at)}</span>
                     {b.status === 'sent' && <span>{b.recipient_count} recipients</span>}
+                    {b.channel && <span className="broadcast-channel-badge">{b.channel === 'both' ? 'Email + WhatsApp' : b.channel === 'whatsapp' ? 'WhatsApp' : 'Email'}</span>}
                     {b.approved_by_name && <span>Approved by: {b.approved_by_name}</span>}
                     {b.rejected_reason && <span>Reason: {b.rejected_reason}</span>}
                   </div>

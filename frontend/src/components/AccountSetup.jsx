@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
 import CountryPicker from './CountryPicker'
@@ -7,35 +7,76 @@ import axios from 'axios'
 export default function AccountSetup() {
   const { t } = useTranslation()
   const { user, refreshProfile } = useAuth()
+
+  // Step tracking: 1 = personal info + phone, 2 = WhatsApp OTP verification
+  const [step, setStep] = useState(1)
+
+  // Step 1 fields
   const [securityQuestion, setSecurityQuestion] = useState('')
   const [securityAnswer, setSecurityAnswer] = useState('')
   const [dateOfBirth, setDateOfBirth] = useState(user?.date_of_birth || '')
   const [country, setCountry] = useState(user?.country || '')
+  const [whatsappNumber, setWhatsappNumber] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const canSubmit = securityQuestion && securityAnswer.trim().length >= 2 && dateOfBirth
+  // Step 2 fields (WhatsApp OTP)
+  const [otpCode, setOtpCode] = useState('')
+  const [verifying, setVerifying] = useState(false)
+  const [otpError, setOtpError] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
 
-  const handleSubmit = async (e) => {
+  // If user already has security Q&A set but no whatsapp verification, skip to step 2
+  useEffect(() => {
+    if (user?.security_question && user?.has_security_answer && !user?.whatsapp_verified) {
+      // Need to ask for WhatsApp number if not set yet
+      if (user?.whatsapp_number) {
+        setWhatsappNumber(user.whatsapp_number)
+        setStep(2)
+      }
+    }
+  }, [user])
+
+  // Countdown timer for resend cooldown
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [resendCooldown])
+
+  const canSubmitStep1 = securityQuestion && securityAnswer.trim().length >= 2 && dateOfBirth && whatsappNumber.trim().length >= 10
+
+  // For returning users who already have security Q&A
+  const hasSecuritySetup = user?.security_question && user?.has_security_answer
+  const canSubmitStep1Returning = hasSecuritySetup && whatsappNumber.trim().length >= 10
+
+  // Step 1: Submit personal info and send WhatsApp OTP
+  const handleStep1Submit = async (e) => {
     e.preventDefault()
-    if (!canSubmit) return
-
     setError('')
     setSaving(true)
     try {
-      const payload = {
-        security_question: securityQuestion,
-        security_answer: securityAnswer.trim(),
-        date_of_birth: dateOfBirth,
-        country: country || undefined,
-      }
-      // Also save full_name if empty
-      if (!user?.full_name) {
-        payload.full_name = user?.display_name || ''
+      // Save personal info first (only if not already set)
+      if (!hasSecuritySetup) {
+        const payload = {
+          security_question: securityQuestion,
+          security_answer: securityAnswer.trim(),
+          date_of_birth: dateOfBirth,
+          country: country || undefined,
+        }
+        if (!user?.full_name) {
+          payload.full_name = user?.display_name || ''
+        }
+        await axios.put('/api/user/personal-info', payload)
       }
 
-      await axios.put('/api/user/personal-info', payload)
-      await refreshProfile()
+      // Send WhatsApp OTP
+      await axios.post('/api/user/whatsapp/verify-send', {
+        phone_number: whatsappNumber.trim()
+      })
+
+      setResendCooldown(60)
+      setStep(2)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to save. Please try again.')
     } finally {
@@ -43,7 +84,36 @@ export default function AccountSetup() {
     }
   }
 
-  // Calculate max date (must be at least 13 years old)
+  // Step 2: Verify WhatsApp OTP
+  const handleVerifyOTP = async (e) => {
+    e.preventDefault()
+    if (!otpCode.trim() || otpCode.length !== 6) return
+    setOtpError('')
+    setVerifying(true)
+    try {
+      await axios.post('/api/user/whatsapp/verify-confirm', { code: otpCode.trim() })
+      await refreshProfile()
+    } catch (err) {
+      setOtpError(err.response?.data?.detail || 'Invalid code. Please try again.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  // Resend OTP
+  const handleResendOTP = async () => {
+    if (resendCooldown > 0) return
+    setOtpError('')
+    try {
+      await axios.post('/api/user/whatsapp/verify-send', {
+        phone_number: whatsappNumber.trim() || user?.whatsapp_number || ''
+      })
+      setResendCooldown(60)
+    } catch (err) {
+      setOtpError(err.response?.data?.detail || 'Failed to resend code.')
+    }
+  }
+
   const today = new Date()
   const maxDate = new Date(today.getFullYear() - 13, today.getMonth(), today.getDate())
     .toISOString().split('T')[0]
@@ -52,84 +122,178 @@ export default function AccountSetup() {
     <div className="account-setup-overlay">
       <div className="account-setup-card">
         <div className="account-setup-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 9v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={step === 1 ? "#f59e0b" : "#22c55e"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            {step === 1 ? (
+              <path d="M12 9v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
+            ) : (
+              <>
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </>
+            )}
           </svg>
         </div>
 
-        <h2 className="account-setup-title">{t('accountSetup.title')}</h2>
-        <p className="account-setup-subtitle">
-          {t('accountSetup.subtitle')}
-        </p>
+        {step === 1 ? (
+          <>
+            <h2 className="account-setup-title">
+              {hasSecuritySetup ? 'Verify Your WhatsApp' : t('accountSetup.title')}
+            </h2>
+            <p className="account-setup-subtitle">
+              {hasSecuritySetup
+                ? 'Please add your WhatsApp number to continue. We will send a verification code.'
+                : t('accountSetup.subtitle')}
+            </p>
 
-        <form onSubmit={handleSubmit} className="account-setup-form">
-          {/* Date of Birth */}
-          <div className="account-setup-field">
-            <label>{t('accountSetup.dateOfBirth')}</label>
-            <input
-              type="date"
-              value={dateOfBirth}
-              onChange={e => setDateOfBirth(e.target.value)}
-              max={maxDate}
-              required
-            />
-          </div>
+            <form onSubmit={handleStep1Submit} className="account-setup-form">
+              {/* Only show DOB/Security fields if not already set */}
+              {!hasSecuritySetup && (
+                <>
+                  {/* Date of Birth */}
+                  <div className="account-setup-field">
+                    <label>{t('accountSetup.dateOfBirth')}</label>
+                    <input
+                      type="date"
+                      value={dateOfBirth}
+                      onChange={e => setDateOfBirth(e.target.value)}
+                      max={maxDate}
+                      required
+                    />
+                  </div>
 
-          {/* Country */}
-          <div className="account-setup-field">
-            <label>Country</label>
-            <CountryPicker
-              value={country}
-              onChange={setCountry}
-              disabled={saving}
-              placeholder="Search for your country"
-            />
-          </div>
+                  {/* Country */}
+                  <div className="account-setup-field">
+                    <label>Country</label>
+                    <CountryPicker
+                      value={country}
+                      onChange={setCountry}
+                      disabled={saving}
+                      placeholder="Search for your country"
+                    />
+                  </div>
 
-          {/* Security Question */}
-          <div className="account-setup-field">
-            <label>{t('accountSetup.securityQuestion')}</label>
-            <select
-              value={securityQuestion}
-              onChange={e => setSecurityQuestion(e.target.value)}
-              required
-            >
-              <option value="">{t('accountSetup.selectQuestion')}</option>
-              <option value={t('auth.secQ1')}>{t('auth.secQ1')}</option>
-              <option value={t('auth.secQ2')}>{t('auth.secQ2')}</option>
-              <option value={t('auth.secQ3')}>{t('auth.secQ3')}</option>
-              <option value={t('auth.secQ4')}>{t('auth.secQ4')}</option>
-              <option value={t('auth.secQ5')}>{t('auth.secQ5')}</option>
-              <option value={t('auth.secQ6')}>{t('auth.secQ6')}</option>
-            </select>
-          </div>
+                  {/* Security Question */}
+                  <div className="account-setup-field">
+                    <label>{t('accountSetup.securityQuestion')}</label>
+                    <select
+                      value={securityQuestion}
+                      onChange={e => setSecurityQuestion(e.target.value)}
+                      required
+                    >
+                      <option value="">{t('accountSetup.selectQuestion')}</option>
+                      <option value={t('auth.secQ1')}>{t('auth.secQ1')}</option>
+                      <option value={t('auth.secQ2')}>{t('auth.secQ2')}</option>
+                      <option value={t('auth.secQ3')}>{t('auth.secQ3')}</option>
+                      <option value={t('auth.secQ4')}>{t('auth.secQ4')}</option>
+                      <option value={t('auth.secQ5')}>{t('auth.secQ5')}</option>
+                      <option value={t('auth.secQ6')}>{t('auth.secQ6')}</option>
+                    </select>
+                  </div>
 
-          {/* Security Answer */}
-          <div className="account-setup-field">
-            <label>{t('accountSetup.securityAnswer')}</label>
-            <input
-              type="text"
-              value={securityAnswer}
-              onChange={e => setSecurityAnswer(e.target.value)}
-              placeholder={t('accountSetup.answerPlaceholder')}
-              required
-              minLength={2}
-            />
-            <span className="account-setup-hint">
-              {t('accountSetup.answerHint')}
-            </span>
-          </div>
+                  {/* Security Answer */}
+                  <div className="account-setup-field">
+                    <label>{t('accountSetup.securityAnswer')}</label>
+                    <input
+                      type="text"
+                      value={securityAnswer}
+                      onChange={e => setSecurityAnswer(e.target.value)}
+                      placeholder={t('accountSetup.answerPlaceholder')}
+                      required
+                      minLength={2}
+                    />
+                    <span className="account-setup-hint">
+                      {t('accountSetup.answerHint')}
+                    </span>
+                  </div>
+                </>
+              )}
 
-          {error && <div className="account-setup-error">{error}</div>}
+              {/* WhatsApp Number */}
+              <div className="account-setup-field">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  WhatsApp Number
+                </label>
+                <input
+                  type="tel"
+                  value={whatsappNumber}
+                  onChange={e => setWhatsappNumber(e.target.value)}
+                  placeholder="+254712345678"
+                  required
+                  style={{ fontSize: 16 }}
+                />
+                <span className="account-setup-hint">
+                  Enter your WhatsApp number in international format (e.g., +254712345678). A verification code will be sent.
+                </span>
+              </div>
 
-          <button
-            type="submit"
-            className="account-setup-btn"
-            disabled={!canSubmit || saving}
-          >
-            {saving ? t('common.saving') : t('accountSetup.saveContinue')}
-          </button>
-        </form>
+              {error && <div className="account-setup-error">{error}</div>}
+
+              <button
+                type="submit"
+                className="account-setup-btn"
+                disabled={hasSecuritySetup ? !canSubmitStep1Returning : !canSubmitStep1 || saving}
+              >
+                {saving ? t('common.saving') : 'Continue & Verify WhatsApp'}
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <h2 className="account-setup-title">Verify Your WhatsApp</h2>
+            <p className="account-setup-subtitle">
+              We sent a 6-digit code to <strong>{whatsappNumber || user?.whatsapp_number || ''}</strong>. Enter it below.
+            </p>
+
+            <form onSubmit={handleVerifyOTP} className="account-setup-form">
+              <div className="account-setup-field">
+                <label>Verification Code</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  autoFocus
+                  className="wa-otp-input"
+                  pattern="[0-9]*"
+                />
+              </div>
+
+              {otpError && <div className="account-setup-error">{otpError}</div>}
+
+              <button
+                type="submit"
+                className="account-setup-btn"
+                disabled={otpCode.length !== 6 || verifying}
+              >
+                {verifying ? 'Verifying...' : 'Verify & Continue'}
+              </button>
+
+              <button
+                type="button"
+                className="account-setup-resend-btn"
+                onClick={handleResendOTP}
+                disabled={resendCooldown > 0}
+              >
+                {resendCooldown > 0
+                  ? `Resend in ${resendCooldown}s`
+                  : 'Resend Code'}
+              </button>
+
+              <button
+                type="button"
+                className="account-setup-back-btn"
+                onClick={() => { setStep(1); setOtpCode(''); setOtpError('') }}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, marginTop: 4 }}
+              >
+                Change WhatsApp number
+              </button>
+            </form>
+          </>
+        )}
       </div>
     </div>
   )

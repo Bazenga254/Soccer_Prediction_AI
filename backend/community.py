@@ -3683,15 +3683,18 @@ def get_balance_adjustment_stats() -> Dict:
 # ==================== BROADCAST MESSAGING ====================
 
 def create_broadcast(sender_id: int, sender_name: str, title: str, message: str,
-                     auto_approve: bool = False) -> Dict:
-    """Create a broadcast message. If auto_approve=True (super admin), it's sent immediately."""
+                     auto_approve: bool = False, channel: str = "email") -> Dict:
+    """Create a broadcast message. If auto_approve=True (super admin), it's sent immediately.
+    channel: 'email', 'whatsapp', or 'both'."""
+    if channel not in ("email", "whatsapp", "both"):
+        channel = "email"
     conn = _get_db()
     now = datetime.now().isoformat()
     status = "approved" if auto_approve else "pending_approval"
     conn.execute("""
-        INSERT INTO broadcast_messages (sender_id, sender_name, title, message, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (sender_id, sender_name, title, message, status, now))
+        INSERT INTO broadcast_messages (sender_id, sender_name, title, message, status, channel, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (sender_id, sender_name, title, message, status, channel, now))
     broadcast_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.commit()
     conn.close()
@@ -3768,15 +3771,19 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
         conn.close()
         return {"recipient_count": 0}
 
-    # Get all active users
+    channel = broadcast["channel"] if "channel" in broadcast.keys() else "email"
+
+    # Get all active users (include WhatsApp fields for channel routing)
     auth_conn = user_auth._get_db()
-    users = auth_conn.execute("SELECT id FROM users WHERE is_active = 1").fetchall()
+    users = auth_conn.execute(
+        "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1"
+    ).fetchall()
     auth_conn.close()
 
     user_ids = [u["id"] for u in users]
     now = datetime.now().isoformat()
 
-    # Create a notification for each user
+    # Create in-app notification for ALL users regardless of channel
     for uid in user_ids:
         create_notification(
             user_id=uid,
@@ -3786,20 +3793,40 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
             metadata={"broadcast_id": broadcast_id, "sender_name": broadcast["sender_name"]},
         )
 
-    # Send email to all users (in background thread)
-    import threading
-    def _send_broadcast_emails():
-        try:
-            for uid in user_ids:
-                _send_notif_email(
-                    user_id=uid,
-                    notif_type="broadcast",
-                    title=broadcast["title"],
-                    message=broadcast["message"],
-                )
-        except Exception as e:
-            print(f"[WARN] Broadcast email error: {e}")
-    threading.Thread(target=_send_broadcast_emails, daemon=True).start()
+    # Send email if channel is 'email' or 'both'
+    if channel in ("email", "both"):
+        import threading
+        def _send_broadcast_emails():
+            try:
+                for uid in user_ids:
+                    _send_notif_email(
+                        user_id=uid,
+                        notif_type="broadcast",
+                        title=broadcast["title"],
+                        message=broadcast["message"],
+                    )
+            except Exception as e:
+                print(f"[WARN] Broadcast email error: {e}")
+        threading.Thread(target=_send_broadcast_emails, daemon=True).start()
+
+    # Send WhatsApp if channel is 'whatsapp' or 'both'
+    if channel in ("whatsapp", "both"):
+        whatsapp_numbers = [
+            u["whatsapp_number"] for u in users
+            if u.get("whatsapp_verified") and u.get("whatsapp_number")
+        ]
+        if whatsapp_numbers:
+            import threading as _thr
+            import whatsapp_service
+            def _send_broadcast_whatsapp():
+                try:
+                    result = whatsapp_service.send_whatsapp_broadcast(
+                        broadcast["title"], broadcast["message"], whatsapp_numbers
+                    )
+                    print(f"[INFO] WhatsApp broadcast: {result['sent_count']} sent, {result['failed_count']} failed")
+                except Exception as e:
+                    print(f"[WARN] WhatsApp broadcast error: {e}")
+            _thr.Thread(target=_send_broadcast_whatsapp, daemon=True).start()
 
     # Mark as sent
     conn.execute("""

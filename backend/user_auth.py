@@ -406,6 +406,10 @@ def init_user_db():
         "ALTER TABLE users ADD COLUMN whop_access_source TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN magic_login_token_hash TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN magic_login_expires TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN whatsapp_number TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN whatsapp_verified INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN whatsapp_code TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN whatsapp_code_expires TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(col_sql)
@@ -1873,7 +1877,7 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
                 "referral_code": existing["referral_code"],
                 "is_admin": bool(existing["is_admin"]),
                 "created_at": existing["created_at"],
-                "profile_complete": bool(existing["security_question"] and existing["security_answer_hash"]),
+                "profile_complete": bool(existing["security_question"] and existing["security_answer_hash"] and (existing["whatsapp_verified"] if "whatsapp_verified" in existing.keys() else 0)),
                 "terms_accepted": bool(existing["terms_accepted_at"]),
                 "staff_role": existing["staff_role"],
                 "role_id": existing["role_id"],
@@ -1939,7 +1943,7 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
                 "referral_code": user["referral_code"],
                 "is_admin": bool(user["is_admin"]),
                 "created_at": user["created_at"],
-                "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+                "profile_complete": bool(user["security_question"] and user["security_answer_hash"] and (user["whatsapp_verified"] if "whatsapp_verified" in user.keys() else 0)),
                 "terms_accepted": bool(user["terms_accepted_at"]),
                 "staff_role": user["staff_role"],
                 "role_id": user["role_id"],
@@ -2122,7 +2126,7 @@ def verify_magic_login_token(email: str, token: str) -> Dict:
             "referral_code": user["referral_code"],
             "is_admin": bool(user["is_admin"]),
             "created_at": user["created_at"],
-            "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+            "profile_complete": bool(user["security_question"] and user["security_answer_hash"] and (user["whatsapp_verified"] if "whatsapp_verified" in user.keys() else 0)),
             "terms_accepted": bool(user["terms_accepted_at"]),
             "staff_role": user["staff_role"],
             "role_id": user["role_id"],
@@ -2188,7 +2192,7 @@ def whop_oauth_login(
                 "referral_code": existing["referral_code"],
                 "is_admin": bool(existing["is_admin"]),
                 "created_at": existing["created_at"],
-                "profile_complete": bool(existing["security_question"] and existing["security_answer_hash"]),
+                "profile_complete": bool(existing["security_question"] and existing["security_answer_hash"] and (existing["whatsapp_verified"] if "whatsapp_verified" in existing.keys() else 0)),
                 "terms_accepted": bool(existing["terms_accepted_at"]),
                 "staff_role": existing["staff_role"],
                 "role_id": existing["role_id"],
@@ -2239,7 +2243,7 @@ def whop_oauth_login(
                 "referral_code": user["referral_code"],
                 "is_admin": bool(user["is_admin"]),
                 "created_at": user["created_at"],
-                "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+                "profile_complete": bool(user["security_question"] and user["security_answer_hash"] and (user["whatsapp_verified"] if "whatsapp_verified" in user.keys() else 0)),
                 "terms_accepted": bool(user["terms_accepted_at"]),
                 "staff_role": user["staff_role"],
                 "role_id": user["role_id"],
@@ -2573,7 +2577,7 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
             "referral_code": user["referral_code"],
             "is_admin": bool(user["is_admin"]),
             "created_at": user["created_at"],
-            "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+            "profile_complete": bool(user["security_question"] and user["security_answer_hash"] and (user["whatsapp_verified"] if "whatsapp_verified" in user.keys() else 0)),
             "terms_accepted": bool(user["terms_accepted_at"]),
             "staff_role": user["staff_role"],
             "role_id": user["role_id"],
@@ -2669,7 +2673,7 @@ def verify_email(email: str, code: str) -> Dict:
             "referral_code": user["referral_code"],
             "is_admin": bool(user["is_admin"]),
             "created_at": user["created_at"],
-            "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+            "profile_complete": bool(user["security_question"] and user["security_answer_hash"] and (user["whatsapp_verified"] if "whatsapp_verified" in user.keys() else 0)),
             "terms_accepted": bool(user["terms_accepted_at"]),
             "staff_role": user["staff_role"],
             "role_id": user["role_id"],
@@ -2743,13 +2747,15 @@ def get_user_profile(user_id: int) -> Optional[Dict]:
         "date_of_birth": user["date_of_birth"],
         "security_question": user["security_question"],
         "has_security_answer": bool(user["security_answer_hash"]),
-        "profile_complete": bool(user["security_question"] and user["security_answer_hash"]),
+        "profile_complete": bool(user["security_question"] and user["security_answer_hash"] and (user["whatsapp_verified"] if "whatsapp_verified" in user.keys() else 0)),
         "terms_accepted": bool(user["terms_accepted_at"]),
         "staff_role": user["staff_role"],
         "role_id": user["role_id"],
         "department": user["department"],
         "whop_user_id": user["whop_user_id"] if "whop_user_id" in user.keys() else None,
         "mpesa_phone": user["mpesa_phone"] if "mpesa_phone" in user.keys() else None,
+        "whatsapp_number": user["whatsapp_number"] if "whatsapp_number" in user.keys() else None,
+        "whatsapp_verified": bool(user["whatsapp_verified"]) if "whatsapp_verified" in user.keys() else False,
         "sensitive_actions_restricted": not sensitive_check["allowed"],
         "sensitive_actions_message": sensitive_check.get("message", ""),
         "sensitive_actions_remaining_seconds": sensitive_check.get("remaining_seconds", 0),
@@ -3061,6 +3067,96 @@ def verify_security_answer(user_id: int, answer: str) -> bool:
     if not user or not user["security_answer_hash"]:
         return False
     return _verify_password(answer.strip().lower(), user["security_answer_hash"])
+
+
+
+def send_whatsapp_verification(user_id: int, phone_number: str) -> Dict:
+    """Save the WhatsApp number and send a 6-digit OTP code via WhatsApp."""
+    import whatsapp_service
+
+    # Normalize phone number to international format
+    phone = phone_number.strip().replace(" ", "").replace("-", "")
+    if not phone.startswith("+"):
+        phone = "+" + phone
+    # Basic validation: must be 10-15 digits after the +
+    digits_only = phone[1:]
+    if not digits_only.isdigit() or len(digits_only) < 10 or len(digits_only) > 15:
+        return {"success": False, "error": "Invalid phone number. Use international format like +254712345678"}
+
+    conn = _get_db()
+    user = conn.execute("SELECT id, whatsapp_code_expires FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "User not found"}
+
+    # Rate limit: check if a code was sent less than 60 seconds ago
+    if user["whatsapp_code_expires"]:
+        try:
+            expires = datetime.fromisoformat(user["whatsapp_code_expires"])
+            sent_at = expires - timedelta(minutes=10)
+            if (datetime.now() - sent_at).total_seconds() < 60:
+                conn.close()
+                return {"success": False, "error": "Please wait 60 seconds before requesting a new code."}
+        except (ValueError, TypeError):
+            pass
+
+    code = _generate_verification_code()
+    expires = (datetime.now() + timedelta(minutes=10)).isoformat()
+
+    conn.execute(
+        "UPDATE users SET whatsapp_number = ?, whatsapp_code = ?, whatsapp_code_expires = ? WHERE id = ?",
+        (phone, code, expires, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+    # Send via Twilio in background thread
+    import threading
+    def _do_send():
+        result = whatsapp_service.send_whatsapp_otp(phone, code)
+        if not result["success"]:
+            print(f"[WARN] WhatsApp OTP send failed for user {user_id}: {result.get('error')}")
+    threading.Thread(target=_do_send, daemon=True).start()
+
+    return {"success": True, "message": "Verification code sent to your WhatsApp."}
+
+
+def verify_whatsapp(user_id: int, code: str) -> Dict:
+    """Verify the WhatsApp OTP code. On success, marks whatsapp_verified = 1."""
+    conn = _get_db()
+    user = conn.execute(
+        "SELECT id, whatsapp_code, whatsapp_code_expires, whatsapp_number FROM users WHERE id = ?",
+        (user_id,)
+    ).fetchone()
+    if not user:
+        conn.close()
+        return {"success": False, "error": "User not found"}
+
+    if not user["whatsapp_code"]:
+        conn.close()
+        return {"success": False, "error": "No verification code found. Request a new one."}
+
+    # Check expiry
+    expires = user["whatsapp_code_expires"]
+    if not expires or datetime.fromisoformat(expires) < datetime.now():
+        conn.close()
+        return {"success": False, "error": "Verification code has expired. Request a new one."}
+
+    # Check code
+    if user["whatsapp_code"] != code.strip():
+        conn.close()
+        return {"success": False, "error": "Invalid verification code."}
+
+    # Success - mark as verified, clear code
+    conn.execute(
+        """UPDATE users SET whatsapp_verified = 1, whatsapp_code = NULL, whatsapp_code_expires = NULL
+           WHERE id = ?""",
+        (user_id,)
+    )
+    conn.commit()
+    conn.close()
+
+    return {"success": True, "message": "WhatsApp number verified successfully."}
 
 
 VALID_STAFF_ROLES = {'super_admin', 'customer_care', 'accounting', 'technical_support'}

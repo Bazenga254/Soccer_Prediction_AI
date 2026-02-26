@@ -101,6 +101,7 @@ class UpdatePermissionRequest(BaseModel):
 class BroadcastRequest(BaseModel):
     title: str
     message: str
+    channel: str = "email"
 
 class RejectBroadcastRequest(BaseModel):
     reason: str = ""
@@ -1596,6 +1597,7 @@ async def admin_create_broadcast(request: Request, body: BroadcastRequest,
         title=body.title.strip(),
         message=body.message.strip(),
         auto_approve=is_super,
+        channel=body.channel,
     )
     _log_action(auth, "create_broadcast", "community", request, "broadcast", result.get("broadcast_id"),
                 {"title": body.title, "auto_approved": is_super})
