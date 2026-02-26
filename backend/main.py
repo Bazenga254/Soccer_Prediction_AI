@@ -2337,6 +2337,50 @@ async def get_withdrawal_fee_preview(body: FeePreviewRequest, authorization: str
 # Withdrawal admin endpoints moved to admin_routes.py
 
 
+# ==================== WHOP OAUTH LOGIN ENDPOINTS ====================
+
+class WhopOAuthCallbackRequest(BaseModel):
+    code: str
+    state: str
+    terms_accepted: bool = False
+
+
+@app.get("/api/whop/oauth/authorize")
+async def whop_oauth_authorize(request: Request):
+    """Generate Whop OAuth authorization URL."""
+    redirect_uri = "https://spark-ai-prediction.com/auth/whop/callback"
+    result = whop_payment.create_oauth_authorize_url(redirect_uri)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Whop OAuth not configured"))
+    return {"redirect_url": result["redirect_url"]}
+
+
+@app.post("/api/whop/oauth/callback")
+async def whop_oauth_callback(body: WhopOAuthCallbackRequest, request: Request):
+    """Exchange Whop OAuth code for tokens and log in / create user."""
+    redirect_uri = "https://spark-ai-prediction.com/auth/whop/callback"
+    exchange = whop_payment.exchange_oauth_code(body.code, body.state, redirect_uri)
+    if not exchange.get("success"):
+        raise HTTPException(status_code=400, detail=exchange.get("error", "OAuth exchange failed"))
+
+    client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "")
+    result = user_auth.whop_oauth_login(
+        whop_user_id=exchange["whop_user_id"],
+        email=exchange["email"],
+        name=exchange.get("name", ""),
+        username=exchange.get("username", ""),
+        terms_accepted=body.terms_accepted,
+        client_ip=client_ip,
+    )
+
+    if not result.get("success"):
+        if result.get("needs_terms"):
+            return {"success": False, "needs_terms": True, "error": result.get("error", "")}
+        raise HTTPException(status_code=400, detail=result.get("error", "Login failed"))
+
+    return result
+
+
 # ==================== WHOP PAYMENT ENDPOINTS ====================
 
 class WhopCheckoutRequest(BaseModel):
