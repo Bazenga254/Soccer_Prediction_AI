@@ -62,7 +62,7 @@ export default function EmployeeSidebar({ activePage, setActivePage }) {
       </nav>
 
       <div className="emp-sidebar-footer">
-        <a href="/admin" className="emp-admin-link">
+        <a href="/spark-ctrl-8k2v9x" className="emp-admin-link">
           <span className="emp-nav-icon">{'\u{1F6E1}'}</span>
           <span className="emp-nav-label">Admin Panel</span>
         </a>

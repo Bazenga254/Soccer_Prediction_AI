@@ -218,7 +218,7 @@ function App() {
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>
               <Routes>
-                <Route path="/admin" element={<Admin />} />
+                <Route path="/spark-ctrl-8k2v9x" element={<Admin />} />
                 <Route path="/employee" element={<Employee />} />
                 <Route path="/invite/:token" element={<InviteRegistration />} />
                 <Route path="/ref/:username" element={<ReferralLanding />} />
