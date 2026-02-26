@@ -174,6 +174,7 @@ function ProtectedApp() {
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/docs" element={<DocsPage />} />
+                <Route path="/docs/:sectionId" element={<DocsPage />} />
               </Routes>
             </Suspense>
           </ErrorBoundary>
@@ -225,6 +226,7 @@ function App() {
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/login" element={<AccessGate />} />
                 <Route path="/docs" element={<DocsPage />} />
+                <Route path="/docs/:sectionId" element={<DocsPage />} />
                 <Route path="/terms" element={<TermsOfService />} />
                 <Route path="/extension" element={<ExtensionInstall />} />
                 <Route path="/auth/whop/callback" element={<WhopCallback />} />

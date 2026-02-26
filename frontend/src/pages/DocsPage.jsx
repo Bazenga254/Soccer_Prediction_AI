@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
@@ -26,6 +26,8 @@ export default function DocsPage({ embedded = false }) {
   const [activeSection, setActiveSection] = useState(null)
   const contentRef = useRef(null)
   const navigate = embedded ? null : useNavigate()
+  const params = embedded ? {} : useParams()
+  const urlSectionId = params.sectionId || null
 
   useEffect(() => {
     const fetchDocs = async () => {
@@ -40,18 +42,19 @@ export default function DocsPage({ embedded = false }) {
     fetchDocs()
   }, [])
 
-  // Handle hash navigation on load
+  // Handle URL-based section navigation on load
   useEffect(() => {
     if (sections.length > 0) {
-      const hash = window.location.hash.replace('#', '')
-      if (hash && sections.find(s => s.id === hash)) {
-        setActiveSection(hash)
-        setTimeout(() => scrollToSection(hash), 100)
+      // Check URL path param first, then hash fallback
+      const target = urlSectionId || window.location.hash.replace('#', '')
+      if (target && sections.find(s => s.id === target)) {
+        setActiveSection(target)
+        setTimeout(() => scrollToSection(target), 100)
       } else {
         setActiveSection(sections[0]?.id || null)
       }
     }
-  }, [sections])
+  }, [sections, urlSectionId])
 
   const scrollToSection = (id) => {
     const el = document.getElementById(`docs-section-${id}`)
@@ -62,8 +65,8 @@ export default function DocsPage({ embedded = false }) {
 
   const handleSectionClick = (id) => {
     setActiveSection(id)
-    if (!embedded) {
-      window.history.replaceState(null, '', `#${id}`)
+    if (!embedded && navigate) {
+      navigate(`/docs/${id}`, { replace: true })
     }
     scrollToSection(id)
   }

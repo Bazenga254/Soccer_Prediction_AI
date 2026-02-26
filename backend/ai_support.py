@@ -79,7 +79,7 @@ Pro: Unlimited analyses, unlimited shares, advanced analytics, value betting, no
 
 ## Documentation
 When users ask how to use a feature, send them a docs link using [ACTION:send_doc:section_id].
-The documentation URL format is: https://www.spark-ai-prediction.com/docs#section-id
+The documentation URL format is: https://www.spark-ai-prediction.com/docs/section-id
 
 ## Response Guidelines
 - Be friendly, concise, and helpful
@@ -261,7 +261,7 @@ def _action_send_doc(user_id: int, params: List[str]) -> Dict:
 
     import docs_content
     summary = docs_content.get_section_summary(section)
-    doc_url = f"https://www.spark-ai-prediction.com/docs#{section}"
+    doc_url = f"https://www.spark-ai-prediction.com/docs/{section}"
     return {"success": True, "data": {"url": doc_url, "section": section, "summary": summary}}
 
 
