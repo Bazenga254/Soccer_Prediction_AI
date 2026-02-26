@@ -2337,6 +2337,57 @@ async def get_withdrawal_fee_preview(body: FeePreviewRequest, authorization: str
 # Withdrawal admin endpoints moved to admin_routes.py
 
 
+# ==================== USER PREFERENCES (cross-device sync) ====================
+
+class UserPreferencesRequest(BaseModel):
+    preferences: dict
+
+
+@app.get("/api/user/preferences")
+async def get_user_preferences(authorization: str = Header(None)):
+    """Get user preferences (sound, theme, tracked matches, etc.)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    import sqlite3 as _sql3
+    conn = _sql3.connect("users.db")
+    conn.row_factory = _sql3.Row
+    row = conn.execute("SELECT preferences FROM users WHERE id = ?", (payload["user_id"],)).fetchone()
+    conn.close()
+    prefs = {}
+    if row and row["preferences"]:
+        try:
+            prefs = json.loads(row["preferences"])
+        except Exception:
+            pass
+    return {"preferences": prefs}
+
+
+@app.put("/api/user/preferences")
+async def update_user_preferences(body: UserPreferencesRequest, authorization: str = Header(None)):
+    """Update user preferences (merges with existing)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    import sqlite3 as _sql3
+    conn = _sql3.connect("users.db")
+    conn.row_factory = _sql3.Row
+    row = conn.execute("SELECT preferences FROM users WHERE id = ?", (payload["user_id"],)).fetchone()
+    existing = {}
+    if row and row["preferences"]:
+        try:
+            existing = json.loads(row["preferences"])
+        except Exception:
+            pass
+    # Merge new preferences into existing
+    existing.update(body.preferences)
+    conn.execute("UPDATE users SET preferences = ? WHERE id = ?",
+                 (json.dumps(existing), payload["user_id"]))
+    conn.commit()
+    conn.close()
+    return {"success": True, "preferences": existing}
+
+
 # ==================== WHOP OAUTH LOGIN ENDPOINTS ====================
 
 class WhopOAuthCallbackRequest(BaseModel):

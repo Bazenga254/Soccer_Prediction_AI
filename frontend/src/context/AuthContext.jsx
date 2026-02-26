@@ -41,6 +41,18 @@ export function AuthProvider({ children }) {
       if (response.data.user) {
         setUser(response.data.user)
         setIsAuthenticated(true)
+        // Load synced preferences from server for cross-device consistency
+        axios.get('/api/user/preferences').then(res => {
+          const prefs = res.data?.preferences || {}
+          if (prefs.sound_enabled !== undefined) localStorage.setItem('spark_sound_enabled', String(prefs.sound_enabled))
+          if (prefs.theme) {
+            localStorage.setItem('spark_theme', prefs.theme)
+            if (prefs.theme === 'dark') document.documentElement.removeAttribute('data-theme')
+            else document.documentElement.setAttribute('data-theme', prefs.theme)
+          }
+          if (prefs.tracked_matches) localStorage.setItem('trackedMatches', JSON.stringify(prefs.tracked_matches))
+          if (prefs.live_favorites) localStorage.setItem('live_favorites', JSON.stringify(prefs.live_favorites))
+        }).catch(() => {})
       } else {
         clearAuth()
       }
@@ -310,6 +322,44 @@ export function AuthProvider({ children }) {
     } catch { /* ignore */ }
   }, [])
 
+  // Sync a preference to the server (fire-and-forget)
+  const syncPreference = useCallback((key, val) => {
+    if (!isAuthenticated) return
+    axios.put('/api/user/preferences', { preferences: { [key]: val } }).catch(() => {})
+  }, [isAuthenticated])
+
+  // Load all preferences from server and apply to localStorage
+  const loadPreferences = useCallback(async () => {
+    try {
+      const res = await axios.get('/api/user/preferences')
+      const prefs = res.data?.preferences || {}
+      // Apply sound preference
+      if (prefs.sound_enabled !== undefined) {
+        localStorage.setItem('spark_sound_enabled', String(prefs.sound_enabled))
+      }
+      // Apply theme preference
+      if (prefs.theme) {
+        localStorage.setItem('spark_theme', prefs.theme)
+        if (prefs.theme === 'dark') {
+          document.documentElement.removeAttribute('data-theme')
+        } else {
+          document.documentElement.setAttribute('data-theme', prefs.theme)
+        }
+      }
+      // Apply tracked matches
+      if (prefs.tracked_matches) {
+        localStorage.setItem('trackedMatches', JSON.stringify(prefs.tracked_matches))
+      }
+      // Apply favorite leagues
+      if (prefs.live_favorites) {
+        localStorage.setItem('live_favorites', JSON.stringify(prefs.live_favorites))
+      }
+      return prefs
+    } catch {
+      return {}
+    }
+  }, [])
+
   const value = {
     isAuthenticated,
     user,
@@ -327,6 +377,8 @@ export function AuthProvider({ children }) {
     resendCode,
     cancelVerification,
     checkCaptchaRequired,
+    syncPreference,
+    loadPreferences,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

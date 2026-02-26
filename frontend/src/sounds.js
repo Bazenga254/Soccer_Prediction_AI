@@ -28,6 +28,17 @@ export function isSoundEnabled() {
  */
 export function setSoundEnabled(enabled) {
   localStorage.setItem(STORAGE_KEY, String(enabled))
+  // Sync to server for cross-device consistency
+  try {
+    const token = localStorage.getItem('spark_token')
+    if (token) {
+      fetch('/api/user/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ preferences: { sound_enabled: enabled } }),
+      }).catch(() => {})
+    }
+  } catch { /* ignore */ }
 }
 
 /**

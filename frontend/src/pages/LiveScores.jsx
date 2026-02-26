@@ -278,14 +278,36 @@ export default function LiveScores() {
     setFavorites(prev => {
       const next = prev.includes(matchId) ? prev.filter(id => id !== matchId) : [...prev, matchId]
       localStorage.setItem('live_favorites', JSON.stringify(next))
+      // Sync to server
+      try {
+        const token = localStorage.getItem('spark_token')
+        if (token) {
+          fetch('/api/user/preferences', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ preferences: { live_favorites: next } }),
+          }).catch(() => {})
+        }
+      } catch { /* ignore */ }
       return next
     })
   }
 
-  // Sync tracked matches to localStorage and ref
+  // Sync tracked matches to localStorage, ref, and server
   useEffect(() => {
     localStorage.setItem('trackedMatches', JSON.stringify(trackedMatches))
     trackedRef.current = trackedMatches
+    // Sync to server for cross-device consistency
+    try {
+      const token = localStorage.getItem('spark_token')
+      if (token) {
+        fetch('/api/user/preferences', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ preferences: { tracked_matches: trackedMatches } }),
+        }).catch(() => {})
+      }
+    } catch { /* ignore */ }
   }, [trackedMatches])
 
   // Preload GIFs and request notification permission on mount
