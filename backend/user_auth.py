@@ -16,6 +16,7 @@ import urllib.request
 import urllib.parse
 import jwt
 from datetime import datetime, timedelta
+import threading
 from typing import Optional, Dict, List
 
 DB_PATH = "users.db"
@@ -957,8 +958,18 @@ def _generate_verification_code() -> str:
     return str(random.randint(100000, 999999))
 
 
+# Zoho token cache — avoids refreshing on every email send
+_zoho_token_cache = {"token": "", "expires_at": 0}
+_zoho_token_lock = threading.Lock()
+
+
 def _get_zoho_access_token() -> str:
-    """Get a fresh Zoho access token using the refresh token."""
+    """Get a Zoho access token, using cache when possible (tokens last ~55 min)."""
+    import time as _t
+    with _zoho_token_lock:
+        if _zoho_token_cache["token"] and _t.time() < _zoho_token_cache["expires_at"]:
+            return _zoho_token_cache["token"]
+
     client_id = os.environ.get("ZOHO_CLIENT_ID", "")
     client_secret = os.environ.get("ZOHO_CLIENT_SECRET", "")
     refresh_token = os.environ.get("ZOHO_REFRESH_TOKEN", "")
@@ -975,9 +986,16 @@ def _get_zoho_access_token() -> str:
             "refresh_token": refresh_token,
         }).encode()
         req = urllib.request.Request("https://accounts.zoho.com/oauth/v2/token", data=data, method="POST")
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=8) as resp:
             result = _json.loads(resp.read().decode())
-            return result.get("access_token", "")
+            token = result.get("access_token", "")
+            if token:
+                import time as _t2
+                with _zoho_token_lock:
+                    _zoho_token_cache["token"] = token
+                    _zoho_token_cache["expires_at"] = _t2.time() + 3300  # cache for 55 min
+                print("[OK] Zoho access token refreshed and cached")
+            return token
     except Exception as e:
         print(f"[ERROR] Failed to get Zoho access token: {e}")
         return ""
@@ -1000,7 +1018,7 @@ def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email:
         if not access_token:
             print(f"[ERROR] No Zoho access token (attempt {attempt + 1})")
             if attempt == 0:
-                _time_mod.sleep(2)
+                _time_mod.sleep(0.5)
             continue
 
         try:
@@ -1022,7 +1040,7 @@ def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email:
                     "Content-Type": "application/json",
                 },
             )
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 result = _json.loads(resp.read().decode())
                 if result.get("status", {}).get("code") == 200:
                     print(f"[OK] Email sent to {to_email}: {subject}")
@@ -1039,7 +1057,7 @@ def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email:
             print(f"[ERROR] Failed to send email to {to_email} (attempt {attempt + 1}): {e}")
 
         if attempt == 0:
-            _time_mod.sleep(2)
+            _time_mod.sleep(0.5)
 
     _log_system_event(
         action="email_send_failed",
@@ -1048,6 +1066,18 @@ def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email:
         severity="error",
     )
     return False
+
+
+
+def _send_email_background(func, *args, **kwargs):
+    """Fire-and-forget email sending in a background thread."""
+    def _worker():
+        try:
+            func(*args, **kwargs)
+        except Exception as e:
+            print(f"[ERROR] Background email send failed: {e}")
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
 
 
 def _send_verification_email(to_email: str, code: str, display_name: str = "") -> bool:
@@ -2342,15 +2372,8 @@ def register_user(email: str, password: str, display_name: str = "", referral_co
             )
             conn.commit()
             conn.close()
-            email_sent = _send_verification_email(email, code, display_name or email.split("@")[0])
-            if not email_sent:
-                _log_system_event(
-                    action="otp_delivery_failed",
-                    module="registration",
-                    details={"email": email, "context": "re-registration of unverified account"},
-                    user_id=existing["id"],
-                    severity="error",
-                )
+            _send_email_background(_send_verification_email, email, code, display_name or email.split("@")[0])
+            email_sent = True
             return {
                 "success": True,
                 "requires_verification": True,
@@ -2390,9 +2413,10 @@ def register_user(email: str, password: str, display_name: str = "", referral_co
     conn.commit()
     conn.close()
 
-    # Send verification email
-    email_sent = _send_verification_email(email, code, display_name)
-    if not email_sent:
+    # Send verification email in background (non-blocking for faster registration)
+    _send_email_background(_send_verification_email, email, code, display_name)
+    email_sent = True  # Optimistic — failures logged asynchronously
+    if False:  # Kept for structure; errors now logged inside _send_zoho_email
         _log_system_event(
             action="otp_delivery_failed",
             module="registration",
@@ -2512,15 +2536,8 @@ def login_user(email: str, password: str, captcha_token: str = "", client_ip: st
         )
         conn.commit()
         conn.close()
-        email_sent = _send_verification_email(email, code, user["display_name"])
-        if not email_sent:
-            _log_system_event(
-                action="otp_delivery_failed",
-                module="authentication",
-                details={"email": email, "context": "login with unverified email"},
-                user_id=user["id"],
-                severity="error",
-            )
+        _send_email_background(_send_verification_email, email, code, user["display_name"])
+        email_sent = True
         return {
             "success": False,
             "error": "Please verify your email. A new code has been sent.",
@@ -2695,15 +2712,7 @@ def resend_verification_code(email: str) -> Dict:
     conn.commit()
     conn.close()
 
-    email_sent = _send_verification_email(email, code, user["display_name"])
-    if not email_sent:
-        _log_system_event(
-            action="otp_delivery_failed",
-            module="verification",
-            details={"email": email, "context": "resend verification code"},
-            user_id=user["id"],
-            severity="error",
-        )
+    _send_email_background(_send_verification_email, email, code, user["display_name"])
 
     return {"success": True, "message": "A new verification code has been sent to your email."}
 
