@@ -89,6 +89,10 @@ const ExtensionInstall = lazyRetry(() => import('./pages/ExtensionInstall'))
 const Settings = lazyRetry(() => import('./pages/Settings'))
 const WhopCallback = lazyRetry(() => import('./pages/WhopCallback'))
 const MagicLogin = lazyRetry(() => import('./pages/MagicLogin'))
+const TodayPredictions = lazyRetry(() => import('./pages/TodayPredictions'))
+const LeaguePredictions = lazyRetry(() => import('./pages/LeaguePredictions'))
+const BlogIndex = lazyRetry(() => import('./pages/BlogIndex'))
+const BlogArticle = lazyRetry(() => import('./pages/BlogArticle'))
 const BetSlip = lazyRetry(() => import('./components/BetSlip'))
 const SupportChat = lazyRetry(() => import('./components/SupportChat'))
 const AccountSetup = lazyRetry(() => import('./components/AccountSetup'))
@@ -231,6 +235,10 @@ function App() {
                 <Route path="/extension" element={<ExtensionInstall />} />
                 <Route path="/auth/whop/callback" element={<WhopCallback />} />
                 <Route path="/magic-login" element={<MagicLogin />} />
+                <Route path="/today" element={<TodayPredictions />} />
+                <Route path="/predictions/:leagueSlug" element={<LeaguePredictions />} />
+                <Route path="/blog" element={<BlogIndex />} />
+                <Route path="/blog/:slug" element={<BlogArticle />} />
                 <Route path="*" element={<ProtectedApp />} />
               </Routes>
             </Suspense>

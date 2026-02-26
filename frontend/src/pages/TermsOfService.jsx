@@ -1,3 +1,4 @@
+import SEOHead from '../components/SEOHead'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import './TermsOfService.css'

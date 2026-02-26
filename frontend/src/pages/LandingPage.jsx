@@ -5,6 +5,7 @@ import axios from 'axios'
 import LandingNav from '../components/LandingNav'
 import HeroCarousel from '../components/HeroCarousel'
 import AuthModal from '../components/AuthModal'
+import SEOHead from '../components/SEOHead'
 import sparkLogo from '../assets/spark-ai-logo.png'
 
 // Placeholder gradient images until user uploads real ones
@@ -152,6 +153,25 @@ export default function LandingPage() {
   ]
 
   return (
+    <>
+      <SEOHead
+        jsonLd={[
+          {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "Spark AI Prediction",
+            "url": "https://spark-ai-prediction.com",
+            "logo": "https://spark-ai-prediction.com/pwa-512x512.png",
+            "description": "AI-powered soccer predictions and analysis platform covering 50+ leagues worldwide"
+          },
+          {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "Spark AI Prediction",
+            "url": "https://spark-ai-prediction.com"
+          }
+        ]}
+      />
     <div className="landing-page">
       <LandingNav onSignIn={openSignIn} onGetStarted={scrollToPricing} />
 
@@ -456,5 +476,6 @@ Try for Free
         initialMode={authModal.mode}
       />
     </div>
+    </>
   )
 }

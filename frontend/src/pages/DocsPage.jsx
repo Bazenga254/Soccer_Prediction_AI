@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import SEOHead from '../components/SEOHead'
 import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 
@@ -115,6 +116,12 @@ export default function DocsPage({ embedded = false }) {
   }
 
   return (
+    <>
+    <SEOHead
+      title="Documentation - How to Use Spark AI"
+      description="Complete guide to Spark AI soccer predictions platform. Learn about AI predictions, live scores, community features, and more."
+      path="/docs"
+    />
     <div style={{
       ...styles.container,
       ...(embedded ? styles.embedded : {}),
@@ -220,6 +227,7 @@ export default function DocsPage({ embedded = false }) {
         </div>
       </div>
     </div>
+    </>
   )
 }
 

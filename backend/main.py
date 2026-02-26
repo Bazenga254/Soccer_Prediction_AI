@@ -5476,6 +5476,205 @@ ul{padding-left:20px}
 </html>""")
 
 
+
+
+# ==================== SEO ENDPOINTS ====================
+
+@app.get("/sitemap.xml")
+async def sitemap_xml():
+    """Generate dynamic XML sitemap for SEO."""
+    from fastapi.responses import Response
+    from league_seo import LEAGUE_SEO
+    import blog_content as bc
+
+    base = "https://spark-ai-prediction.com"
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    urls = []
+
+    # Static pages
+    static = [
+        ("/", "daily", "1.0"),
+        ("/today", "daily", "0.9"),
+        ("/blog", "daily", "0.8"),
+        ("/docs", "monthly", "0.6"),
+        ("/terms", "yearly", "0.3"),
+    ]
+    for loc, freq, pri in static:
+        urls.append(f"""  <url>
+    <loc>{base}{loc}</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>{freq}</changefreq>
+    <priority>{pri}</priority>
+  </url>""")
+
+    # League pages
+    for code, data in LEAGUE_SEO.items():
+        urls.append(f"""  <url>
+    <loc>{base}/predictions/{data['slug']}</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>""")
+
+    # Blog articles
+    for article in bc.get_all_articles():
+        urls.append(f"""  <url>
+    <loc>{base}/blog/{article['slug']}</loc>
+    <lastmod>{article.get('updated_at', today)}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>""")
+
+    # Doc sections
+    from docs_content import DOCS_SECTIONS
+    for section in DOCS_SECTIONS:
+        urls.append(f"""  <url>
+    <loc>{base}/docs/{section['id']}</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>""")
+
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{chr(10).join(urls)}
+</urlset>"""
+
+    return Response(content=xml, media_type="application/xml")
+
+
+@app.get("/api/today")
+async def get_today_overview():
+    """Get today's fixtures + daily predictions for the Today SEO page. No auth required."""
+    import asyncio
+
+    daily_preds = community.get_daily_free_predictions()
+    todays_fixtures = await football_api.fetch_todays_fixtures()
+    todays_fixtures = todays_fixtures or []
+
+    # Group fixtures by league
+    by_league = {}
+    for f in todays_fixtures:
+        league = f.get("competition", {}).get("name", "Other")
+        code = f.get("competition", {}).get("code", "")
+        if league not in by_league:
+            by_league[league] = {"code": code, "fixtures": []}
+        by_league[league]["fixtures"].append({
+            "id": f.get("id"),
+            "home_team": f.get("home_team", {}).get("name", ""),
+            "away_team": f.get("away_team", {}).get("name", ""),
+            "home_crest": f.get("home_team", {}).get("crest", ""),
+            "away_crest": f.get("away_team", {}).get("crest", ""),
+            "time": f.get("time", ""),
+            "status": f.get("status", ""),
+            "score": f.get("score", {}),
+        })
+
+    return {
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "formatted_date": datetime.now().strftime("%A, %B %d, %Y"),
+        "predictions": daily_preds,
+        "fixtures_by_league": by_league,
+        "total_matches": len(todays_fixtures),
+    }
+
+
+@app.get("/api/league/{slug}")
+async def get_league_by_slug(slug: str):
+    """Get league info and upcoming fixtures by URL slug. No auth required."""
+    from league_seo import SLUG_TO_CODE, LEAGUE_SEO
+
+    code = SLUG_TO_CODE.get(slug)
+    if not code:
+        raise HTTPException(status_code=404, detail="League not found")
+
+    seo = LEAGUE_SEO[code]
+    name = config.COMPETITION_NAMES.get(code, code)
+
+    # Fetch upcoming fixtures for this league
+    fixtures = await football_api.fetch_upcoming_fixtures(competition=code, days=7)
+    fixtures = fixtures or []
+
+    # Get daily predictions filtered to this league
+    daily_preds = community.get_daily_free_predictions()
+    league_preds = [p for p in daily_preds if p.get("competition_code") == code or p.get("competition", "") == name]
+
+    return {
+        "code": code,
+        "slug": slug,
+        "name": name,
+        "seo": {
+            "title": seo["seo_title"],
+            "description": seo["seo_desc"],
+            "country": seo["country"],
+            "region": seo["region"],
+        },
+        "fixtures": [
+            {
+                "id": f.get("id"),
+                "home_team": f.get("home_team", {}).get("name", ""),
+                "away_team": f.get("away_team", {}).get("name", ""),
+                "home_crest": f.get("home_team", {}).get("crest", ""),
+                "away_crest": f.get("away_team", {}).get("crest", ""),
+                "date": f.get("date", ""),
+                "time": f.get("time", ""),
+                "venue": f.get("venue", ""),
+            }
+            for f in fixtures[:15]
+        ],
+        "predictions": league_preds,
+        "league_id": config.LEAGUE_IDS.get(code, 0),
+    }
+
+
+@app.get("/api/leagues/all-slugs")
+async def get_all_league_slugs():
+    """Return all league slugs for sitemap and navigation. No auth required."""
+    from league_seo import LEAGUE_SEO, TOP_LEAGUES
+
+    leagues = []
+    for code, data in LEAGUE_SEO.items():
+        leagues.append({
+            "code": code,
+            "slug": data["slug"],
+            "name": config.COMPETITION_NAMES.get(code, code),
+            "region": data["region"],
+            "country": data["country"],
+            "is_top": code in TOP_LEAGUES,
+        })
+
+    return {"leagues": leagues}
+
+
+@app.get("/api/blog")
+async def get_blog_articles(category: str = None):
+    """Return blog articles, optionally filtered by category. No auth required."""
+    import blog_content as bc
+
+    articles = bc.get_all_articles() if not category else bc.get_articles_by_category(category)
+
+    # Return without body for list view
+    return {
+        "articles": [
+            {k: v for k, v in a.items() if k != "body"}
+            for a in articles
+        ],
+        "total": len(articles),
+    }
+
+
+@app.get("/api/blog/{slug}")
+async def get_blog_article(slug: str):
+    """Return a single blog article by slug. No auth required."""
+    import blog_content as bc
+
+    article = bc.get_article(slug)
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    return article
+
+
 # ==================== SERVE FRONTEND IN PRODUCTION ====================
 # Serve built React frontend from ../frontend/dist
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"

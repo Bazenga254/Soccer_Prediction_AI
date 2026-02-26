@@ -1,0 +1,26 @@
+User-agent: *
+Allow: /
+Allow: /docs
+Allow: /terms
+Allow: /predictions/
+Allow: /blog/
+Allow: /today
+
+Disallow: /api/
+Disallow: /profile
+Disallow: /settings
+Disallow: /my-predictions
+Disallow: /my-analysis
+Disallow: /transactions
+Disallow: /creator
+Disallow: /upgrade
+Disallow: /employee
+Disallow: /login
+Disallow: /reset-password
+Disallow: /invite/
+Disallow: /ref/
+Disallow: /magic-login
+Disallow: /auth/
+Disallow: /spark-ctrl-8k2v9x
+
+Sitemap: https://spark-ai-prediction.com/sitemap.xml

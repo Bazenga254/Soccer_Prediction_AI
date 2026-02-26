@@ -1,0 +1,15 @@
+/* League-specific page styles (extends TodayPredictions.css) */
+.league-header {
+  margin-bottom: 36px;
+}
+
+.league-fixture .seo-fix-date {
+  min-width: 85px;
+}
+
+@media (max-width: 768px) {
+  .league-fixture .seo-fix-date {
+    min-width: 70px;
+    font-size: 11px;
+  }
+}
