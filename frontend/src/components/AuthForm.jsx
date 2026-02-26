@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import HCaptcha from '@hcaptcha/react-hcaptcha'
 import axios from 'axios'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import CountryPicker from './CountryPicker'
 
@@ -29,6 +30,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login, register, googleLogin, checkCaptchaRequired, pendingVerification, verifyEmail, resendCode, cancelVerification, refreshProfile } = useAuth()
+  const navigate = useNavigate()
   const googleBtnRef = useRef(null)
   const referralRef = useRef('')
 
@@ -380,9 +382,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     }
     setLoading(true)
     try {
-      const result = await register(email, password, '', referralCode, captchaToken, {
-        terms_accepted: true,
-      })
+      const result = await register(email, password, '', referralCode, captchaToken)
       if (result.requires_verification) {
         setResendCooldown(60)
         setSignupStep(3)
@@ -407,12 +407,26 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     setVerifyLoading(true)
     setVerifyError('')
     setResendMessage('')
-    const result = await verifyEmail(pendingVerification.email, verificationCode)
-    if (result.success) {
-      // User is now authenticated — move to personal info
-      setSignupStep(4)
-    } else {
-      setVerifyError(result.error)
+    try {
+      // Use direct API call instead of AuthContext's verifyEmail
+      // to avoid setting isAuthenticated=true mid-wizard (which would
+      // unmount the modal on the landing page)
+      const response = await axios.post('/api/user/verify-email', {
+        email: pendingVerification?.email || email,
+        code: verificationCode,
+      })
+      if (response.data.success) {
+        // Store token for authenticated API calls in steps 4-7
+        const { token } = response.data
+        localStorage.setItem('spark_token', token)
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        cancelVerification()
+        setSignupStep(4)
+      } else {
+        setVerifyError(response.data.error || 'Verification failed.')
+      }
+    } catch (err) {
+      setVerifyError(err.response?.data?.detail || 'Verification failed.')
     }
     setVerifyLoading(false)
   }
@@ -510,8 +524,10 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
       })
       // Accept terms
       await axios.post('/api/user/accept-terms')
-      // Refresh profile to update profile_complete and terms_accepted
+      // Activate session: refreshProfile sets user + isAuthenticated
       await refreshProfile()
+      // Navigate to the app (works from both /login and landing page modal)
+      navigate('/')
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to complete setup. Please try again.')
     }
@@ -530,7 +546,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   }
 
   // ====== RENDER: Verification screen for LOGIN mode (existing flow) ======
-  if (pendingVerification && signupStep < 3) {
+  if (pendingVerification && mode !== 'signup') {
     return (
       <div className="auth-form-wrapper">
         {!compact && (

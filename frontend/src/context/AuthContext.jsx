@@ -318,6 +318,7 @@ export function AuthProvider({ children }) {
       const response = await axios.get('/api/user/me')
       if (response.data.user) {
         setUser(response.data.user)
+        setIsAuthenticated(true)
       }
     } catch { /* ignore */ }
   }, [])

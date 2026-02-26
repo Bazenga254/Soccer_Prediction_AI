@@ -28,8 +28,10 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
   if (!isOpen) return null
 
   return (
-    <div className="auth-modal-overlay" onClick={onClose}>
-      <div className="auth-modal-container" onClick={(e) => e.stopPropagation()}>
+    <div className="auth-modal-overlay" onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}>
+      <div className="auth-modal-container">
         <AuthForm initialMode={initialMode} onClose={onClose} compact />
       </div>
     </div>
