@@ -332,16 +332,7 @@ function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onSta
         <h2>{t('jackpot.title')}</h2>
         <p>Select matches from different leagues for AI-powered multi-match analysis</p>
         <div className="jackpot-tier-notice">
-          {tier === 'free' ? (
-            <>
-              <span>{'\u{1F512}'} Free tier: {maxMatches} matches per session</span>
-              <button className="jackpot-upgrade-link" onClick={() => navigate('/upgrade')}>
-                Upgrade to Pro for 3 sessions/day
-              </button>
-            </>
-          ) : (
-            <span>{'\u2B50'} {maxMatches} matches per session &bull; 3 sessions per day</span>
-          )}
+          <span>{perMatchCost} credits per match {selectedMatches.length > 0 && <>&bull; {selectedMatches.length} selected = <strong>{selectedMatches.length * perMatchCost} credits</strong></>}</span>
         </div>
       </div>
 
@@ -1005,7 +996,7 @@ export default function JackpotAnalyzer() {
   const [sessionsUsed, setSessionsUsed] = useState(0)
   const [maxSessions, setMaxSessions] = useState(2)
   const [limitsLoaded, setLimitsLoaded] = useState(false)
-  const [creditsNeeded, setCreditsNeeded] = useState(650)
+  const [perMatchCost, setPerMatchCost] = useState(130)
   const [lockedUntil, setLockedUntil] = useState(null)
   const [isLocked, setIsLocked] = useState(false)
   const { t } = useTranslation()
@@ -1020,7 +1011,7 @@ export default function JackpotAnalyzer() {
         setTier(res.data.tier || 'free')
         setSessionsUsed(res.data.sessions_used || 0)
         setMaxSessions(res.data.max_sessions ?? 2)
-        setCreditsNeeded(res.data.credits_needed || 650)
+        setPerMatchCost(res.data.per_match_cost || 130)
         setLockedUntil(res.data.locked_until || null)
         setIsLocked(res.data.locked || false)
         setLimitsLoaded(true)
@@ -1087,7 +1078,7 @@ export default function JackpotAnalyzer() {
           <div className="jackpot-locked-icon">{"⚡"}</div>
           <h2 className="jackpot-locked-title">Insufficient Credits</h2>
           <p className="jackpot-locked-text">
-            You need <strong>{creditsNeeded} credits</strong> to run a jackpot analysis.
+            You need at least <strong>{perMatchCost * 2} credits</strong> for a jackpot analysis ({perMatchCost} credits per match, minimum 2 matches).
             You currently have <strong>{totalCredits} credits</strong>.
           </p>
           <Link to="/upgrade" className="jackpot-locked-upgrade-btn">

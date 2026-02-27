@@ -5358,21 +5358,17 @@ async def analyze_jackpot(request: JackpotAnalyzeRequest, authorization: str = H
     if len(request.matches) < 2:
         raise HTTPException(status_code=400, detail="Select at least 2 matches")
 
-    # All tiers: 5 matches per session
-    tier = payload.get("tier", "free")
-    max_matches = 5
-    if len(request.matches) > max_matches:
-        raise HTTPException(
-            status_code=403,
-            detail=f"You can analyze up to {max_matches} matches per session."
-        )
-
     user_id = payload["user_id"]
+    num_matches = len(request.matches)
 
-    # Credit-based gating: deduct credits for jackpot analysis
-    jackpot_cost = int(pricing_config.get("credit_cost_jackpot", 650))
+    # Credit-based: 130 credits per match
+    per_match_cost = int(pricing_config.get("credit_cost_jackpot_per_match", 130))
+    jackpot_cost = num_matches * per_match_cost
     try:
-        credit_result = community.deduct_credits(user_id, jackpot_cost, "Jackpot analysis")
+        credit_result = community.deduct_credits(
+            user_id, jackpot_cost,
+            f"Jackpot analysis ({num_matches} matches x {per_match_cost} credits)"
+        )
     except ValueError:
         creds = community.get_user_credits(user_id)
         raise HTTPException(
@@ -5476,8 +5472,10 @@ async def get_jackpot_limits(authorization: str = Header(None)):
 
     # Get credit info
     creds = community.get_user_credits(user_id) if user_id else {"total_credits": 0}
-    jackpot_cost = int(pricing_config.get("credit_cost_jackpot", 650))
-    has_enough_credits = creds.get("total_credits", 0) >= jackpot_cost
+    per_match_cost = int(pricing_config.get("credit_cost_jackpot_per_match", 130))
+    total_credits = creds.get("total_credits", 0)
+    # User is locked if they can't afford even 2 matches (minimum)
+    has_enough_credits = total_credits >= (per_match_cost * 2)
 
     return {
         "tier": tier,
@@ -5489,8 +5487,8 @@ async def get_jackpot_limits(authorization: str = Header(None)):
         "ai_chats_used": ai_chats_used,
         "max_ai_chats": max_ai_chats,
         "balance_usd": bal.get("balance_usd", 0),
-        "credits": creds.get("total_credits", 0),
-        "credits_needed": jackpot_cost,
+        "credits": total_credits,
+        "per_match_cost": per_match_cost,
     }
 
 
