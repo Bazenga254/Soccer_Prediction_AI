@@ -44,7 +44,8 @@ const STEP_ICONS = [
 ]
 
 export default function LandingPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const currentLang = i18n.language?.split('-')[0] || 'en'
   const { currency, currencySymbol, isKenyan } = useCurrency()
   const [authModal, setAuthModal] = useState({ open: false, mode: 'login' })
   const [pricing, setPricing] = useState(null)
@@ -156,7 +157,10 @@ export default function LandingPage() {
   return (
     <>
       <SEOHead
-        lang="en"
+        title={t('seo.landing.title')}
+        description={t('seo.landing.description')}
+        path="/"
+        lang={currentLang}
         jsonLd={[
           {
             "@context": "https://schema.org",

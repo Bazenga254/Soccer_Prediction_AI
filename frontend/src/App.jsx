@@ -89,6 +89,7 @@ const ExtensionInstall = lazyRetry(() => import('./pages/ExtensionInstall'))
 const Settings = lazyRetry(() => import('./pages/Settings'))
 const WhopCallback = lazyRetry(() => import('./pages/WhopCallback'))
 const MagicLogin = lazyRetry(() => import('./pages/MagicLogin'))
+const LangLayout = lazyRetry(() => import('./components/LangLayout'))
 const TodayPredictions = lazyRetry(() => import('./pages/TodayPredictions'))
 const LeaguePredictions = lazyRetry(() => import('./pages/LeaguePredictions'))
 const BlogIndex = lazyRetry(() => import('./pages/BlogIndex'))
@@ -246,6 +247,7 @@ function App() {
 
                 {/* Public SEO routes: Language-prefixed (fr, es, pt, sw, ar) */}
                 <Route path="/:lang" element={<LangLayout />}>
+                  <Route index element={<LandingPage />} />
                   <Route path="today" element={<TodayPredictions />} />
                   <Route path="predictions/:leagueSlug" element={<LeaguePredictions />} />
                   <Route path="blog" element={<BlogIndex />} />
