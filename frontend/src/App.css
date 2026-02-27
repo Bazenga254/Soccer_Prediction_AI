@@ -25556,6 +25556,7 @@ html, body {
 
 .ai-assistant-page {
   display: flex;
+  height: calc(100dvh - 220px);
   height: calc(100vh - 220px);
   background: #0f1923;
   position: relative;
@@ -26147,7 +26148,9 @@ html, body {
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
   .ai-assistant-page {
-    height: calc(100vh - 200px);
+    height: calc(100dvh - 160px);
+    height: calc(100vh - 260px);
+    max-height: calc(100dvh - 160px);
   }
 
   .ai-sidebar-toggle {
@@ -26183,8 +26186,8 @@ html, body {
   }
 
   .ai-chat-header {
-    padding: 10px 14px;
-    padding-left: 80px;
+    padding: 6px 10px;
+    padding-left: 75px;
   }
 
   .ai-messages-container {
@@ -26192,11 +26195,11 @@ html, body {
   }
 
   .ai-input-area {
-    padding: 10px 14px 14px;
+    padding: 6px 10px 8px;
   }
 
   .ai-welcome {
-    padding: 30px 16px;
+    padding: 12px 12px;
   }
 
   .ai-suggestion-chip {
@@ -26206,6 +26209,12 @@ html, body {
 }
 
 @media (max-width: 480px) {
+  .ai-assistant-page {
+    height: calc(100dvh - 140px);
+    height: calc(100vh - 240px);
+    max-height: calc(100dvh - 140px);
+  }
+
   .ai-chat-header-right {
     gap: 6px;
   }
@@ -26217,5 +26226,28 @@ html, body {
   .ai-match-card {
     min-width: unset;
     width: 100%;
+  }
+
+  .ai-welcome h3 {
+    font-size: 1rem;
+  }
+
+  .ai-welcome p {
+    font-size: 0.8rem;
+  }
+
+  .ai-suggestion-chip {
+    font-size: 0.75rem;
+    padding: 5px 10px;
+  }
+
+  .ai-input {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+
+  .ai-send-btn {
+    padding: 8px 12px;
+    font-size: 0.8rem;
   }
 }
