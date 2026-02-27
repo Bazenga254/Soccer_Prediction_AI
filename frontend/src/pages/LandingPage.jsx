@@ -299,7 +299,7 @@ Get Started
                   <span className="landing-price-amount">{currencySymbol}{isKenyan ? '10' : '1'}</span>
                   <span className="landing-price-period">minimum</span>
                 </div>
-                <p className="landing-plan-daily-credits">{isKenyan ? 'KES 1' : '$1'} = {creditRate.toLocaleString()} credits</p>
+                <p className="landing-plan-daily-credits">{isKenyan ? 'KES 10' : '$1'} = {(minDeposit * creditRate).toLocaleString()} credits</p>
               </div>
               <ul className="landing-plan-features">
                 <li className="landing-feature-item">
@@ -452,7 +452,7 @@ Get Started
                 <h4 className="landing-paygo-rates-title">Credit Rates</h4>
                 <div className="landing-paygo-rate-card">
                   <div className="landing-paygo-rate-row">
-                    <span>{isKenyan ? 'KES 1' : '$1'}</span>
+                    <span>{isKenyan ? 'KES 10' : '$1'}</span>
                     <span>=</span>
                     <span className="landing-paygo-rate-value">⚡ {creditRate.toLocaleString()} credits</span>
                   </div>
