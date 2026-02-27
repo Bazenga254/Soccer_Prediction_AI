@@ -82,6 +82,7 @@ const Upgrade = lazyRetry(() => import('./pages/Upgrade'))
 const CreatorDashboard = lazyRetry(() => import('./pages/CreatorDashboard'))
 const Transactions = lazyRetry(() => import('./pages/Transactions'))
 const JackpotAnalyzer = lazyRetry(() => import('./pages/JackpotAnalyzer'))
+const AIAssistant = lazyRetry(() => import('./pages/AIAssistant'))
 const MyAnalysis = lazyRetry(() => import('./pages/MyAnalysis'))
 const DocsPage = lazyRetry(() => import('./pages/DocsPage'))
 const ReferralLanding = lazyRetry(() => import('./pages/ReferralLanding'))
@@ -185,6 +186,7 @@ function ProtectedApp() {
                 <Route path="/my-predictions" element={<TrackRecord />} />
                 <Route path="/predictions" element={<Community />} />
                 <Route path="/jackpot" element={<JackpotAnalyzer />} />
+                <Route path="/ai-assistant" element={<AIAssistant />} />
                 <Route path="/my-analysis" element={<MyAnalysis />} />
                 <Route path="/upgrade" element={<Upgrade />} />
                 <Route path="/creator" element={<CreatorDashboard />} />

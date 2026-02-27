@@ -519,6 +519,27 @@ def init_community_db():
         );
         CREATE INDEX IF NOT EXISTS idx_bmq_batch ON bot_message_queue(queue_batch_id);
         CREATE INDEX IF NOT EXISTS idx_bmq_status ON bot_message_queue(status, scheduled_at);
+
+        CREATE TABLE IF NOT EXISTS ai_conversations (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            title TEXT DEFAULT 'New Chat',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_conv_user ON ai_conversations(user_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_conv_updated ON ai_conversations(updated_at);
+
+        CREATE TABLE IF NOT EXISTS ai_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            match_links TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_msg_conv ON ai_messages(conversation_id);
     """)
 
     # Add columns via migration for existing installs

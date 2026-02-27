@@ -168,6 +168,7 @@ export default function Header({ user, logout }) {
   const isLivePage = location.pathname === '/live'
   const isPredictions = location.pathname === '/predictions'
   const isJackpot = location.pathname === '/jackpot'
+  const isAIAssistant = location.pathname === '/ai-assistant'
   const isMyAnalysis = location.pathname === '/my-analysis'
 
   return (
@@ -227,6 +228,13 @@ export default function Header({ user, logout }) {
         >
           <span className="comp-flag">{'\u{1F3AF}'}</span>
           <span className="comp-name">{t('nav.jackpot')}</span>
+        </Link>
+        <Link
+          to="/ai-assistant"
+          className={`competition-tab ${isAIAssistant ? 'active' : ''}`}
+        >
+          <span className="comp-flag">{'\u{1F916}'}</span>
+          <span className="comp-name">{t('nav.aiAssistant', 'AI Assistant')}</span>
         </Link>
         <Link
           to="/my-analysis"

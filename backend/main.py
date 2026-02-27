@@ -32,6 +32,7 @@ import team_aliases
 import subscriptions
 import pricing_config
 import ai_support
+import ai_assistant
 import daraja_payment
 import whop_payment
 import jackpot_analyzer
@@ -5490,6 +5491,102 @@ async def get_jackpot_limits(authorization: str = Header(None)):
         "credits": total_credits,
         "per_match_cost": per_match_cost,
     }
+
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AI Assistant endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+class AIAssistantChatRequest(BaseModel):
+    conversation_id: str
+    message: str
+
+
+@app.post("/api/ai-assistant/chat")
+async def ai_assistant_chat(request: AIAssistantChatRequest, authorization: str = Header(None)):
+    """Send a message to the AI Assistant. Deducts 50 credits."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_id = payload.get("user_id")
+    cost = int(pricing_config.get("credit_cost_chat_prompt", 50))
+
+    # Deduct credits first
+    try:
+        deduct_result = community.deduct_credits(user_id, cost, "AI Assistant chat")
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+    try:
+        result = await ai_assistant.chat(user_id, request.conversation_id, request.message)
+        return {
+            "response": result["text"],
+            "match_links": result.get("match_links", []),
+            "sources": result.get("sources", []),
+            "conversation_id": result.get("conversation_id"),
+            "title": result.get("title"),
+            "credits_remaining": deduct_result.get("total_credits", 0),
+        }
+    except Exception as e:
+        print(f"[AI Assistant] Chat error: {e}")
+        return {
+            "response": "Sorry, I couldn't process your question right now. Please try again.",
+            "match_links": [],
+            "sources": [],
+            "conversation_id": request.conversation_id,
+            "credits_remaining": deduct_result.get("total_credits", 0),
+        }
+
+
+@app.get("/api/ai-assistant/conversations")
+async def get_ai_conversations(page: int = 1, authorization: str = Header(None)):
+    """Get paginated list of AI Assistant conversations."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    result = ai_assistant.get_conversations(payload["user_id"], page=page)
+    return result
+
+
+@app.get("/api/ai-assistant/conversations/{conversation_id}/messages")
+async def get_ai_conversation_messages(conversation_id: str, authorization: str = Header(None)):
+    """Get all messages for an AI Assistant conversation."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    result = ai_assistant.get_conversation_messages(conversation_id, payload["user_id"])
+    if result.get("error"):
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@app.post("/api/ai-assistant/conversations/new")
+async def create_ai_conversation(authorization: str = Header(None)):
+    """Create a new AI Assistant conversation."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    result = ai_assistant.create_conversation(payload["user_id"])
+    return result
+
+
+@app.delete("/api/ai-assistant/conversations/{conversation_id}")
+async def delete_ai_conversation(conversation_id: str, authorization: str = Header(None)):
+    """Delete an AI Assistant conversation."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    deleted = ai_assistant.delete_conversation(conversation_id, payload["user_id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"success": True}
 
 
 class JackpotChatRequest(BaseModel):
