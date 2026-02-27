@@ -5512,7 +5512,7 @@ async def ai_assistant_chat(request: AIAssistantChatRequest, authorization: str 
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user_id = payload.get("user_id")
-    cost = int(pricing_config.get("credit_cost_chat_prompt", 50))
+    cost = int(pricing_config.get("credit_cost_ai_assistant", 50))
 
     # Deduct credits first
     try:
