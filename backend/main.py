@@ -5399,8 +5399,8 @@ async def analyze_jackpot(request: JackpotAnalyzeRequest, authorization: str = H
         combinations = jackpot_analyzer.generate_winning_combinations(results)
         jackpot_analyzer.complete_session(session_id, results, combinations)
 
-        # Record session lock for all tiers
-        jackpot_analyzer.record_jackpot_session_lock(user_id, tier)
+        # Session lock no longer needed (credits are the limiter)
+        # jackpot_analyzer.record_jackpot_session_lock(user_id, tier)
 
         return {
             "session_id": session_id,
