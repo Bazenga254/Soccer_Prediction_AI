@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 import { COMPETITIONS } from '../components/Header'
 import { useCurrency } from '../context/CurrencyContext'
+import { useCredits } from '../context/CreditContext'
 import SEOHead from '../components/SEOHead'
 
 function formatDate(dateStr) {
@@ -1004,13 +1005,12 @@ export default function JackpotAnalyzer() {
   const [sessionsUsed, setSessionsUsed] = useState(0)
   const [maxSessions, setMaxSessions] = useState(2)
   const [limitsLoaded, setLimitsLoaded] = useState(false)
-  const [balanceUsd, setBalanceUsd] = useState(0)
-  const [balanceLoading, setBalanceLoading] = useState(false)
-  const [balancePaid, setBalancePaid] = useState(false)
+  const [creditsNeeded, setCreditsNeeded] = useState(650)
   const [lockedUntil, setLockedUntil] = useState(null)
   const [isLocked, setIsLocked] = useState(false)
   const { t } = useTranslation()
   const { isKenyan } = useCurrency()
+  const { totalCredits, refreshCredits } = useCredits()
 
   // Fetch tier limits on mount
   useEffect(() => {
@@ -1020,7 +1020,7 @@ export default function JackpotAnalyzer() {
         setTier(res.data.tier || 'free')
         setSessionsUsed(res.data.sessions_used || 0)
         setMaxSessions(res.data.max_sessions ?? 2)
-        setBalanceUsd(res.data.balance_usd || 0)
+        setCreditsNeeded(res.data.credits_needed || 650)
         setLockedUntil(res.data.locked_until || null)
         setIsLocked(res.data.locked || false)
         setLimitsLoaded(true)
@@ -1047,10 +1047,12 @@ export default function JackpotAnalyzer() {
     setError(null)
 
     try {
-      const res = await axios.post('/api/jackpot/analyze', { matches: selectedMatches, balance_paid: balancePaid })
+      const res = await axios.post('/api/jackpot/analyze', { matches: selectedMatches })
       setAnalysisResults(res.data.results || [])
       setCombinations(res.data.combinations || null)
       setPhase('results')
+      // Refresh credit badge in header
+      refreshCredits()
     } catch (err) {
       const msg = err.response?.data?.detail || 'Analysis failed. Please try again.'
       setError(msg)
@@ -1082,70 +1084,18 @@ export default function JackpotAnalyzer() {
 
       {phase === 'select' && isLocked && (
         <div className="jackpot-locked-overlay">
-          <div className="jackpot-locked-icon">{'\u{1F512}'}</div>
-          <h2 className="jackpot-locked-title">
-            {tier === 'free' ? 'Free Analyses Used Up' : 'Daily Sessions Used Up'}
-          </h2>
+          <div className="jackpot-locked-icon">{"⚡"}</div>
+          <h2 className="jackpot-locked-title">Insufficient Credits</h2>
           <p className="jackpot-locked-text">
-            {tier === 'free' ? (
-              <>
-                You've used your {sessionsUsed >= 2 && maxSessions === 2 ? '2 free' : 'free'} jackpot analyses.
-                {lockedUntil && (<>
-                  {' '}Your next free analysis unlocks in{' '}
-                  <JackpotCountdownTimer
-                    resetAt={lockedUntil}
-                    onExpire={() => { setIsLocked(false); window.location.reload() }}
-                  />.
-                </>)}
-                {!lockedUntil && ' After the first 2, you get 1 free analysis every 72 hours.'}
-              </>
-            ) : (
-              <>
-                You've used all {maxSessions} sessions for today ({maxSessions * 5} matches total).
-                {lockedUntil && (<>
-                  {' '}Your next session unlocks in{' '}
-                  <JackpotCountdownTimer
-                    resetAt={lockedUntil}
-                    onExpire={() => { setIsLocked(false); window.location.reload() }}
-                  />.
-                </>)}
-              </>
-            )}
+            You need <strong>{creditsNeeded} credits</strong> to run a jackpot analysis.
+            You currently have <strong>{totalCredits} credits</strong>.
           </p>
-          {tier === 'free' && balanceUsd >= 1.00 && (
-            <button
-              className="balance-pay-btn"
-              disabled={balanceLoading}
-              onClick={async () => {
-                setBalanceLoading(true)
-                try {
-                  const res = await axios.post('/api/balance/use-for-jackpot')
-                  if (res.data.success) {
-                    setBalanceUsd(res.data.balance?.balance_usd || 0)
-                    setBalancePaid(true)
-                    setIsLocked(false)
-                  }
-                } catch { /* ignore */ }
-                setBalanceLoading(false)
-              }}
-            >
-              {balanceLoading ? 'Processing...' : `Use Balance (${isKenyan ? 'KES 130' : '$1.00'}) \u2014 ${isKenyan ? `KES ${Math.round(balanceUsd * 130)}` : `$${balanceUsd.toFixed(2)}`} available`}
-            </button>
-          )}
-          {tier === 'free' && (
-            <Link to="/upgrade" className="jackpot-locked-upgrade-btn">
-              {'\u{1F680}'} {balanceUsd < 1.00 ? (isKenyan ? 'Deposit KES 100 to Unlock' : 'Deposit $1 to Unlock') : 'Upgrade to Pro for More Sessions'}
-            </Link>
-          )}
-          <Link to="/my-analysis" className="jackpot-locked-history-link">
-            {'\u{1F4CA}'} View your past analyses
+          <Link to="/upgrade" className="jackpot-locked-upgrade-btn">
+            {"⚡"} Add Credits
           </Link>
-          <p style={{ color: '#94a3b8', fontSize: 14, marginTop: 16 }}>
-            Still want to continue?{' '}
-            <Link to="/upgrade?paygo=true" style={{ color: '#60a5fa', textDecoration: 'underline', fontWeight: 600 }}>
-              Click here to see our flexible plans
-            </Link>
-          </p>
+          <Link to="/my-analysis" className="jackpot-locked-history-link">
+            View your past analyses
+          </Link>
         </div>
       )}
 

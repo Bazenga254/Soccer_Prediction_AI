@@ -5369,16 +5369,15 @@ async def analyze_jackpot(request: JackpotAnalyzeRequest, authorization: str = H
 
     user_id = payload["user_id"]
 
-    # Check lock-based session limit for all tiers
-    lock_info = jackpot_analyzer.get_jackpot_lock_status(user_id, tier)
-    if lock_info["locked"] and not (tier == "free" and getattr(request, "balance_paid", False)):
+    # Credit-based gating: deduct credits for jackpot analysis
+    jackpot_cost = int(pricing_config.get("credit_cost_jackpot", 650))
+    try:
+        credit_result = community.deduct_credits(user_id, jackpot_cost, "Jackpot analysis")
+    except ValueError:
+        creds = community.get_user_credits(user_id)
         raise HTTPException(
             status_code=403,
-            detail="You've used all your sessions. " + (
-                "Wait for the timer to reset or deposit $2 to unlock."
-                if tier == "free" else
-                "Your sessions reset 24 hours after your last analysis."
-            )
+            detail=f"Insufficient credits. You need {jackpot_cost} credits but have {creds.get('total_credits', 0)}."
         )
     session_id = jackpot_analyzer.create_session(user_id, request.matches)
 
@@ -5475,16 +5474,23 @@ async def get_jackpot_limits(authorization: str = Header(None)):
         locked = False
         locked_until = None
 
+    # Get credit info
+    creds = community.get_user_credits(user_id) if user_id else {"total_credits": 0}
+    jackpot_cost = int(pricing_config.get("credit_cost_jackpot", 650))
+    has_enough_credits = creds.get("total_credits", 0) >= jackpot_cost
+
     return {
         "tier": tier,
         "max_matches": max_matches,
         "sessions_used": sessions_used,
         "max_sessions": max_sessions,
-        "locked": locked,
+        "locked": not has_enough_credits,
         "locked_until": locked_until,
         "ai_chats_used": ai_chats_used,
         "max_ai_chats": max_ai_chats,
         "balance_usd": bal.get("balance_usd", 0),
+        "credits": creds.get("total_credits", 0),
+        "credits_needed": jackpot_cost,
     }
 
 
