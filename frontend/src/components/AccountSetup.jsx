@@ -26,15 +26,22 @@ export default function AccountSetup() {
   const [otpError, setOtpError] = useState('')
   const [resendCooldown, setResendCooldown] = useState(0)
 
-  // If user already has security Q&A set but no whatsapp verification, skip to step 2
+  // If user already has security Q&A set, pre-fill and skip those fields
   useEffect(() => {
-    if (user?.security_question && user?.has_security_answer && !user?.whatsapp_verified) {
-      // Need to ask for WhatsApp number if not set yet
-      if (user?.whatsapp_number) {
+    if (user?.security_question && user?.has_security_answer) {
+      // Security already set — skip to phone verification
+      if (user?.whatsapp_number && !user?.whatsapp_verified) {
         setWhatsappNumber(user.whatsapp_number)
         setStep(2)
       }
+      // If they have a phone number already, pre-fill it
+      if (user?.whatsapp_number) {
+        setWhatsappNumber(user.whatsapp_number)
+      }
     }
+    // Pre-fill date of birth and country if available
+    if (user?.date_of_birth) setDateOfBirth(user.date_of_birth)
+    if (user?.country) setCountry(user.country)
   }, [user])
 
   // Countdown timer for resend cooldown
@@ -78,7 +85,16 @@ export default function AccountSetup() {
       setResendCooldown(60)
       setStep(2)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to save. Please try again.')
+      const msg = err.response?.data?.detail || 'Something went wrong.'
+      if (msg.includes('phone') || msg.includes('Phone') || msg.includes('number')) {
+        setError('Please enter a valid phone number in international format (e.g., +254712345678).')
+      } else if (msg.includes('security')) {
+        setError('Please complete the security question and answer.')
+      } else if (err.response?.status === 429) {
+        setError('Too many attempts. Please wait a minute and try again.')
+      } else {
+        setError(msg + ' If the issue persists, try refreshing the page.')
+      }
     } finally {
       setSaving(false)
     }
@@ -94,7 +110,14 @@ export default function AccountSetup() {
       await axios.post('/api/user/whatsapp/verify-confirm', { code: otpCode.trim() })
       await refreshProfile()
     } catch (err) {
-      setOtpError(err.response?.data?.detail || 'Invalid code. Please try again.')
+      const msg = err.response?.data?.detail || 'Invalid code.'
+      if (msg.includes('expired') || msg.includes('Expired')) {
+        setOtpError('Code has expired. Tap "Resend Code" to get a new one.')
+      } else if (msg.includes('attempts') || msg.includes('locked')) {
+        setOtpError('Too many failed attempts. Please wait a few minutes and try again.')
+      } else {
+        setOtpError(msg + ' Check the code and try again, or tap "Resend Code".')
+      }
     } finally {
       setVerifying(false)
     }

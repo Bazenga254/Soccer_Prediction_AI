@@ -18207,22 +18207,26 @@ html, body {
   inset: 0;
   z-index: 3000;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(8px);
   padding: 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .account-setup-card {
   background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px;
-  padding: 40px;
+  padding: 36px;
   max-width: 480px;
   width: 100%;
   text-align: center;
   animation: slideUp 0.4s ease;
+  margin: auto 0;
+  flex-shrink: 0;
 }
 
 .account-setup-icon {
@@ -18239,14 +18243,14 @@ html, body {
 .account-setup-subtitle {
   color: #94a3b8;
   font-size: 14px;
-  margin: 0 0 28px;
+  margin: 0 0 18px;
   line-height: 1.5;
 }
 
 .account-setup-form {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   text-align: left;
 }
 
@@ -18290,13 +18294,14 @@ html, body {
 }
 
 .account-setup-error {
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #ef4444;
-  padding: 10px 14px;
-  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+  padding: 12px 14px;
+  border-radius: 10px;
   font-size: 13px;
-  text-align: center;
+  line-height: 1.5;
+  text-align: left;
 }
 
 .account-setup-btn {
@@ -18324,13 +18329,40 @@ html, body {
 }
 
 @media (max-width: 600px) {
+  .account-setup-overlay {
+    padding: 12px;
+    align-items: flex-start;
+  }
+
   .account-setup-card {
-    padding: 28px 20px;
+    padding: 24px 16px;
     border-radius: 16px;
+    margin-top: 20px;
+    margin-bottom: 20px;
   }
 
   .account-setup-title {
     font-size: 18px;
+  }
+
+  .account-setup-form {
+    gap: 14px;
+  }
+
+  .account-setup-field input,
+  .account-setup-field select {
+    padding: 10px 12px;
+    font-size: 16px;
+  }
+
+  .account-setup-btn {
+    padding: 12px;
+    font-size: 15px;
+  }
+
+  .account-setup-subtitle {
+    font-size: 13px;
+    margin-bottom: 20px;
   }
 }
 
