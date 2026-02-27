@@ -15316,6 +15316,29 @@ html, body {
   box-shadow: 0 4px 16px rgba(245, 158, 11, 0.35);
 }
 
+.landing-plan-card.paygo-card {
+  border-color: #6c5ce7;
+  background: linear-gradient(180deg, #1a1535 0%, #1e293b 30%);
+}
+
+.landing-plan-card.paygo-card:hover {
+  border-color: #a78bfa;
+}
+
+.landing-plan-ribbon.paygo-ribbon {
+  background: linear-gradient(135deg, #6c5ce7, #7c3aed);
+}
+
+.landing-plan-btn.paygo {
+  background: linear-gradient(135deg, #6c5ce7, #7c3aed);
+  color: #fff;
+}
+
+.landing-plan-btn.paygo:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(108, 92, 231, 0.35);
+}
+
 /* -- Pay on the Go -- */
 .landing-paygo-section {
   margin-top: 48px;

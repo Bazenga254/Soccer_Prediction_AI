@@ -123,7 +123,6 @@ export default function LandingPage() {
     { number: '03', icon: STEP_ICONS[2], title: t('landing.step3Title'), description: t('landing.step3Desc') },
   ]
 
-  const trialKey = isKenyan ? 'trial_kes' : 'trial_usd'
   const weeklyKey = isKenyan ? 'weekly_kes' : 'weekly_usd'
   const monthlyKey = isKenyan ? 'monthly_kes' : 'monthly_usd'
 
@@ -138,22 +137,11 @@ export default function LandingPage() {
   const costChat = creditCosts?.chat_prompt || 100
 
   const FREE_FEATURES = [
-    '3 AI match predictions per day',
-    'Live score tracking & goal alerts',
-    '40+ leagues worldwide',
+    'Live match scores & updates',
+    'Match tracking & goal alerts',
     'Community predictions feed',
-    'Ad-supported experience',
-  ]
-
-  const TRIAL_FEATURES = pricing?.plans?.[trialKey]?.features || [
-    '10 AI match predictions per day',
-    '3 jackpot analyses per day',
-    '10 AI chat prompts per day',
-    'Live score tracking & goal alerts',
     '40+ leagues worldwide',
-    'Community predictions feed',
-    'Chrome extension access',
-    '3 days full access',
+    'Account activation: KES 35',
   ]
 
   const PRO_FEATURES = pricing?.plans?.[weeklyKey]?.features || [
@@ -209,7 +197,7 @@ export default function LandingPage() {
         <p className="hero-subtitle">{t('landing.heroSubtitle')}</p>
         <div className="hero-actions">
           <button className="hero-cta-btn" onClick={scrollToPricing}>
-Try for Free
+Get Started
           </button>
           <button className="hero-secondary-btn" onClick={() => {
             document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
@@ -302,25 +290,44 @@ Try for Free
               <button className="landing-plan-btn free" onClick={openSignUp}>Get Started Free</button>
             </div>
 
-            {/* 3-Day Trial */}
-            <div className="landing-plan-card trial">
-              <div className="landing-plan-ribbon trial-ribbon">Try It</div>
+            {/* Pay on the Go */}
+            <div className="landing-plan-card paygo-card">
+              <div className="landing-plan-ribbon paygo-ribbon">⚡ Flexible</div>
               <div className="landing-plan-header">
-                <h3 className="landing-plan-name">3-Day Trial</h3>
+                <h3 className="landing-plan-name">Pay on the Go</h3>
                 <div className="landing-plan-price">
-                  <span className="landing-price-amount">{currencySymbol}{pricing?.plans?.[trialKey]?.price || (isKenyan ? 100 : 1)}</span>
-                  <span className="landing-price-period">/ 3 days</span>
+                  <span className="landing-price-amount">{currencySymbol}{isKenyan ? '10' : '1'}</span>
+                  <span className="landing-price-period">minimum</span>
                 </div>
+                <p className="landing-plan-daily-credits">{isKenyan ? 'KES 1' : '$1'} = {creditRate.toLocaleString()} credits</p>
               </div>
               <ul className="landing-plan-features">
-                {TRIAL_FEATURES.map((f, i) => (
-                  <li key={i} className="landing-feature-item">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                    {f}
-                  </li>
-                ))}
+                <li className="landing-feature-item">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  Buy credits anytime
+                </li>
+                <li className="landing-feature-item">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  No subscription required
+                </li>
+                <li className="landing-feature-item">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  Credits never expire
+                </li>
+                <li className="landing-feature-item">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  AI predictions from {costPrediction} cr
+                </li>
+                <li className="landing-feature-item">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  Jackpot analysis from {costJackpotMatch} cr
+                </li>
+                <li className="landing-feature-item">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  M-Pesa & card payments
+                </li>
               </ul>
-              <button className="landing-plan-btn trial" onClick={openSignUp}>Start Trial</button>
+              <button className="landing-plan-btn paygo" onClick={openSignUp}>Get Started</button>
             </div>
 
             {/* Pro Weekly */}
