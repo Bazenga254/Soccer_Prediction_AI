@@ -39,6 +39,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   const [showCaptcha, setShowCaptcha] = useState(false)
   const captchaRef = useRef(null)
   const [googlePendingToken, setGooglePendingToken] = useState(null)
+  const [showGoogleTerms, setShowGoogleTerms] = useState(false)
 
   // Lockout state
   const [lockoutSeconds, setLockoutSeconds] = useState(0)
@@ -75,6 +76,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   // Reset CAPTCHA and forgot password when mode changes
   useEffect(() => {
     setShowCaptcha(mode === 'signup')
+    setShowGoogleTerms(false)
     setCaptchaToken('')
     setShowForgotPassword(false)
     setForgotMessage('')
@@ -122,8 +124,11 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   // Google login handler
   const handleGoogleResponse = useCallback(async (response) => {
     if (!response.credential) return
-    if (mode === 'signup' && !termsAccepted) {
-      setError(t('auth.termsRequired'))
+    if ((mode === 'signup' || showGoogleTerms) && !termsAccepted) {
+      setGooglePendingToken(response.credential)
+      setShowGoogleTerms(true)
+      setShowCaptcha(true)
+      setError('Please accept the Terms of Service and complete the CAPTCHA to create your account.')
       return
     }
     setLoading(true)
@@ -136,14 +141,18 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
       return
     }
     if (result.error && result.error.toLowerCase().includes('terms')) {
-      setError(t('auth.termsRequired'))
+      setGooglePendingToken(response.credential)
+      setShowGoogleTerms(true)
+      setShowCaptcha(true)
+      setError('Please accept the Terms of Service and complete the CAPTCHA to create your account.')
       setLoading(false)
       return
     }
     if (result.error && result.error.toLowerCase().includes('captcha')) {
       setGooglePendingToken(response.credential)
+      setShowGoogleTerms(true)
       setShowCaptcha(true)
-      setError(t('auth.newAccountCaptcha'))
+      setError('Please complete the CAPTCHA to continue.')
       setLoading(false)
       return
     }
@@ -151,22 +160,56 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     setLoading(false)
     setCaptchaToken('')
     if (captchaRef.current) captchaRef.current.resetCaptcha()
-  }, [googleLogin, captchaToken, t, mode, termsAccepted])
+  }, [googleLogin, captchaToken, t, mode, termsAccepted, showGoogleTerms])
 
   useEffect(() => {
-    if (googlePendingToken && captchaToken) {
+    if (googlePendingToken && captchaToken && (!showGoogleTerms || termsAccepted)) {
       (async () => {
         setLoading(true)
         setError('')
         const result = await googleLogin(googlePendingToken, referralRef.current, captchaToken, termsAccepted)
-        if (!result.success) setError(result.error || t('auth.googleLoginFailed'))
+        if (result.success) {
+          setShowGoogleTerms(false)
+          setShowCaptcha(false)
+        } else {
+          setError(result.error || t('auth.googleLoginFailed'))
+        }
         setLoading(false)
         setGooglePendingToken(null)
         setCaptchaToken('')
         if (captchaRef.current) captchaRef.current.resetCaptcha()
       })()
     }
-  }, [googlePendingToken, captchaToken, googleLogin, t])
+  }, [googlePendingToken, captchaToken, googleLogin, t, showGoogleTerms, termsAccepted])
+
+  const handleGoogleTermsSubmit = async () => {
+    if (!termsAccepted) {
+      setError('Please accept the Terms of Service to continue.')
+      return
+    }
+    if (!captchaToken) {
+      setError('Please complete the CAPTCHA verification.')
+      return
+    }
+    if (!googlePendingToken) {
+      setError('Session expired. Please click Google Sign-In again.')
+      setShowGoogleTerms(false)
+      return
+    }
+    setLoading(true)
+    setError('')
+    const result = await googleLogin(googlePendingToken, referralRef.current, captchaToken, termsAccepted)
+    if (result.success) {
+      setShowGoogleTerms(false)
+      setShowCaptcha(false)
+    } else {
+      setError(result.error || 'Registration failed. Please try again.')
+    }
+    setLoading(false)
+    setGooglePendingToken(null)
+    setCaptchaToken('')
+    if (captchaRef.current) captchaRef.current.resetCaptcha()
+  }
 
   const handleWhopLogin = async () => {
     setLoading(true)
@@ -951,9 +994,41 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           Continue with Whop
         </button>
 
-        <div className="auth-divider"><span>{t('common.or')}</span></div>
+        {showGoogleTerms && (
+          <div className="google-terms-section" style={{ marginTop: '16px', padding: '16px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '12px' }}>
+            <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '12px', lineHeight: '1.5' }}>
+              This Google account is not registered yet. Please accept the terms and verify to create your account:
+            </p>
+            <div className="captcha-container" style={{ marginBottom: '12px' }}>
+              <HCaptcha ref={captchaRef} sitekey={HCAPTCHA_SITE_KEY} onVerify={handleCaptchaVerify}
+                onExpire={handleCaptchaExpire} onError={handleCaptchaError} theme="dark" size="normal" />
+            </div>
+            <div className="terms-checkbox-section" style={{ marginBottom: '12px' }}>
+              <label className="terms-checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', color: '#cbd5e1', fontSize: '13px' }}>
+                <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)}
+                  style={{ marginTop: '2px', accentColor: '#3b82f6' }} />
+                <span>I agree to the{' '}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                    Terms of Service
+                  </a>{' '}and{' '}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                    Privacy Policy
+                  </a>
+                </span>
+              </label>
+            </div>
+            {error && <div className="gate-error" style={{ marginBottom: '12px' }}>{error}</div>}
+            <button type="button" className="gate-submit-btn" onClick={handleGoogleTermsSubmit}
+              disabled={loading || !captchaToken || !termsAccepted}
+              style={{ width: '100%' }}>
+              {loading ? 'Creating Account...' : 'Complete Registration'}
+            </button>
+          </div>
+        )}
 
-        <form className="access-form" onSubmit={handleLoginSubmit}>
+        {!showGoogleTerms && <div className="auth-divider"><span>{t('common.or')}</span></div>}
+
+        <form className="access-form" onSubmit={handleLoginSubmit} style={{ display: showGoogleTerms ? 'none' : undefined }}>
           <div className="form-group">
             <label htmlFor="email">{t('auth.email')}</label>
             <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}

@@ -7220,11 +7220,13 @@ html, body {
 /* ===== ACCESS GATE PAGE ===== */
 .access-gate-page {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #0a0e17 0%, #1a1f35 50%, #0d1520 100%);
   padding: 20px;
+  overflow-y: auto;
 }
 
 .access-gate-container {
@@ -15689,6 +15691,8 @@ html, body {
   align-items: center;
   justify-content: center;
   padding: 24px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .auth-modal-container {
@@ -15700,8 +15704,11 @@ html, body {
   width: 100%;
   max-width: 440px;
   max-height: 90vh;
-  overflow: visible;
+  max-height: 90dvh;
+  overflow-y: auto;
   position: relative;
+  margin: auto 0;
+  flex-shrink: 0;
 }
 
 .auth-form-wrapper {
@@ -26457,5 +26464,35 @@ body.ai-assistant-active .support-chat-fab {
   .ai-send-btn {
     padding: 8px 12px;
     font-size: 0.8rem;
+  }
+}
+
+/* Mobile fixes for auth form scrolling + Google terms section */
+@media (max-width: 480px) {
+  .access-gate-page {
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  .access-gate-container {
+    padding: 24px 16px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+  }
+
+  .auth-modal-overlay {
+    padding: 12px;
+    align-items: flex-start;
+  }
+
+  .auth-modal-container {
+    padding: 24px 16px;
+    max-height: none;
+    margin-top: 20px;
+    margin-bottom: 20px;
+  }
+
+  .auth-form-wrapper {
+    max-height: none;
   }
 }

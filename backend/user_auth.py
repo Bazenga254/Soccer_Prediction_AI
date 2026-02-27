@@ -3145,6 +3145,15 @@ def send_whatsapp_verification(user_id: int, phone_number: str) -> Dict:
         conn.close()
         return {"success": False, "error": "User not found"}
 
+    # Check if this phone number is already used by another verified user
+    existing = conn.execute(
+        "SELECT id FROM users WHERE whatsapp_number = ? AND whatsapp_verified = 1 AND id != ?",
+        (phone, user_id)
+    ).fetchone()
+    if existing:
+        conn.close()
+        return {"success": False, "error": "This phone number is already linked to another account. Please use a different number."}
+
     # Save the phone number
     conn.execute("UPDATE users SET whatsapp_number = ? WHERE id = ?", (phone, user_id))
     conn.commit()
