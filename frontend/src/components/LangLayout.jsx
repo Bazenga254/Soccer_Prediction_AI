@@ -1,26 +1,23 @@
 import { useEffect } from 'react'
-import { useParams, Outlet, Navigate } from 'react-router-dom'
+import { useLocation, Outlet } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { isValidLang } from '../utils/seoConstants'
+import { SUPPORTED_LANGS } from '../utils/seoConstants'
 
 export default function LangLayout() {
-  const { lang } = useParams()
+  const { pathname } = useLocation()
   const { i18n } = useTranslation()
 
-  // If lang param exists but is invalid, redirect to home
-  if (lang && !isValidLang(lang)) {
-    return <Navigate to="/" replace />
-  }
-
-  const effectiveLang = lang || 'en'
+  // Extract language from URL path (e.g., /fr/today -> 'fr')
+  const pathLang = pathname.split('/')[1]
+  const lang = SUPPORTED_LANGS.includes(pathLang) && pathLang !== 'en' ? pathLang : 'en'
 
   useEffect(() => {
-    if (i18n.language !== effectiveLang) {
-      i18n.changeLanguage(effectiveLang)
+    if (i18n.language !== lang) {
+      i18n.changeLanguage(lang)
     }
-    document.documentElement.lang = effectiveLang
-    document.documentElement.dir = effectiveLang === 'ar' ? 'rtl' : 'ltr'
-  }, [effectiveLang, i18n])
+    document.documentElement.lang = lang
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
+  }, [lang, i18n])
 
   return <Outlet />
 }

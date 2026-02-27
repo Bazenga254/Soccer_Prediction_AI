@@ -32,9 +32,9 @@ function renderMarkdown(text) {
 }
 
 export default function BlogArticle() {
-  const { t } = useTranslation()
-  const { slug, lang } = useParams()
-  const currentLang = lang || 'en'
+  const { t, i18n } = useTranslation()
+  const { slug } = useParams()
+  const currentLang = i18n.language?.split('-')[0] || 'en'
   const [article, setArticle] = useState(null)
   const [related, setRelated] = useState([])
   const [loading, setLoading] = useState(true)

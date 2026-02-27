@@ -22,9 +22,9 @@ const RELATED_LEAGUES = [
 ]
 
 export default function LeaguePredictions() {
-  const { t } = useTranslation()
-  const { leagueSlug, lang } = useParams()
-  const currentLang = lang || 'en'
+  const { t, i18n } = useTranslation()
+  const { leagueSlug } = useParams()
+  const currentLang = i18n.language?.split('-')[0] || 'en'
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)

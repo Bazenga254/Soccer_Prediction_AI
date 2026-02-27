@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import axios from 'axios'
 import SEOHead from '../components/SEOHead'
 import { buildLangPath } from '../utils/seoConstants'
@@ -16,9 +16,8 @@ const CATEGORIES = [
 ]
 
 export default function BlogIndex() {
-  const { t } = useTranslation()
-  const { lang } = useParams()
-  const currentLang = lang || 'en'
+  const { t, i18n } = useTranslation()
+  const currentLang = i18n.language?.split('-')[0] || 'en'
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
   const [category, setCategory] = useState(null)

@@ -1,13 +1,11 @@
 import SEOHead from '../components/SEOHead'
 import { useTranslation } from 'react-i18next'
-import { useParams } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import './TermsOfService.css'
 
 export default function TermsOfService() {
-  const { t } = useTranslation()
-  const { lang } = useParams()
-  const currentLang = lang || 'en'
+  const { t, i18n } = useTranslation()
+  const currentLang = i18n.language?.split('-')[0] || 'en'
 
   return (
     <div className="terms-page">

@@ -246,7 +246,47 @@ function App() {
                 </Route>
 
                 {/* Public SEO routes: Language-prefixed (fr, es, pt, sw, ar) */}
-                <Route path="/:lang" element={<LangLayout />}>
+                <Route path="/fr" element={<LangLayout />}>
+                  <Route index element={<LandingPage />} />
+                  <Route path="today" element={<TodayPredictions />} />
+                  <Route path="predictions/:leagueSlug" element={<LeaguePredictions />} />
+                  <Route path="blog" element={<BlogIndex />} />
+                  <Route path="blog/:slug" element={<BlogArticle />} />
+                  <Route path="docs" element={<DocsPage />} />
+                  <Route path="docs/:sectionId" element={<DocsPage />} />
+                  <Route path="terms" element={<TermsOfService />} />
+                </Route>
+                <Route path="/es" element={<LangLayout />}>
+                  <Route index element={<LandingPage />} />
+                  <Route path="today" element={<TodayPredictions />} />
+                  <Route path="predictions/:leagueSlug" element={<LeaguePredictions />} />
+                  <Route path="blog" element={<BlogIndex />} />
+                  <Route path="blog/:slug" element={<BlogArticle />} />
+                  <Route path="docs" element={<DocsPage />} />
+                  <Route path="docs/:sectionId" element={<DocsPage />} />
+                  <Route path="terms" element={<TermsOfService />} />
+                </Route>
+                <Route path="/pt" element={<LangLayout />}>
+                  <Route index element={<LandingPage />} />
+                  <Route path="today" element={<TodayPredictions />} />
+                  <Route path="predictions/:leagueSlug" element={<LeaguePredictions />} />
+                  <Route path="blog" element={<BlogIndex />} />
+                  <Route path="blog/:slug" element={<BlogArticle />} />
+                  <Route path="docs" element={<DocsPage />} />
+                  <Route path="docs/:sectionId" element={<DocsPage />} />
+                  <Route path="terms" element={<TermsOfService />} />
+                </Route>
+                <Route path="/sw" element={<LangLayout />}>
+                  <Route index element={<LandingPage />} />
+                  <Route path="today" element={<TodayPredictions />} />
+                  <Route path="predictions/:leagueSlug" element={<LeaguePredictions />} />
+                  <Route path="blog" element={<BlogIndex />} />
+                  <Route path="blog/:slug" element={<BlogArticle />} />
+                  <Route path="docs" element={<DocsPage />} />
+                  <Route path="docs/:sectionId" element={<DocsPage />} />
+                  <Route path="terms" element={<TermsOfService />} />
+                </Route>
+                <Route path="/ar" element={<LangLayout />}>
                   <Route index element={<LandingPage />} />
                   <Route path="today" element={<TodayPredictions />} />
                   <Route path="predictions/:leagueSlug" element={<LeaguePredictions />} />
