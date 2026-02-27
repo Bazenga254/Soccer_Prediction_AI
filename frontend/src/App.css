@@ -15120,12 +15120,18 @@ html, body {
   margin: 0 auto;
 }
 
+.landing-plans-grid.four-col {
+  grid-template-columns: repeat(4, 1fr);
+  max-width: 1200px;
+  gap: 16px;
+}
+
 .landing-plan-card {
   position: relative;
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 16px;
-  padding: 32px 24px;
+  padding: 28px 18px;
   display: flex;
   flex-direction: column;
   transition: all 0.3s;
@@ -15195,7 +15201,7 @@ html, body {
 
 .landing-price-amount {
   font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
-  font-size: 40px;
+  font-size: 36px;
   font-weight: 800;
   color: #f1f5f9;
 }
@@ -15204,6 +15210,23 @@ html, body {
   font-size: 16px;
   color: #64748b;
   font-weight: 500;
+}
+
+.landing-plan-daily-credits {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #22c55e;
+  letter-spacing: 0.02em;
+}
+
+.landing-plan-card.monthly-card {
+  border-color: #a855f7;
+  background: linear-gradient(180deg, #1f1530 0%, #1e293b 30%);
+}
+
+.landing-plan-card.monthly-card:hover {
+  border-color: #c084fc;
 }
 
 .landing-plan-features {
@@ -15291,6 +15314,271 @@ html, body {
 .landing-plan-btn.trial:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 16px rgba(245, 158, 11, 0.35);
+}
+
+/* -- Pay on the Go -- */
+.landing-paygo-section {
+  margin-top: 48px;
+  background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
+  border: 1px solid #1e293b;
+  border-radius: 16px;
+  padding: 36px 32px;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.landing-paygo-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.landing-paygo-title {
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  font-size: 24px;
+  font-weight: 800;
+  color: #f1f5f9;
+  margin: 0 0 6px;
+}
+
+.landing-paygo-subtitle {
+  color: #94a3b8;
+  font-size: 15px;
+  margin: 0;
+}
+
+.landing-paygo-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+.landing-paygo-calculator {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.landing-paygo-label {
+  display: block;
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.landing-paygo-input-row {
+  display: flex;
+  align-items: center;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.landing-paygo-input-row:focus-within {
+  border-color: #6c5ce7;
+}
+
+.landing-paygo-currency {
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.03);
+  border-right: 1px solid #334155;
+}
+
+.landing-paygo-input {
+  flex: 1;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  color: #f1f5f9;
+  font-size: 18px;
+  font-weight: 600;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+.landing-paygo-input::placeholder { color: #475569; }
+
+.landing-paygo-result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  margin-top: 12px;
+  background: rgba(108, 92, 231, 0.1);
+  border: 1px solid rgba(108, 92, 231, 0.25);
+  border-radius: 10px;
+}
+
+.landing-paygo-result.placeholder {
+  background: transparent;
+  border-color: #1e293b;
+}
+
+.landing-paygo-result-icon {
+  font-size: 20px;
+}
+
+.landing-paygo-result-credits {
+  font-size: 28px;
+  font-weight: 800;
+  color: #a78bfa;
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+}
+
+.landing-paygo-result-label {
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.landing-paygo-breakdown {
+  margin-top: 16px;
+}
+
+.landing-paygo-breakdown-title {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.landing-paygo-breakdown-items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.landing-paygo-breakdown-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 10px 6px;
+  gap: 2px;
+}
+
+.landing-paygo-breakdown-icon {
+  font-size: 18px;
+}
+
+.landing-paygo-breakdown-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: #f1f5f9;
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+}
+
+.landing-paygo-breakdown-name {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 600;
+  text-align: center;
+}
+
+.landing-paygo-breakdown-cost {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.landing-paygo-cta {
+  margin-top: 16px;
+}
+
+.landing-paygo-rates {
+  padding: 0 4px;
+}
+
+.landing-paygo-rates-title {
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0 0 10px;
+}
+
+.landing-paygo-rate-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.landing-paygo-rate-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 16px;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.landing-paygo-rate-value {
+  color: #a78bfa;
+  font-weight: 700;
+}
+
+.landing-paygo-cost-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.landing-paygo-cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #1e293b;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.landing-paygo-cost-row:last-child {
+  border-bottom: none;
+}
+
+.landing-paygo-cost-money {
+  color: #64748b;
+  font-size: 11px;
+}
+
+/* Landing page responsive - 4-col plans */
+@media (max-width: 1024px) {
+  .landing-plans-grid.four-col {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 700px;
+  }
+  .landing-plan-card.popular {
+    transform: none;
+  }
+  .landing-plan-card.popular:hover {
+    transform: translateY(-4px);
+  }
+}
+
+@media (max-width: 640px) {
+  .landing-plans-grid.four-col {
+    grid-template-columns: 1fr;
+    max-width: 400px;
+  }
+  .landing-paygo-content {
+    grid-template-columns: 1fr;
+  }
+  .landing-paygo-section {
+    padding: 24px 16px;
+  }
 }
 
 /* -- CTA Section -- */

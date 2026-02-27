@@ -49,6 +49,8 @@ export default function LandingPage() {
   const { currency, currencySymbol, isKenyan } = useCurrency()
   const [authModal, setAuthModal] = useState({ open: false, mode: 'login' })
   const [pricing, setPricing] = useState(null)
+  const [creditCosts, setCreditCosts] = useState(null)
+  const [depositAmount, setDepositAmount] = useState('')
   const [showInstallBanner, setShowInstallBanner] = useState(false)
   const [installPrompt, setInstallPrompt] = useState(null)
   const [isIOS, setIsIOS] = useState(false)
@@ -56,6 +58,7 @@ export default function LandingPage() {
 
   useEffect(() => {
     axios.get('/api/pricing').then(res => setPricing(res.data)).catch(() => {})
+    axios.get('/api/credits/costs').then(res => setCreditCosts(res.data)).catch(() => {})
   }, [])
 
   // Mobile install prompt detection
@@ -124,20 +127,39 @@ export default function LandingPage() {
   const weeklyKey = isKenyan ? 'weekly_kes' : 'weekly_usd'
   const monthlyKey = isKenyan ? 'monthly_kes' : 'monthly_usd'
 
+  // Credit calculator values
+  const creditRate = isKenyan ? (creditCosts?.credit_rate_kes || 10) : (creditCosts?.credit_rate_usd || 1300)
+  const minDeposit = isKenyan ? (creditCosts?.min_deposit_kes || 10) : (creditCosts?.min_deposit_usd || 1)
+  const numericAmount = parseFloat(depositAmount) || 0
+  const calculatedCredits = Math.floor(numericAmount * creditRate)
+  const costPrediction = creditCosts?.prediction || 50
+  const costAnalysis = creditCosts?.match_analysis || 250
+  const costJackpotMatch = 130
+  const costChat = creditCosts?.chat_prompt || 100
+
   const FREE_FEATURES = [
     '3 AI match predictions per day',
-    '1 jackpot analysis per day',
-    '5 AI chat prompts per day',
+    'Live score tracking & goal alerts',
+    '40+ leagues worldwide',
+    'Community predictions feed',
+    'Ad-supported experience',
+  ]
+
+  const TRIAL_FEATURES = pricing?.plans?.[trialKey]?.features || [
+    '10 AI match predictions per day',
+    '3 jackpot analyses per day',
+    '10 AI chat prompts per day',
     'Live score tracking & goal alerts',
     '40+ leagues worldwide',
     'Community predictions feed',
     'Chrome extension access',
+    '3 days full access',
   ]
 
   const PRO_FEATURES = pricing?.plans?.[weeklyKey]?.features || [
     '20 AI match predictions per day',
     '5 jackpot analyses per day',
-    '50 AI chat prompts per day',
+    '10 AI chat prompts per day',
     'Odds comparison across bookmakers',
     'Advanced analytics & value betting',
     'Live score tracking & goal alerts',
@@ -259,14 +281,13 @@ Try for Free
         <div className="landing-section-inner">
           <h2 className="landing-section-title">{t('landing.pricingTitle')}</h2>
           <p className="landing-section-subtitle">{t('landing.pricingSubtitle')}</p>
-          <div className="landing-plans-grid">
+          <div className="landing-plans-grid four-col">
             {/* Free Tier */}
-            <div className="landing-plan-card trial">
-              <div className="landing-plan-ribbon trial-ribbon">Free</div>
+            <div className="landing-plan-card">
               <div className="landing-plan-header">
                 <h3 className="landing-plan-name">Free</h3>
                 <div className="landing-plan-price">
-                  <span className="landing-price-amount">Free</span>
+                  <span className="landing-price-amount">{currencySymbol}0</span>
                   <span className="landing-price-period">forever</span>
                 </div>
               </div>
@@ -278,7 +299,28 @@ Try for Free
                   </li>
                 ))}
               </ul>
-              <button className="landing-plan-btn trial" onClick={openSignUp}>Get Started Free</button>
+              <button className="landing-plan-btn free" onClick={openSignUp}>Get Started Free</button>
+            </div>
+
+            {/* 3-Day Trial */}
+            <div className="landing-plan-card trial">
+              <div className="landing-plan-ribbon trial-ribbon">Try It</div>
+              <div className="landing-plan-header">
+                <h3 className="landing-plan-name">3-Day Trial</h3>
+                <div className="landing-plan-price">
+                  <span className="landing-price-amount">{currencySymbol}{pricing?.plans?.[trialKey]?.price || (isKenyan ? 100 : 1)}</span>
+                  <span className="landing-price-period">/ 3 days</span>
+                </div>
+              </div>
+              <ul className="landing-plan-features">
+                {TRIAL_FEATURES.map((f, i) => (
+                  <li key={i} className="landing-feature-item">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <button className="landing-plan-btn trial" onClick={openSignUp}>Start Trial</button>
             </div>
 
             {/* Pro Weekly */}
@@ -287,9 +329,10 @@ Try for Free
               <div className="landing-plan-header">
                 <h3 className="landing-plan-name">{t('landing.proWeekly')}</h3>
                 <div className="landing-plan-price">
-                  <span className="landing-price-amount">{currencySymbol}{pricing?.plans?.[isKenyan ? 'weekly_kes' : 'weekly_usd']?.price || (isKenyan ? 1950 : 15)}</span>
+                  <span className="landing-price-amount">{currencySymbol}{pricing?.plans?.[weeklyKey]?.price || (isKenyan ? 250 : 2.50)}</span>
                   <span className="landing-price-period">{t('landing.perWeek')}</span>
                 </div>
+                <p className="landing-plan-daily-credits">⚡ {(creditCosts?.daily_credits_subscriber || 2000).toLocaleString()} credits/day</p>
               </div>
               <ul className="landing-plan-features">
                 {PRO_FEATURES.map((f, i) => (
@@ -303,14 +346,15 @@ Try for Free
             </div>
 
             {/* Pro Monthly */}
-            <div className="landing-plan-card">
+            <div className="landing-plan-card monthly-card">
               <div className="landing-plan-save">{t('landing.save20')}</div>
               <div className="landing-plan-header">
                 <h3 className="landing-plan-name">{t('landing.proMonthly')}</h3>
                 <div className="landing-plan-price">
-                  <span className="landing-price-amount">{currencySymbol}{pricing?.plans?.[isKenyan ? 'monthly_kes' : 'monthly_usd']?.price || (isKenyan ? 6200 : 48)}</span>
+                  <span className="landing-price-amount">{currencySymbol}{pricing?.plans?.[monthlyKey]?.price || (isKenyan ? 800 : 8)}</span>
                   <span className="landing-price-period">{t('landing.perMonth')}</span>
                 </div>
+                <p className="landing-plan-daily-credits">⚡ {(creditCosts?.daily_credits_subscriber || 2000).toLocaleString()} credits/day</p>
               </div>
               <ul className="landing-plan-features">
                 {MONTHLY_FEATURES.map((f, i) => (
@@ -322,34 +366,112 @@ Try for Free
               </ul>
               <button className="landing-plan-btn monthly" onClick={openSignUp}>{t('landing.getProMonthly')}</button>
             </div>
+          </div>
 
-            {/* Extra Plans (admin-created) */}
-            {pricing?.plans && Object.entries(pricing.plans)
-              .filter(([id]) => !['weekly_usd', 'weekly_kes', 'monthly_usd', 'monthly_kes', 'trial_usd', 'trial_kes'].includes(id))
-              .filter(([, plan]) => plan.currency === currency)
-              .map(([planId, plan]) => (
-                <div key={planId} className="landing-plan-card">
-                  <div className="landing-plan-header">
-                    <h3 className="landing-plan-name">{plan.name}</h3>
-                    <div className="landing-plan-price">
-                      <span className="landing-price-amount">{currencySymbol}{plan.price}</span>
-                      <span className="landing-price-period">
-                        {plan.duration_days === 1 ? t('landing.perDay') || '/ day' : plan.duration_days === 7 ? t('landing.perWeek') : plan.duration_days === 30 ? t('landing.perMonth') : `/ ${plan.duration_days} days`}
-                      </span>
+          {/* Pay on the Go Calculator */}
+          <div className="landing-paygo-section">
+            <div className="landing-paygo-header">
+              <h3 className="landing-paygo-title">⚡ Pay on the Go</h3>
+              <p className="landing-paygo-subtitle">No subscription needed. Buy credits and use them anytime.</p>
+            </div>
+
+            <div className="landing-paygo-content">
+              {/* Calculator */}
+              <div className="landing-paygo-calculator">
+                <label className="landing-paygo-label">How much do you want to deposit?</label>
+                <div className="landing-paygo-input-row">
+                  <span className="landing-paygo-currency">{isKenyan ? 'KES' : 'USD'}</span>
+                  <input
+                    type="number"
+                    min={minDeposit}
+                    step={isKenyan ? 1 : 0.01}
+                    placeholder={String(minDeposit)}
+                    value={depositAmount}
+                    onChange={e => setDepositAmount(e.target.value)}
+                    className="landing-paygo-input"
+                  />
+                </div>
+                {numericAmount >= minDeposit ? (
+                  <div className="landing-paygo-result">
+                    <span className="landing-paygo-result-icon">⚡</span>
+                    <span className="landing-paygo-result-credits">{calculatedCredits.toLocaleString()}</span>
+                    <span className="landing-paygo-result-label">credits</span>
+                  </div>
+                ) : (
+                  <div className="landing-paygo-result placeholder">
+                    <span className="landing-paygo-result-label">Enter an amount to see credits ({currencySymbol}{minDeposit} min)</span>
+                  </div>
+                )}
+
+                {numericAmount >= minDeposit && (
+                  <div className="landing-paygo-breakdown">
+                    <p className="landing-paygo-breakdown-title">With {calculatedCredits.toLocaleString()} credits you can get:</p>
+                    <div className="landing-paygo-breakdown-items">
+                      <div className="landing-paygo-breakdown-item">
+                        <span className="landing-paygo-breakdown-icon">⚽</span>
+                        <span className="landing-paygo-breakdown-value">{Math.floor(calculatedCredits / costPrediction)}</span>
+                        <span className="landing-paygo-breakdown-name">Predictions</span>
+                        <span className="landing-paygo-breakdown-cost">{costPrediction} cr each</span>
+                      </div>
+                      <div className="landing-paygo-breakdown-item">
+                        <span className="landing-paygo-breakdown-icon">🎰</span>
+                        <span className="landing-paygo-breakdown-value">{Math.floor(calculatedCredits / costJackpotMatch)}</span>
+                        <span className="landing-paygo-breakdown-name">Jackpot Matches</span>
+                        <span className="landing-paygo-breakdown-cost">{costJackpotMatch} cr each</span>
+                      </div>
+                      <div className="landing-paygo-breakdown-item">
+                        <span className="landing-paygo-breakdown-icon">📊</span>
+                        <span className="landing-paygo-breakdown-value">{Math.floor(calculatedCredits / costAnalysis)}</span>
+                        <span className="landing-paygo-breakdown-name">Full Analyses</span>
+                        <span className="landing-paygo-breakdown-cost">{costAnalysis} cr each</span>
+                      </div>
+                      <div className="landing-paygo-breakdown-item">
+                        <span className="landing-paygo-breakdown-icon">💬</span>
+                        <span className="landing-paygo-breakdown-value">{Math.floor(calculatedCredits / costChat)}</span>
+                        <span className="landing-paygo-breakdown-name">AI Chat Prompts</span>
+                        <span className="landing-paygo-breakdown-cost">{costChat} cr each</span>
+                      </div>
                     </div>
                   </div>
-                  <ul className="landing-plan-features">
-                    {(plan.features || []).map((f, i) => (
-                      <li key={i} className="landing-feature-item">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                  <button className="landing-plan-btn pro" onClick={openSignUp}>{t('landing.getStartedFree')}</button>
+                )}
+
+                <button className="landing-plan-btn pro landing-paygo-cta" onClick={openSignUp}>
+                  Sign Up to Buy Credits
+                </button>
+              </div>
+
+              {/* Credit Pricing Table */}
+              <div className="landing-paygo-rates">
+                <h4 className="landing-paygo-rates-title">Credit Rates</h4>
+                <div className="landing-paygo-rate-card">
+                  <div className="landing-paygo-rate-row">
+                    <span>{isKenyan ? 'KES 1' : '$1'}</span>
+                    <span>=</span>
+                    <span className="landing-paygo-rate-value">⚡ {creditRate.toLocaleString()} credits</span>
+                  </div>
                 </div>
-              ))
-            }
+
+                <h4 className="landing-paygo-rates-title" style={{marginTop: 20}}>What Things Cost</h4>
+                <div className="landing-paygo-cost-list">
+                  <div className="landing-paygo-cost-row">
+                    <span>⚽ Match prediction</span>
+                    <span>{costPrediction} credits <span className="landing-paygo-cost-money">({currencySymbol}{isKenyan ? (costPrediction / creditRate).toFixed(0) : (costPrediction / creditRate).toFixed(2)})</span></span>
+                  </div>
+                  <div className="landing-paygo-cost-row">
+                    <span>🎰 Jackpot match</span>
+                    <span>{costJackpotMatch} credits <span className="landing-paygo-cost-money">({currencySymbol}{isKenyan ? (costJackpotMatch / creditRate).toFixed(0) : (costJackpotMatch / creditRate).toFixed(2)})</span></span>
+                  </div>
+                  <div className="landing-paygo-cost-row">
+                    <span>📊 Full analysis</span>
+                    <span>{costAnalysis} credits <span className="landing-paygo-cost-money">({currencySymbol}{isKenyan ? (costAnalysis / creditRate).toFixed(0) : (costAnalysis / creditRate).toFixed(2)})</span></span>
+                  </div>
+                  <div className="landing-paygo-cost-row">
+                    <span>💬 AI chat prompt</span>
+                    <span>{costChat} credits <span className="landing-paygo-cost-money">({currencySymbol}{isKenyan ? (costChat / creditRate).toFixed(0) : (costChat / creditRate).toFixed(2)})</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
