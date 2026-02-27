@@ -4101,3 +4101,105 @@
     padding: 0 12px;
   }
 }
+
+/* ============ Credits & Pagination (User Detail) ============ */
+.credit-card-total .credit-amount {
+  color: #facc15 !important;
+  font-size: 1.3em;
+}
+.credit-card-purchased { border-left: 3px solid #4ade80 !important; }
+.credit-card-daily { border-left: 3px solid #60a5fa !important; }
+.credit-card-total { border-left: 3px solid #facc15 !important; }
+
+.credit-expiry-note {
+  color: #64748b;
+  font-size: 11px;
+  margin-top: 8px;
+  font-style: italic;
+}
+
+.credit-usage-breakdown {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #334155;
+}
+.credit-usage-breakdown h5 {
+  color: #94a3b8;
+  font-size: 12px;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.credit-usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.credit-usage-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  background: #0f172a;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.credit-usage-label {
+  color: #e2e8f0;
+  flex: 1;
+  font-weight: 500;
+}
+.credit-usage-count {
+  color: #94a3b8;
+  font-size: 12px;
+}
+.credit-usage-total {
+  color: #facc15;
+  font-weight: 600;
+  min-width: 90px;
+  text-align: right;
+}
+
+.section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.section-header-row h4,
+.section-header-row h5 {
+  margin-bottom: 0;
+}
+.pagination-info {
+  color: #64748b;
+  font-size: 12px;
+}
+.pagination-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #1e293b;
+}
+.pagination-btn {
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  padding: 5px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+.pagination-btn:hover:not(:disabled) {
+  background: #334155;
+}
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.referrer-link:hover {
+  text-decoration: underline;
+}

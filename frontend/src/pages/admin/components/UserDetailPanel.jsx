@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import axios from 'axios'
 
-export default function UserDetailPanel({ userProfile, onBack, onTierChange, onToggleActive, staffRole, getAuthHeaders, onRefresh }) {
+export default function UserDetailPanel({ userProfile, onBack, onTierChange, onToggleActive, staffRole, getAuthHeaders, onRefresh, onViewUser }) {
   const [adjustAmount, setAdjustAmount] = useState('')
   const [adjustCurrency, setAdjustCurrency] = useState('USD')
   const [adjustReason, setAdjustReason] = useState('')
@@ -9,6 +9,8 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
   const [adjusting, setAdjusting] = useState(false)
   const [adjustMsg, setAdjustMsg] = useState('')
   const [showAdjust, setShowAdjust] = useState(false)
+  const [txPage, setTxPage] = useState(1)
+  const [adjPage, setAdjPage] = useState(1)
 
   if (!userProfile) return null
 
@@ -21,6 +23,13 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
   const withdrawals = userProfile.withdrawals || []
   const hasFinancialActivity = transactions.length > 0 || withdrawals.length > 0
   const isSuperAdmin = staffRole === 'super_admin'
+  const credits = userProfile.credits || {}
+  const creditUsage = userProfile.credit_usage || {}
+  const referrer = userProfile.referrer || null
+  const txTotal = userProfile.transactions_total || 0
+  const adjTotal = userProfile.balance_adjustments_total || 0
+  const txTotalPages = Math.ceil(txTotal / 10) || 1
+  const adjTotalPages = Math.ceil(adjTotal / 10) || 1
 
   const handleAdjustBalance = async () => {
     const amt = parseFloat(adjustAmount)
@@ -87,6 +96,11 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
             <div className="user-detail-row"><span>Logins</span><strong>{userProfile.login_count || 0}</strong></div>
             <div className="user-detail-row"><span>Last Login</span><strong>{userProfile.last_login ? new Date(userProfile.last_login).toLocaleDateString() : 'Never'}</strong></div>
             <div className="user-detail-row"><span>Referral Code</span><strong>{userProfile.referral_code || 'None'}</strong></div>
+            <div className="user-detail-row"><span>Referred By</span><strong>{referrer ? (
+              <span className="referrer-link" onClick={() => onViewUser && onViewUser(referrer.id)} style={{ cursor: 'pointer', color: '#60a5fa' }}>
+                @{referrer.username} ({referrer.display_name})
+              </span>
+            ) : 'Direct signup'}</strong></div>
             <div className="user-detail-row"><span>Security Question</span><strong>{userProfile.security_question ? 'Set' : 'Not set'}</strong></div>
           </div>
         </div>
@@ -126,6 +140,56 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
             </div>
           </div>
         )}
+
+        {/* Credits */}
+        <div className="user-detail-section">
+          <h4>Credits</h4>
+          <div className="user-detail-wallet-grid">
+            <div className="user-detail-wallet-card credit-card-total">
+              <span>Total Credits</span>
+              <strong className="credit-amount">{(credits.total_credits || 0).toLocaleString()}</strong>
+            </div>
+            <div className="user-detail-wallet-card credit-card-purchased">
+              <span>Purchased</span>
+              <strong>{(credits.purchased_credits || 0).toLocaleString()}</strong>
+            </div>
+            <div className="user-detail-wallet-card credit-card-daily">
+              <span>Daily</span>
+              <strong>{(credits.daily_credits || 0).toLocaleString()}</strong>
+            </div>
+          </div>
+          {credits.daily_expires_at && (
+            <p className="credit-expiry-note">Daily credits expire: {new Date(credits.daily_expires_at).toLocaleString()}</p>
+          )}
+          {creditUsage && (creditUsage.predictions?.count > 0 || creditUsage.jackpot?.count > 0 || creditUsage.other?.count > 0) && (
+            <div className="credit-usage-breakdown">
+              <h5>Usage Breakdown</h5>
+              <div className="credit-usage-list">
+                {creditUsage.predictions?.count > 0 && (
+                  <div className="credit-usage-item">
+                    <span className="credit-usage-label">Predictions</span>
+                    <span className="credit-usage-count">{creditUsage.predictions.count} views</span>
+                    <span className="credit-usage-total">{creditUsage.predictions.total_credits.toLocaleString()} credits</span>
+                  </div>
+                )}
+                {creditUsage.jackpot?.count > 0 && (
+                  <div className="credit-usage-item">
+                    <span className="credit-usage-label">Jackpot Analysis</span>
+                    <span className="credit-usage-count">{creditUsage.jackpot.count} runs</span>
+                    <span className="credit-usage-total">{creditUsage.jackpot.total_credits.toLocaleString()} credits</span>
+                  </div>
+                )}
+                {creditUsage.other?.count > 0 && (
+                  <div className="credit-usage-item">
+                    <span className="credit-usage-label">Other</span>
+                    <span className="credit-usage-count">{creditUsage.other.count}</span>
+                    <span className="credit-usage-total">{creditUsage.other.total_credits.toLocaleString()} credits</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Account Balance */}
         <div className="user-detail-section">
@@ -193,7 +257,10 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
           {/* Balance adjustment history */}
           {balanceAdjustments.length > 0 && (
             <div className="balance-history">
-              <h5>Recent Adjustments</h5>
+              <div className="section-header-row">
+                <h5>Recent Adjustments</h5>
+                {adjTotal > 10 && <span className="pagination-info">Page {adjPage} of {adjTotalPages}</span>}
+              </div>
               {balanceAdjustments.map(adj => (
                 <div key={adj.id} className="balance-history-item">
                   <div className="balance-history-top">
@@ -215,6 +282,12 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
                   </div>
                 </div>
               ))}
+              {adjTotal > 10 && (
+                <div className="pagination-controls">
+                  <button className="pagination-btn" disabled={adjPage <= 1} onClick={() => { const p = adjPage - 1; setAdjPage(p); onRefresh(userProfile.id, `?tx_page=${txPage}&adj_page=${p}`) }}>Prev</button>
+                  <button className="pagination-btn" disabled={adjPage >= adjTotalPages} onClick={() => { const p = adjPage + 1; setAdjPage(p); onRefresh(userProfile.id, `?tx_page=${txPage}&adj_page=${p}`) }}>Next</button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -262,7 +335,10 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
 
         {/* Transactions */}
         <div className="user-detail-section">
-          <h4>Transaction History</h4>
+          <div className="section-header-row">
+            <h4>Transaction History</h4>
+            {txTotal > 10 && <span className="pagination-info">Page {txPage} of {txTotalPages}</span>}
+          </div>
           {hasFinancialActivity ? (
             <div className="user-detail-tx-list">
               {transactions.map(tx => (
@@ -295,6 +371,12 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
                     </div>
                   ))}
                 </>
+              )}
+              {txTotal > 10 && (
+                <div className="pagination-controls">
+                  <button className="pagination-btn" disabled={txPage <= 1} onClick={() => { const p = txPage - 1; setTxPage(p); onRefresh(userProfile.id, `?tx_page=${p}&adj_page=${adjPage}`) }}>Prev</button>
+                  <button className="pagination-btn" disabled={txPage >= txTotalPages} onClick={() => { const p = txPage + 1; setTxPage(p); onRefresh(userProfile.id, `?tx_page=${p}&adj_page=${adjPage}`) }}>Next</button>
+                </div>
               )}
             </div>
           ) : (

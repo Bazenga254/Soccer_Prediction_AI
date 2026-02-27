@@ -368,7 +368,15 @@ export default function UsersTab() {
               onToggleActive={handleDetailToggleActive}
               staffRole={staffRole}
               getAuthHeaders={getAuthHeaders}
-              onRefresh={viewUserDetail}
+              onRefresh={(id, params) => {
+                if (params) {
+                  axios.get(`/api/admin/users/${id}${params}`, { headers: getAuthHeaders() })
+                    .then(res => setDetailUser(res.data)).catch(() => {})
+                } else {
+                  viewUserDetail(id)
+                }
+              }}
+              onViewUser={(id) => viewUserDetail(id)}
             />
           </div>
         </div>
