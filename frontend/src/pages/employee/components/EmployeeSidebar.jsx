@@ -16,11 +16,24 @@ const ROLE_COLORS = {
 
 const EMPLOYEE_PAGES = [
   { id: 'dashboard', icon: '\u{1F4CA}', label: 'Dashboard', requiredModule: null },
+  { id: 'online', icon: '\u{1F7E2}', label: 'Online Users', requiredModule: 'online_users' },
+  { id: 'users', icon: '\u{1F465}', label: 'Users', requiredModule: 'users' },
   { id: 'support', icon: '\u{1F3A7}', label: 'Customer Care', requiredModule: 'support' },
+  { id: 'predictions', icon: '\u{26BD}', label: 'Predictions', requiredModule: 'predictions' },
+  { id: 'community', icon: '\u{1F4AC}', label: 'Community', requiredModule: 'community' },
+  { id: 'sales', icon: '\u{1F4B5}', label: 'Sales & Revenue', requiredModule: 'sales' },
   { id: 'finance', icon: '\u{1F4B0}', label: 'Finance', requiredModule: 'finance' },
+  { id: 'subscriptions', icon: '\u{1F48E}', label: 'Subscriptions', requiredModule: 'subscriptions' },
+  { id: 'withdrawals', icon: '\u{1F4B8}', label: 'Withdrawals', requiredModule: 'withdrawals' },
+  { id: 'referrals', icon: '\u{1F517}', label: 'Referrals', requiredModule: 'referrals' },
+  { id: 'codes', icon: '\u{1F511}', label: 'Access Codes', requiredModule: 'access_codes' },
   { id: 'technical', icon: '\u{1F527}', label: 'Technical', requiredModule: 'technical' },
+  { id: 'bots', icon: '\u{1F916}', label: 'Bots', requiredModule: 'bots' },
+  { id: 'activity', icon: '\u{1F4CB}', label: 'Activity Logs', requiredModule: 'activity_logs' },
+  { id: 'security', icon: '\u{1F512}', label: 'Security', requiredModule: 'security' },
+  { id: 'employees', icon: '\u{1F3E2}', label: 'Employees', requiredModule: 'employees' },
+  { id: 'settings', icon: '\u{2699}', label: 'Settings', requiredModule: 'settings' },
   { id: 'manager', icon: '\u{1F454}', label: 'Management', requiredLevel: 1 },
-  { id: 'bots', icon: '\u{1F916}', label: 'Bots', requiredModule: null },
   { id: 'docs', icon: '\u{1F4DA}', label: 'Documentation', requiredModule: null },
 ]
 

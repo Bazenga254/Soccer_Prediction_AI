@@ -1,5 +1,6 @@
 import { useState, Component } from 'react'
 import { EmployeeProvider, useEmployee } from './context/EmployeeContext'
+import { AdminProvider } from '../admin/context/AdminContext'
 import EmployeeSidebar from './components/EmployeeSidebar'
 import EmployeeDashboard from './pages/EmployeeDashboard'
 import FinancePage from './pages/FinancePage'
@@ -8,6 +9,20 @@ import CustomerCarePage from './pages/CustomerCarePage'
 import ManagerPanel from './pages/ManagerPanel'
 import BotsPage from './pages/BotsPage'
 import EmployeeDocsPage from './pages/EmployeeDocsPage'
+// Admin tab components for modules without employee-specific pages
+import OnlineUsersTab from '../admin/tabs/OnlineUsersTab'
+import UsersTab from '../admin/tabs/UsersTab'
+import PredictionsTab from '../admin/tabs/PredictionsTab'
+import CommunityTab from '../admin/tabs/CommunityTab'
+import SalesTab from '../admin/tabs/SalesTab'
+import SubscriptionsTab from '../admin/tabs/SubscriptionsTab'
+import WithdrawalsTab from '../admin/tabs/WithdrawalsTab'
+import ReferralsTab from '../admin/tabs/ReferralsTab'
+import AccessCodesTab from '../admin/tabs/AccessCodesTab'
+import ActivityLogsTab from '../admin/tabs/ActivityLogsTab'
+import SecurityTab from '../admin/tabs/SecurityTab'
+import StaffTab from '../admin/tabs/StaffTab'
+import SettingsTab from '../admin/tabs/SettingsTab'
 import './styles/employee.css'
 
 class EmployeeErrorBoundary extends Component {
@@ -68,6 +83,20 @@ const PAGE_COMPONENTS = {
   manager: ManagerPanel,
   bots: BotsPage,
   docs: EmployeeDocsPage,
+  // Admin tabs for granted permissions
+  online: OnlineUsersTab,
+  users: UsersTab,
+  predictions: PredictionsTab,
+  community: CommunityTab,
+  sales: SalesTab,
+  subscriptions: SubscriptionsTab,
+  withdrawals: WithdrawalsTab,
+  referrals: ReferralsTab,
+  codes: AccessCodesTab,
+  activity: ActivityLogsTab,
+  security: SecurityTab,
+  employees: StaffTab,
+  settings: SettingsTab,
 }
 
 function EmployeeShell() {
@@ -109,9 +138,11 @@ function EmployeeShell() {
 export default function Employee() {
   return (
     <EmployeeErrorBoundary>
-      <EmployeeProvider>
-        <EmployeeShell />
-      </EmployeeProvider>
+      <AdminProvider>
+        <EmployeeProvider>
+          <EmployeeShell />
+        </EmployeeProvider>
+      </AdminProvider>
     </EmployeeErrorBoundary>
   )
 }
