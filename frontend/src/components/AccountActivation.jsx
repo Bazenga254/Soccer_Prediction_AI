@@ -117,8 +117,7 @@ export default function AccountActivation() {
           isOpen={true}
           onClose={() => setShowMpesa(false)}
           transactionType="balance_topup"
-          minAmount={minKes}
-          defaultAmount={minKes}
+          amountKes={minKes}
           onSuccess={handlePaymentSuccess}
         />
       )}
