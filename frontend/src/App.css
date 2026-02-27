@@ -25556,7 +25556,7 @@ html, body {
 
 .ai-assistant-page {
   display: flex;
-  height: calc(100vh - 140px);
+  height: calc(100vh - 220px);
   background: #0f1923;
   position: relative;
   overflow: hidden;
@@ -25706,7 +25706,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
+  padding: 8px 16px;
   border-bottom: 1px solid #1e293b;
   background: #111827;
 }
@@ -25763,35 +25763,35 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   text-align: center;
-  padding: 40px 20px;
+  padding: 16px 16px;
   max-width: 600px;
   margin: 0 auto;
+  overflow-y: auto;
 }
 
 .ai-welcome-icon {
-  font-size: 3rem;
-  margin-bottom: 16px;
+  font-size: 2rem;
+  margin-bottom: 8px;
 }
 
 .ai-welcome h3 {
   color: #e2e8f0;
-  font-size: 1.3rem;
-  margin: 0 0 12px 0;
+  font-size: 1.1rem;
+  margin: 0 0 6px 0;
 }
 
 .ai-welcome p {
   color: #94a3b8;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  margin: 0 0 20px 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin: 0 0 12px 0;
 }
 
 .ai-cost-info {
   display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 10px;
+  margin-bottom: 14px;
   flex-wrap: wrap;
   justify-content: center;
 }
@@ -26077,7 +26077,7 @@ html, body {
 
 /* Input Area */
 .ai-input-area {
-  padding: 12px 20px 16px;
+  padding: 8px 16px 10px;
   background: #111827;
   border-top: 1px solid #1e293b;
 }
@@ -26147,7 +26147,7 @@ html, body {
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
   .ai-assistant-page {
-    height: calc(100vh - 120px);
+    height: calc(100vh - 200px);
   }
 
   .ai-sidebar-toggle {
@@ -26188,7 +26188,7 @@ html, body {
   }
 
   .ai-messages-container {
-    padding: 14px;
+    padding: 10px;
   }
 
   .ai-input-area {
