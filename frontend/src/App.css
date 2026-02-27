@@ -5988,6 +5988,13 @@ html, body {
 }
 
 /* Mobile adjustments for stats */
+@media (max-width: 900px) and (min-width: 769px) {
+  .ai-sidebar {
+    width: 220px;
+    min-width: 220px;
+  }
+}
+
 @media (max-width: 480px) {
   .stats-score-num { font-size: 20px; }
   .stats-team-crest { width: 22px; height: 22px; }
@@ -25563,20 +25570,187 @@ html, body {
   overflow: hidden;
 }
 
-/* Sidebar Toggle (mobile) */
-.ai-sidebar-toggle {
-  display: none;
-  position: fixed;
-  top: 130px;
-  left: 10px;
-  z-index: 101;
-  background: #1e293b;
-  color: #94a3b8;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 0.85rem;
+/* History Dropdown Toggle (in header) */
+.ai-chat-header-title-area {
+  position: relative;
+}
+
+.ai-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: #e2e8f0;
   cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.15s;
+  font-size: 1rem;
+  font-weight: 600;
+  max-width: 200px;
+}
+
+.ai-history-toggle:hover {
+  background: #1e293b;
+}
+
+.ai-history-toggle-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-history-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s;
+  color: #64748b;
+}
+
+.ai-history-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* History Dropdown Panel */
+.ai-history-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 320px;
+  max-height: 400px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: aiDropdownIn 0.2s ease;
+}
+
+@keyframes aiDropdownIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ai-history-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #334155;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ai-history-new-btn {
+  background: #6c5ce7;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ai-history-new-btn:hover {
+  background: #7c3aed;
+}
+
+.ai-history-dropdown-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 300px;
+  padding: 6px;
+}
+
+.ai-history-dropdown-empty {
+  color: #64748b;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 24px 16px;
+}
+
+.ai-history-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.ai-history-dropdown-item:hover {
+  background: #334155;
+}
+
+.ai-history-dropdown-item.active {
+  background: #334155;
+  border-left: 3px solid #6c5ce7;
+}
+
+.ai-history-dropdown-item-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+}
+
+.ai-history-dropdown-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-history-dropdown-item-title {
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-history-dropdown-item-date {
+  color: #64748b;
+  font-size: 0.72rem;
+  margin-top: 2px;
+}
+
+.ai-history-dropdown-item-delete {
+  background: none;
+  border: none;
+  color: #475569;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.ai-history-dropdown-item:hover .ai-history-dropdown-item-delete {
+  opacity: 1;
+}
+
+.ai-history-dropdown-item-delete:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.ai-history-dropdown-footer {
+  padding: 8px 14px;
+  border-top: 1px solid #334155;
+  color: #475569;
+  font-size: 0.72rem;
+  text-align: center;
 }
 
 /* Sidebar */
@@ -26153,24 +26327,23 @@ html, body {
     max-height: calc(100dvh - 160px);
   }
 
-  .ai-sidebar-toggle {
-    display: block;
-  }
-
   .ai-sidebar {
-    position: fixed;
-    top: 120px;
-    left: 0;
-    bottom: 0;
-    z-index: 100;
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-    width: 280px;
+    display: none;
   }
 
-  .ai-sidebar.open {
-    transform: translateX(0);
-    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.4);
+  .ai-history-toggle {
+    max-width: 160px;
+    font-size: 0.9rem;
+  }
+
+  .ai-history-dropdown {
+    width: calc(100vw - 32px);
+    left: -8px;
+    max-height: 350px;
+  }
+
+  .ai-history-dropdown-item-delete {
+    opacity: 1;
   }
 
   .ai-message-content {
@@ -26187,7 +26360,6 @@ html, body {
 
   .ai-chat-header {
     padding: 6px 10px;
-    padding-left: 75px;
   }
 
   .ai-messages-container {

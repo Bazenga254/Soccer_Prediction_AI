@@ -18,13 +18,16 @@ function AIAssistant() {
   const navigate = useNavigate()
   const chatEndRef = useRef(null)
   const inputRef = useRef(null)
+  const dropdownRef = useRef(null)
 
   const [conversations, setConversations] = useState([])
   const [activeConversation, setActiveConversation] = useState(null)
+  const [activeTitle, setActiveTitle] = useState(null)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [creditsRemaining, setCreditsRemaining] = useState(null)
 
@@ -46,6 +49,23 @@ function AIAssistant() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Close history dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setHistoryOpen(false)
+      }
+    }
+    if (historyOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('touchstart', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+    }
+  }, [historyOpen])
 
   async function loadConversations() {
     try {
@@ -83,8 +103,10 @@ function AIAssistant() {
       if (res.ok) {
         const data = await res.json()
         setActiveConversation(data.conversation_id)
+        setActiveTitle('New Chat')
         setMessages([])
         setSidebarOpen(false)
+        setHistoryOpen(false)
         loadConversations()
         inputRef.current?.focus()
       }
@@ -95,7 +117,9 @@ function AIAssistant() {
 
   async function handleSelectConversation(conv) {
     setActiveConversation(conv.id)
+    setActiveTitle(conv.title)
     setSidebarOpen(false)
+    setHistoryOpen(false)
     await loadMessages(conv.id)
   }
 
@@ -109,6 +133,7 @@ function AIAssistant() {
       })
       if (activeConversation === convId) {
         setActiveConversation(null)
+        setActiveTitle(null)
         setMessages([])
       }
       loadConversations()
@@ -133,6 +158,7 @@ function AIAssistant() {
           const data = await res.json()
           convId = data.conversation_id
           setActiveConversation(convId)
+          setActiveTitle('New Chat')
         } else {
           return
         }
@@ -168,8 +194,8 @@ function AIAssistant() {
         if (data.credits_remaining !== undefined) {
           setCreditsRemaining(data.credits_remaining)
         }
-        // Update title in sidebar
         if (data.title) {
+          setActiveTitle(data.title)
           setConversations(prev => prev.map(c =>
             c.id === convId ? { ...c, title: data.title, updated_at: new Date().toISOString() } : c
           ))
@@ -195,14 +221,10 @@ function AIAssistant() {
   }
 
   async function handleMatchClick(matchCard) {
-    // Navigate to match analysis page
-    // The match_key format is typically: {team_a_id}-{team_b_id}-{date}
-    // We need to check if already viewed to avoid double-charging
     const matchKey = matchCard.match_key
     if (!matchKey) return
 
     try {
-      // Record view (this endpoint handles dedup + credit deduction)
       const res = await fetch('/api/analysis-views/record', {
         method: 'POST',
         headers: authHeaders,
@@ -222,29 +244,21 @@ function AIAssistant() {
       console.error('Failed to record view:', e)
     }
 
-    // Parse match_key to get competition and team IDs for navigation
-    // fixture_id format: {team_a_id}-{team_b_id}-{YYYYMMDD}
     const parts = matchKey.split('-')
     if (parts.length >= 2) {
-      // Navigate to match page - the MatchAnalysis page accepts various URL formats
       navigate(`/match/all/${parts[0]}/${parts[1]}`)
     }
   }
 
   function renderMessageContent(content, matchLinks) {
     if (!content) return null
-
-    // Remove [MATCH_CARD]...[/MATCH_CARD] blocks from displayed text
     const cleanContent = content.replace(/\[MATCH_CARD\].*?\[\/MATCH_CARD\]/gs, '').trim()
-
-    // Simple markdown-like rendering
     const lines = cleanContent.split('\n')
     const elements = []
     let currentList = []
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
-
       if (line.startsWith('- ') || line.startsWith('* ')) {
         currentList.push(line.slice(2))
       } else {
@@ -275,12 +289,10 @@ function AIAssistant() {
         </ul>
       )
     }
-
     return elements
   }
 
   function renderBoldText(text) {
-    // Handle **bold** text
     const parts = text.split(/(\*\*.*?\*\*)/g)
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
@@ -325,12 +337,7 @@ function AIAssistant() {
 
   return (
     <div className="ai-assistant-page">
-      {/* Mobile sidebar toggle */}
-      <button className="ai-sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
-        {sidebarOpen ? '\u2715' : '\u2630'} History
-      </button>
-
-      {/* Sidebar */}
+      {/* Desktop Sidebar */}
       <div className={`ai-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="ai-sidebar-header">
           <h3>Conversations</h3>
@@ -374,7 +381,56 @@ function AIAssistant() {
         <div className="ai-chat-header">
           <div className="ai-chat-header-left">
             <span className="ai-chat-header-icon">{'\u{1F916}'}</span>
-            <h2>AI Assistant</h2>
+            <div className="ai-chat-header-title-area" ref={dropdownRef}>
+              <button className="ai-history-toggle" onClick={() => setHistoryOpen(!historyOpen)}>
+                <span className="ai-history-toggle-title">{activeTitle || 'AI Assistant'}</span>
+                <svg className={`ai-history-chevron ${historyOpen ? 'open' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+
+              {/* Mobile History Dropdown */}
+              {historyOpen && (
+                <div className="ai-history-dropdown">
+                  <div className="ai-history-dropdown-header">
+                    <span>Chat History</span>
+                    <button className="ai-history-new-btn" onClick={handleNewChat}>+ New Chat</button>
+                  </div>
+                  <div className="ai-history-dropdown-list">
+                    {loadingConversations ? (
+                      <div className="ai-history-dropdown-empty">Loading...</div>
+                    ) : conversations.length === 0 ? (
+                      <div className="ai-history-dropdown-empty">No conversations yet. Start chatting!</div>
+                    ) : (
+                      conversations.map(conv => (
+                        <div
+                          key={conv.id}
+                          className={`ai-history-dropdown-item ${activeConversation === conv.id ? 'active' : ''}`}
+                          onClick={() => handleSelectConversation(conv)}
+                        >
+                          <div className="ai-history-dropdown-item-icon">
+                            {activeConversation === conv.id ? '\u{1F4AC}' : '\u{1F5E8}'}
+                          </div>
+                          <div className="ai-history-dropdown-item-info">
+                            <div className="ai-history-dropdown-item-title">{conv.title}</div>
+                            <div className="ai-history-dropdown-item-date">
+                              {new Date(conv.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                          <button
+                            className="ai-history-dropdown-item-delete"
+                            onClick={(e) => handleDeleteConversation(e, conv.id)}
+                          >
+                            {'\u{1F5D1}'}
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="ai-history-dropdown-footer">
+                    Up to 10 conversations saved
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="ai-chat-header-right">
             {creditsRemaining !== null && (
