@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import SEOHead from '../components/SEOHead'
+import { buildLangPath } from '../utils/seoConstants'
 import LandingNav from '../components/LandingNav'
 import AuthModal from '../components/AuthModal'
 import './TodayPredictions.css'
@@ -18,6 +20,9 @@ const TOP_LEAGUES = [
 ]
 
 export default function TodayPredictions() {
+  const { t } = useTranslation()
+  const { lang } = useParams()
+  const currentLang = lang || 'en'
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [authModal, setAuthModal] = useState({ open: false, mode: 'signup' })
@@ -55,9 +60,10 @@ export default function TodayPredictions() {
   return (
     <>
       <SEOHead
-        title={`Soccer Predictions Today - ${today}`}
-        description={`Free AI soccer predictions for ${today}. Today's top picks across Premier League, La Liga, Bundesliga, and 50+ leagues with match analysis.`}
+        title={t('seo.today.title', 'Soccer Predictions Today - Free AI Picks & Tips')}
+        description={t('seo.today.description', `Free AI soccer predictions for ${today}. Today's top picks across 50+ leagues.`)}
         path="/today"
+        lang={currentLang}
         jsonLd={jsonLd}
       />
 

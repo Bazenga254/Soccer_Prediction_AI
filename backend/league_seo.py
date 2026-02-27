@@ -518,3 +518,106 @@ def get_all_league_slugs():
         }
         for code, data in LEAGUE_SEO.items()
     ]
+
+
+# =====================================================================
+# Multilingual SEO metadata for top leagues
+# =====================================================================
+LEAGUE_SEO_I18N = {
+    "PL": {
+        "fr": {"seo_title": "Pronostics Premier League Aujourd\'hui", "seo_desc": "Pronostics IA pour les matchs de Premier League. Conseils pour Arsenal, Liverpool, Man City, Chelsea et toutes les équipes EPL."},
+        "es": {"seo_title": "Predicciones Premier League Hoy", "seo_desc": "Predicciones IA para los partidos de Premier League. Análisis para Arsenal, Liverpool, Man City, Chelsea y todos los equipos."},
+        "pt": {"seo_title": "Palpites Premier League Hoje", "seo_desc": "Palpites IA para os jogos da Premier League. Dicas para Arsenal, Liverpool, Man City, Chelsea e todos os times."},
+        "sw": {"seo_title": "Ubashiri wa Premier League Leo", "seo_desc": "Ubashiri wa AI kwa mechi za Premier League. Vidokezo kwa Arsenal, Liverpool, Man City, Chelsea na timu zote za EPL."},
+        "ar": {"seo_title": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0625\u0646\u062c\u0644\u064a\u0632\u064a \u0627\u0644\u064a\u0648\u0645", "seo_desc": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0625\u0646\u062c\u0644\u064a\u0632\u064a."},
+    },
+    "PD": {
+        "fr": {"seo_title": "Pronostics La Liga Aujourd\'hui", "seo_desc": "Pronostics IA pour les matchs de La Liga. Analyse pour Real Madrid, Barcelone, Atlético et toutes les équipes espagnoles."},
+        "es": {"seo_title": "Predicciones La Liga Hoy", "seo_desc": "Predicciones IA para los partidos de La Liga. Análisis para Real Madrid, Barcelona, Atlético y todos los equipos."},
+        "pt": {"seo_title": "Palpites La Liga Hoje", "seo_desc": "Palpites IA para os jogos da La Liga. Dicas para Real Madrid, Barcelona, Atlético e todos os times espanhois."},
+        "sw": {"seo_title": "Ubashiri wa La Liga Leo", "seo_desc": "Ubashiri wa AI kwa mechi za La Liga. Uchambuzi kwa Real Madrid, Barcelona, Atletico na timu zote za Uhispania."},
+        "ar": {"seo_title": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0625\u0633\u0628\u0627\u0646\u064a \u0627\u0644\u064a\u0648\u0645", "seo_desc": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0625\u0633\u0628\u0627\u0646\u064a."},
+    },
+    "BL1": {
+        "fr": {"seo_title": "Pronostics Bundesliga Aujourd\'hui", "seo_desc": "Pronostics IA pour les matchs de Bundesliga. Conseils pour Bayern Munich, Dortmund, Leverkusen et toutes les équipes allemandes."},
+        "es": {"seo_title": "Predicciones Bundesliga Hoy", "seo_desc": "Predicciones IA para los partidos de Bundesliga. Análisis para Bayern Munich, Dortmund, Leverkusen y todos los equipos."},
+        "pt": {"seo_title": "Palpites Bundesliga Hoje", "seo_desc": "Palpites IA para os jogos da Bundesliga. Dicas para Bayern Munich, Dortmund, Leverkusen e todos os times alemães."},
+        "sw": {"seo_title": "Ubashiri wa Bundesliga Leo", "seo_desc": "Ubashiri wa AI kwa mechi za Bundesliga. Vidokezo kwa Bayern Munich, Dortmund, Leverkusen na timu zote za Ujerumani."},
+        "ar": {"seo_title": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0623\u0644\u0645\u0627\u0646\u064a \u0627\u0644\u064a\u0648\u0645", "seo_desc": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0623\u0644\u0645\u0627\u0646\u064a."},
+    },
+    "SA": {
+        "fr": {"seo_title": "Pronostics Serie A Aujourd\'hui", "seo_desc": "Pronostics IA pour les matchs de Serie A. Analyse pour Inter Milan, AC Milan, Juventus, Napoli et toutes les équipes italiennes."},
+        "es": {"seo_title": "Predicciones Serie A Hoy", "seo_desc": "Predicciones IA para los partidos de Serie A. Análisis para Inter, AC Milan, Juventus, Napoli y todos los equipos italianos."},
+        "pt": {"seo_title": "Palpites Serie A Hoje", "seo_desc": "Palpites IA para os jogos da Serie A. Dicas para Inter, AC Milan, Juventus, Napoli e todos os times italianos."},
+        "sw": {"seo_title": "Ubashiri wa Serie A Leo", "seo_desc": "Ubashiri wa AI kwa mechi za Serie A. Uchambuzi kwa Inter Milan, AC Milan, Juventus, Napoli na timu zote za Italia."},
+        "ar": {"seo_title": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0625\u064a\u0637\u0627\u0644\u064a \u0627\u0644\u064a\u0648\u0645", "seo_desc": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0625\u064a\u0637\u0627\u0644\u064a."},
+    },
+    "FL1": {
+        "fr": {"seo_title": "Pronostics Ligue 1 Aujourd\'hui", "seo_desc": "Pronostics IA pour les matchs de Ligue 1. Conseils pour PSG, Marseille, Lyon, Monaco et toutes les équipes françaises."},
+        "es": {"seo_title": "Predicciones Ligue 1 Hoy", "seo_desc": "Predicciones IA para los partidos de Ligue 1. Análisis para PSG, Marsella, Lyon, Monaco y todos los equipos franceses."},
+        "pt": {"seo_title": "Palpites Ligue 1 Hoje", "seo_desc": "Palpites IA para os jogos da Ligue 1. Dicas para PSG, Marseille, Lyon, Monaco e todos os times franceses."},
+        "sw": {"seo_title": "Ubashiri wa Ligue 1 Leo", "seo_desc": "Ubashiri wa AI kwa mechi za Ligue 1. Vidokezo kwa PSG, Marseille, Lyon, Monaco na timu zote za Ufaransa."},
+        "ar": {"seo_title": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0641\u0631\u0646\u0633\u064a \u0627\u0644\u064a\u0648\u0645", "seo_desc": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0641\u0631\u0646\u0633\u064a."},
+    },
+    "CL": {
+        "fr": {"seo_title": "Pronostics Ligue des Champions Aujourd\'hui", "seo_desc": "Pronostics IA pour les matchs de Ligue des Champions UEFA. Analyse et conseils pour tous les matchs de C1."},
+        "es": {"seo_title": "Predicciones Champions League Hoy", "seo_desc": "Predicciones IA para los partidos de Champions League UEFA. Análisis y consejos para todos los partidos."},
+        "pt": {"seo_title": "Palpites Champions League Hoje", "seo_desc": "Palpites IA para os jogos da Champions League UEFA. Análise e dicas para todos os jogos."},
+        "sw": {"seo_title": "Ubashiri wa Champions League Leo", "seo_desc": "Ubashiri wa AI kwa mechi za Champions League ya UEFA. Uchambuzi na vidokezo kwa mechi zote."},
+        "ar": {"seo_title": "\u062a\u0648\u0642\u0639\u0627\u062a \u062f\u0648\u0631\u064a \u0623\u0628\u0637\u0627\u0644 \u0623\u0648\u0631\u0648\u0628\u0627 \u0627\u0644\u064a\u0648\u0645", "seo_desc": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a \u062f\u0648\u0631\u064a \u0623\u0628\u0637\u0627\u0644 \u0623\u0648\u0631\u0648\u0628\u0627."},
+    },
+    "EL": {
+        "fr": {"seo_title": "Pronostics Ligue Europa Aujourd\'hui", "seo_desc": "Pronostics IA pour les matchs de Ligue Europa UEFA."},
+        "es": {"seo_title": "Predicciones Europa League Hoy", "seo_desc": "Predicciones IA para los partidos de Europa League UEFA."},
+        "pt": {"seo_title": "Palpites Europa League Hoje", "seo_desc": "Palpites IA para os jogos da Europa League UEFA."},
+        "sw": {"seo_title": "Ubashiri wa Europa League Leo", "seo_desc": "Ubashiri wa AI kwa mechi za Europa League ya UEFA."},
+        "ar": {"seo_title": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0623\u0648\u0631\u0648\u0628\u064a \u0627\u0644\u064a\u0648\u0645", "seo_desc": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0623\u0648\u0631\u0648\u0628\u064a."},
+    },
+    "BSA": {
+        "fr": {"seo_title": "Pronostics Brasileir\u00e3o Aujourd\'hui", "seo_desc": "Pronostics IA pour les matchs du Brasileir\u00e3o Serie A."},
+        "es": {"seo_title": "Predicciones Brasileir\u00e3o Hoy", "seo_desc": "Predicciones IA para los partidos del Brasileir\u00e3o Serie A."},
+        "pt": {"seo_title": "Palpites Brasileir\u00e3o Hoje", "seo_desc": "Palpites IA para os jogos do Brasileir\u00e3o Serie A. Dicas para Flamengo, Palmeiras, Corinthians e todos os times."},
+        "sw": {"seo_title": "Ubashiri wa Brasileir\u00e3o Leo", "seo_desc": "Ubashiri wa AI kwa mechi za Brasileir\u00e3o Serie A."},
+        "ar": {"seo_title": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0628\u0631\u0627\u0632\u064a\u0644\u064a \u0627\u0644\u064a\u0648\u0645", "seo_desc": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0628\u0631\u0627\u0632\u064a\u0644\u064a."},
+    },
+    "KPL": {
+        "fr": {"seo_title": "Pronostics Kenyan Premier League Aujourd\'hui", "seo_desc": "Pronostics IA pour les matchs de la Kenyan Premier League."},
+        "es": {"seo_title": "Predicciones Kenyan Premier League Hoy", "seo_desc": "Predicciones IA para los partidos de Kenyan Premier League."},
+        "pt": {"seo_title": "Palpites Kenyan Premier League Hoje", "seo_desc": "Palpites IA para os jogos da Kenyan Premier League."},
+        "sw": {"seo_title": "Ubashiri wa Ligi Kuu ya Kenya Leo", "seo_desc": "Ubashiri wa AI kwa mechi za Ligi Kuu ya Kenya. Vidokezo kwa Gor Mahia, AFC Leopards, Tusker na timu zote za KPL."},
+        "ar": {"seo_title": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0643\u064a\u0646\u064a \u0627\u0644\u064a\u0648\u0645", "seo_desc": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0643\u064a\u0646\u064a."},
+    },
+}
+
+# Template translations for leagues not in LEAGUE_SEO_I18N
+LEAGUE_SEO_TEMPLATES = {
+    "fr": {"seo_title": "Pronostics {name} Aujourd\'hui", "seo_desc": "Pronostics IA pour les matchs de {name}. Pr\u00e9visions pr\u00e9cises et analyse des cotes."},
+    "es": {"seo_title": "Predicciones {name} Hoy", "seo_desc": "Predicciones IA para los partidos de {name}. Pron\u00f3sticos precisos y an\u00e1lisis de cuotas."},
+    "pt": {"seo_title": "Palpites {name} Hoje", "seo_desc": "Palpites IA para os jogos de {name}. Previs\u00f5es precisas e an\u00e1lise de odds."},
+    "sw": {"seo_title": "Ubashiri wa {name} Leo", "seo_desc": "Ubashiri wa AI kwa mechi za {name}. Utabiri sahihi na uchambuzi wa odds."},
+    "ar": {"seo_title": "\u062a\u0648\u0642\u0639\u0627\u062a {name} \u0627\u0644\u064a\u0648\u0645", "seo_desc": "\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a {name}."},
+}
+
+
+def get_league_seo_localized(code, lang="en"):
+    """Get localized SEO title/desc for a league."""
+    league = LEAGUE_SEO.get(code)
+    if not league:
+        return None
+
+    if lang == "en":
+        return {"seo_title": league["seo_title"], "seo_desc": league["seo_desc"]}
+
+    # Check handcrafted translations first
+    if code in LEAGUE_SEO_I18N and lang in LEAGUE_SEO_I18N[code]:
+        return LEAGUE_SEO_I18N[code][lang]
+
+    # Fall back to template
+    if lang in LEAGUE_SEO_TEMPLATES:
+        name = league["seo_title"].replace(" Predictions Today", "")
+        return {
+            "seo_title": LEAGUE_SEO_TEMPLATES[lang]["seo_title"].format(name=name),
+            "seo_desc": LEAGUE_SEO_TEMPLATES[lang]["seo_desc"].format(name=name),
+        }
+
+    return {"seo_title": league["seo_title"], "seo_desc": league["seo_desc"]}

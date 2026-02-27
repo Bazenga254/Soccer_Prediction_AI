@@ -791,5 +791,34 @@
     "createAccount": "Create Account",
     "alreadyHaveAccount": "Already have an account?",
     "signIn": "Sign in"
+  },
+  "seo": {
+    "landing": {
+      "title": "AI Soccer Predictions, Live Scores & Betting Analysis",
+      "description": "Get accurate AI soccer predictions, live scores, and betting analysis for 50+ football leagues worldwide. Free daily predictions powered by machine learning."
+    },
+    "today": {
+      "title": "Soccer Predictions Today - Free AI Picks & Tips",
+      "description": "Today's AI-powered soccer predictions across Premier League, La Liga, Serie A, Bundesliga, and 50+ leagues. Free daily picks with match analysis."
+    },
+    "blog": {
+      "title": "Soccer Betting Tips & Match Analysis Blog",
+      "description": "Expert soccer betting tips, prediction strategies, and match analysis articles. Improve your predictions with data-driven insights and AI analysis."
+    },
+    "docs": {
+      "title": "Documentation & Help Guide",
+      "description": "Learn how to use Spark AI Prediction platform. Guides for AI predictions, live scores, community features, and account management."
+    },
+    "terms": {
+      "title": "Terms of Service",
+      "description": "Read Spark AI Prediction's terms of service, usage policies, and legal information."
+    },
+    "league": {
+      "titleTemplate": "{{leagueName}} Predictions Today - AI Tips & Analysis",
+      "descriptionTemplate": "AI-powered predictions for today's {{leagueName}} matches. Accurate forecasts, odds analysis, and betting tips for upcoming {{leagueName}} fixtures."
+    },
+    "blogArticle": {
+      "titleSuffix": "Spark AI Blog"
+    }
   }
 }

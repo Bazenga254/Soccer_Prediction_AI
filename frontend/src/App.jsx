@@ -229,16 +229,32 @@ function App() {
                 <Route path="/ref/:username" element={<ReferralLanding />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/login" element={<AccessGate />} />
-                <Route path="/docs" element={<DocsPage />} />
-                <Route path="/docs/:sectionId" element={<DocsPage />} />
-                <Route path="/terms" element={<TermsOfService />} />
                 <Route path="/extension" element={<ExtensionInstall />} />
                 <Route path="/auth/whop/callback" element={<WhopCallback />} />
                 <Route path="/magic-login" element={<MagicLogin />} />
-                <Route path="/today" element={<TodayPredictions />} />
-                <Route path="/predictions/:leagueSlug" element={<LeaguePredictions />} />
-                <Route path="/blog" element={<BlogIndex />} />
-                <Route path="/blog/:slug" element={<BlogArticle />} />
+
+                {/* Public SEO routes: English (no prefix) */}
+                <Route element={<LangLayout />}>
+                  <Route path="/today" element={<TodayPredictions />} />
+                  <Route path="/predictions/:leagueSlug" element={<LeaguePredictions />} />
+                  <Route path="/blog" element={<BlogIndex />} />
+                  <Route path="/blog/:slug" element={<BlogArticle />} />
+                  <Route path="/docs" element={<DocsPage />} />
+                  <Route path="/docs/:sectionId" element={<DocsPage />} />
+                  <Route path="/terms" element={<TermsOfService />} />
+                </Route>
+
+                {/* Public SEO routes: Language-prefixed (fr, es, pt, sw, ar) */}
+                <Route path="/:lang" element={<LangLayout />}>
+                  <Route path="today" element={<TodayPredictions />} />
+                  <Route path="predictions/:leagueSlug" element={<LeaguePredictions />} />
+                  <Route path="blog" element={<BlogIndex />} />
+                  <Route path="blog/:slug" element={<BlogArticle />} />
+                  <Route path="docs" element={<DocsPage />} />
+                  <Route path="docs/:sectionId" element={<DocsPage />} />
+                  <Route path="terms" element={<TermsOfService />} />
+                </Route>
+
                 <Route path="*" element={<ProtectedApp />} />
               </Routes>
             </Suspense>

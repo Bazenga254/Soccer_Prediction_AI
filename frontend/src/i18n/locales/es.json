@@ -109,7 +109,7 @@
     "freeFeature5": "1 publicación en la comunidad por día",
     "proFeature1": "Análisis de partidos ilimitados",
     "proFeature2": "Análisis de jackpot ilimitados",
-    "proFeature3": "10 mensajes de chat con IA al d\u00eda",
+    "proFeature3": "10 mensajes de chat con IA al día",
     "proFeature4": "Analítica avanzada y apuestas de valor",
     "proFeature5": "Experiencia sin anuncios",
     "proFeature6": "Soporte prioritario",
@@ -770,5 +770,34 @@
     "createAccount": "Crear Cuenta",
     "alreadyHaveAccount": "¿Ya tienes una cuenta?",
     "signIn": "Iniciar sesión"
+  },
+  "seo": {
+    "landing": {
+      "title": "Predicciones de Fútbol con IA, Resultados en Vivo y Análisis",
+      "description": "Predicciones de fútbol precisas con inteligencia artificial, resultados en vivo y análisis de apuestas para más de 50 ligas. Pronósticos diarios gratuitos."
+    },
+    "today": {
+      "title": "Predicciones de Fútbol Hoy - Pronósticos IA Gratis",
+      "description": "Predicciones de fútbol de hoy con IA para La Liga, Premier League, Serie A, Bundesliga y más de 50 ligas. Pronósticos gratuitos con análisis."
+    },
+    "blog": {
+      "title": "Consejos de Apuestas Deportivas y Análisis de Fútbol",
+      "description": "Consejos expertos en pronósticos de fútbol, estrategias de apuestas y análisis de partidos. Mejora tus predicciones con inteligencia artificial."
+    },
+    "docs": {
+      "title": "Documentación y Guía de Ayuda",
+      "description": "Aprende a usar Spark AI Prediction. Guías para predicciones IA, resultados en vivo y funciones de la comunidad."
+    },
+    "terms": {
+      "title": "Términos de Servicio",
+      "description": "Lee los términos de servicio y políticas de uso de Spark AI Prediction."
+    },
+    "league": {
+      "titleTemplate": "Predicciones {{leagueName}} Hoy - Análisis con IA",
+      "descriptionTemplate": "Predicciones IA para los partidos de {{leagueName}} hoy. Pronósticos precisos, análisis de cuotas y consejos de apuestas."
+    },
+    "blogArticle": {
+      "titleSuffix": "Blog Spark AI"
+    }
   }
 }

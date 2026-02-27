@@ -528,3 +528,99 @@ def get_article(slug):
 def get_articles_by_category(category):
     """Return articles filtered by category."""
     return [a for a in BLOG_ARTICLES if a["category"] == category]
+
+
+# =====================================================================
+# Multilingual blog article titles and excerpts
+# =====================================================================
+BLOG_TITLES_I18N = {
+    "how-ai-predicts-soccer-matches": {
+        "fr": {"title": "Comment l\'IA Pr\u00e9dit les R\u00e9sultats des Matchs de Football", "excerpt": "D\u00e9couvrez comment les algorithmes d\'apprentissage automatique analysent la forme des \u00e9quipes, les confrontations directes et les donn\u00e9es pour pr\u00e9dire les r\u00e9sultats."},
+        "es": {"title": "C\u00f3mo la IA Predice los Resultados del F\u00fatbol", "excerpt": "Descubre c\u00f3mo los algoritmos de aprendizaje autom\u00e1tico analizan la forma del equipo, el historial y los datos para predecir resultados."},
+        "pt": {"title": "Como a IA Prev\u00ea os Resultados do Futebol", "excerpt": "Descubra como os algoritmos de aprendizado de m\u00e1quina analisam a forma da equipe, confrontos diretos e dados para prever resultados."},
+        "sw": {"title": "Jinsi AI Inavyotabiri Matokeo ya Mechi za Soka", "excerpt": "Gundua jinsi algorithm za kujifunza kwa mashine zinavyochambua hali ya timu, rekodi za uso kwa uso na data kutabiri matokeo."},
+        "ar": {"title": "\u0643\u064a\u0641 \u064a\u062a\u0646\u0628\u0623 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0628\u0646\u062a\u0627\u0626\u062c \u0643\u0631\u0629 \u0627\u0644\u0642\u062f\u0645", "excerpt": "\u0627\u0643\u062a\u0634\u0641 \u0643\u064a\u0641 \u062a\u062d\u0644\u0644 \u062e\u0648\u0627\u0631\u0632\u0645\u064a\u0627\u062a \u0627\u0644\u062a\u0639\u0644\u0645 \u0627\u0644\u0622\u0644\u064a \u0623\u062f\u0627\u0621 \u0627\u0644\u0641\u0631\u0642 \u0648\u0627\u0644\u0645\u0648\u0627\u062c\u0647\u0627\u062a \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629 \u0644\u0644\u062a\u0646\u0628\u0624 \u0628\u0627\u0644\u0646\u062a\u0627\u0626\u062c."},
+    },
+    "premier-league-betting-tips-guide": {
+        "fr": {"title": "Guide des Pronostics Premier League", "excerpt": "Conseils experts pour les paris Premier League. Strat\u00e9gies pour les march\u00e9s r\u00e9sultat, plus/moins et les deux \u00e9quipes marquent."},
+        "es": {"title": "Gu\u00eda de Predicciones Premier League", "excerpt": "Consejos expertos para apuestas de Premier League. Estrategias para mercados de resultado, m\u00e1s/menos y ambos marcan."},
+        "pt": {"title": "Guia de Palpites Premier League", "excerpt": "Dicas de especialistas para apostas na Premier League. Estrat\u00e9gias para mercados de resultado, mais/menos e ambas marcam."},
+        "sw": {"title": "Mwongozo wa Ubashiri wa Premier League", "excerpt": "Vidokezo vya wataalamu kwa kamari ya Premier League. Mikakati ya matokeo, zaidi/chini na timu zote kupiga goli."},
+        "ar": {"title": "\u062f\u0644\u064a\u0644 \u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0625\u0646\u062c\u0644\u064a\u0632\u064a", "excerpt": "\u0646\u0635\u0627\u0626\u062d \u062e\u0628\u0631\u0627\u0621 \u0644\u0644\u0631\u0647\u0627\u0646\u0627\u062a \u0639\u0644\u0649 \u0627\u0644\u062f\u0648\u0631\u064a \u0627\u0644\u0625\u0646\u062c\u0644\u064a\u0632\u064a."},
+    },
+    "understanding-over-under-goals": {
+        "fr": {"title": "Comprendre les Paris Plus/Moins de 2.5 Buts", "excerpt": "Guide complet pour comprendre et utiliser les march\u00e9s plus/moins dans vos paris football."},
+        "es": {"title": "Entendiendo las Apuestas M\u00e1s/Menos de 2.5 Goles", "excerpt": "Gu\u00eda completa para entender y usar los mercados de m\u00e1s/menos en apuestas de f\u00fatbol."},
+        "pt": {"title": "Entendendo Apostas Mais/Menos de 2.5 Gols", "excerpt": "Guia completo para entender e usar os mercados de mais/menos nas apostas de futebol."},
+        "sw": {"title": "Kuelewa Kamari ya Zaidi/Chini ya Magoli 2.5", "excerpt": "Mwongozo kamili wa kuelewa na kutumia masoko ya zaidi/chini katika kamari ya soka."},
+        "ar": {"title": "\u0641\u0647\u0645 \u0631\u0647\u0627\u0646\u0627\u062a \u0623\u0643\u062b\u0631/\u0623\u0642\u0644 \u0645\u0646 2.5 \u0647\u062f\u0641", "excerpt": "\u062f\u0644\u064a\u0644 \u0634\u0627\u0645\u0644 \u0644\u0641\u0647\u0645 \u0648\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0623\u0633\u0648\u0627\u0642 \u0623\u0643\u062b\u0631/\u0623\u0642\u0644 \u0641\u064a \u0631\u0647\u0627\u0646\u0627\u062a \u0643\u0631\u0629 \u0627\u0644\u0642\u062f\u0645."},
+    },
+    "btts-strategy-guide": {
+        "fr": {"title": "Strat\u00e9gie BTTS : Guide des Paris Les Deux \u00c9quipes Marquent", "excerpt": "Apprenez \u00e0 identifier les matchs \u00e0 forte probabilit\u00e9 BTTS et maximisez vos gains."},
+        "es": {"title": "Estrategia BTTS: Gu\u00eda de Ambos Marcan", "excerpt": "Aprende a identificar partidos con alta probabilidad de BTTS y maximiza tus ganancias."},
+        "pt": {"title": "Estrat\u00e9gia BTTS: Guia de Ambas Marcam", "excerpt": "Aprenda a identificar jogos com alta probabilidade de BTTS e maximize seus ganhos."},
+        "sw": {"title": "Mkakati wa BTTS: Timu Zote Kupiga Goli", "excerpt": "Jifunze kutambua mechi zenye uwezekano mkubwa wa BTTS na kuongeza faida yako."},
+        "ar": {"title": "\u0627\u0633\u062a\u0631\u0627\u062a\u064a\u062c\u064a\u0629 \u0643\u0644\u0627 \u0627\u0644\u0641\u0631\u064a\u0642\u064a\u0646 \u064a\u0633\u062c\u0644\u0627\u0646", "excerpt": "\u062a\u0639\u0644\u0645 \u0643\u064a\u0641\u064a\u0629 \u062a\u062d\u062f\u064a\u062f \u0627\u0644\u0645\u0628\u0627\u0631\u064a\u0627\u062a \u0630\u0627\u062a \u0627\u0644\u0627\u062d\u062a\u0645\u0627\u0644\u064a\u0629 \u0627\u0644\u0639\u0627\u0644\u064a\u0629."},
+    },
+    "best-leagues-value-betting": {
+        "fr": {"title": "Meilleures Ligues pour les Paris \u00e0 Valeur", "excerpt": "D\u00e9couvrez quelles ligues offrent les meilleures opportunit\u00e9s de paris \u00e0 valeur."},
+        "es": {"title": "Mejores Ligas para Apuestas de Valor", "excerpt": "Descubre qu\u00e9 ligas ofrecen las mejores oportunidades de apuestas de valor."},
+        "pt": {"title": "Melhores Ligas para Apostas de Valor", "excerpt": "Descubra quais ligas oferecem as melhores oportunidades de apostas de valor."},
+        "sw": {"title": "Ligi Bora kwa Kamari ya Thamani", "excerpt": "Gundua ligi zipi zinazotoa fursa bora za kamari ya thamani."},
+        "ar": {"title": "\u0623\u0641\u0636\u0644 \u0627\u0644\u062f\u0648\u0631\u064a\u0627\u062a \u0644\u0644\u0631\u0647\u0627\u0646\u0627\u062a \u0627\u0644\u0642\u064a\u0645\u0629", "excerpt": "\u0627\u0643\u062a\u0634\u0641 \u0623\u064a \u0627\u0644\u062f\u0648\u0631\u064a\u0627\u062a \u062a\u0642\u062f\u0645 \u0623\u0641\u0636\u0644 \u0641\u0631\u0635 \u0627\u0644\u0631\u0647\u0627\u0646\u0627\u062a."},
+    },
+    "soccer-predictions-today-daily-picks": {
+        "fr": {"title": "Pronostics Football du Jour : Comment Utiliser les Picks Quotidiens", "excerpt": "Apprenez \u00e0 tirer le meilleur parti de nos pronostics quotidiens gratuits par IA."},
+        "es": {"title": "Predicciones de F\u00fatbol Hoy: C\u00f3mo Usar las Picks Diarias", "excerpt": "Aprende a sacar el m\u00e1ximo provecho de nuestras predicciones diarias gratuitas por IA."},
+        "pt": {"title": "Palpites de Futebol Hoje: Como Usar as Picks Di\u00e1rias", "excerpt": "Aprenda a aproveitar ao m\u00e1ximo nossos palpites di\u00e1rios gratuitos por IA."},
+        "sw": {"title": "Ubashiri wa Soka Leo: Jinsi ya Kutumia Chaguzi za Kila Siku", "excerpt": "Jifunze jinsi ya kupata faida kubwa kutoka ubashiri wetu wa kila siku wa bure kwa AI."},
+        "ar": {"title": "\u062a\u0648\u0642\u0639\u0627\u062a \u0643\u0631\u0629 \u0627\u0644\u0642\u062f\u0645 \u0627\u0644\u064a\u0648\u0645: \u0643\u064a\u0641 \u062a\u0633\u062a\u062e\u062f\u0645 \u0627\u0644\u062a\u0648\u0642\u0639\u0627\u062a \u0627\u0644\u064a\u0648\u0645\u064a\u0629", "excerpt": "\u062a\u0639\u0644\u0645 \u0643\u064a\u0641\u064a\u0629 \u0627\u0644\u0627\u0633\u062a\u0641\u0627\u062f\u0629 \u0627\u0644\u0642\u0635\u0648\u0649 \u0645\u0646 \u062a\u0648\u0642\u0639\u0627\u062a\u0646\u0627 \u0627\u0644\u064a\u0648\u0645\u064a\u0629 \u0627\u0644\u0645\u062c\u0627\u0646\u064a\u0629."},
+    },
+    "jackpot-accumulator-betting-tips": {
+        "fr": {"title": "Conseils pour les Paris Accumul\u00e9s et Jackpot", "excerpt": "Strat\u00e9gies pour am\u00e9liorer vos paris accumul\u00e9s et augmenter vos chances de gagner le jackpot."},
+        "es": {"title": "Consejos para Apuestas Acumuladas y Jackpot", "excerpt": "Estrategias para mejorar tus apuestas acumuladas y aumentar tus posibilidades de ganar."},
+        "pt": {"title": "Dicas para Apostas M\u00faltiplas e Jackpot", "excerpt": "Estrat\u00e9gias para melhorar suas apostas m\u00faltiplas e aumentar suas chances de ganhar."},
+        "sw": {"title": "Vidokezo vya Kamari ya Jackpot na Mkusanyiko", "excerpt": "Mikakati ya kuboresha kamari yako ya mkusanyiko na kuongeza nafasi yako ya kushinda."},
+        "ar": {"title": "\u0646\u0635\u0627\u0626\u062d \u0631\u0647\u0627\u0646\u0627\u062a \u0627\u0644\u062c\u0627\u0643\u0628\u0648\u062a \u0648\u0627\u0644\u062a\u0631\u0627\u0643\u0645", "excerpt": "\u0627\u0633\u062a\u0631\u0627\u062a\u064a\u062c\u064a\u0627\u062a \u0644\u062a\u062d\u0633\u064a\u0646 \u0631\u0647\u0627\u0646\u0627\u062a\u0643 \u0627\u0644\u0645\u062a\u0631\u0627\u0643\u0645\u0629."},
+    },
+    "live-scores-in-play-betting-guide": {
+        "fr": {"title": "Scores en Direct et Guide des Paris en Jeu", "excerpt": "Utilisez les scores en direct et les donn\u00e9es en temps r\u00e9el pour prendre des d\u00e9cisions de paris \u00e9clair\u00e9es."},
+        "es": {"title": "Resultados en Vivo y Gu\u00eda de Apuestas en Juego", "excerpt": "Usa los resultados en vivo y datos en tiempo real para tomar decisiones de apuestas informadas."},
+        "pt": {"title": "Resultados ao Vivo e Guia de Apostas ao Vivo", "excerpt": "Use os resultados ao vivo e dados em tempo real para tomar decis\u00f5es de apostas informadas."},
+        "sw": {"title": "Matokeo ya Moja kwa Moja na Mwongozo wa Kamari ya Wakati Halisi", "excerpt": "Tumia matokeo ya moja kwa moja na data ya wakati halisi kufanya maamuzi ya kamari yenye taarifa."},
+        "ar": {"title": "\u0627\u0644\u0646\u062a\u0627\u0626\u062c \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629 \u0648\u062f\u0644\u064a\u0644 \u0627\u0644\u0631\u0647\u0627\u0646\u0627\u062a \u0627\u0644\u062d\u064a\u0629", "excerpt": "\u0627\u0633\u062a\u062e\u062f\u0645 \u0627\u0644\u0646\u062a\u0627\u0626\u062c \u0627\u0644\u0645\u0628\u0627\u0634\u0631\u0629 \u0648\u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0641\u0648\u0631\u064a\u0629 \u0644\u0627\u062a\u062e\u0627\u0630 \u0642\u0631\u0627\u0631\u0627\u062a \u0631\u0647\u0627\u0646 \u0645\u0633\u062a\u0646\u064a\u0631\u0629."},
+    },
+}
+
+
+def get_all_articles_i18n(lang="en"):
+    """Return all articles with localized titles/excerpts."""
+    result = []
+    for a in BLOG_ARTICLES:
+        slug = a["slug"]
+        title = a["title"]
+        excerpt = a["excerpt"]
+        if lang != "en" and slug in BLOG_TITLES_I18N and lang in BLOG_TITLES_I18N[slug]:
+            title = BLOG_TITLES_I18N[slug][lang].get("title", title)
+            excerpt = BLOG_TITLES_I18N[slug][lang].get("excerpt", excerpt)
+        result.append({
+            "slug": slug,
+            "title": title,
+            "excerpt": excerpt,
+            "category": a["category"],
+            "tags": a["tags"],
+            "published_at": a["published_at"],
+            "updated_at": a.get("updated_at", a["published_at"]),
+        })
+    return result
+
+
+def get_article_i18n(slug, lang="en"):
+    """Return a single article with localized title/excerpt."""
+    a = get_article(slug)
+    if not a:
+        return None
+    if lang != "en" and slug in BLOG_TITLES_I18N and lang in BLOG_TITLES_I18N[slug]:
+        a["title"] = BLOG_TITLES_I18N[slug][lang].get("title", a["title"])
+        a["excerpt"] = BLOG_TITLES_I18N[slug][lang].get("excerpt", a["excerpt"])
+    return a

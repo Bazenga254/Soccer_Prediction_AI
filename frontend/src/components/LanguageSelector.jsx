@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { buildLangPath, stripLangPrefix, isPublicSEOPath } from '../utils/seoConstants'
 import { useTranslation } from 'react-i18next'
 
 const LANGUAGES = [
@@ -12,6 +14,8 @@ const LANGUAGES = [
 
 export default function LanguageSelector({ variant = 'default' }) {
   const { i18n } = useTranslation()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -32,6 +36,13 @@ export default function LanguageSelector({ variant = 'default' }) {
     document.documentElement.lang = lang.code
     document.documentElement.dir = lang.code === 'ar' ? 'rtl' : 'ltr'
     localStorage.removeItem('i18n_banner_dismissed')
+
+    // On public SEO pages, navigate to language-prefixed URL
+    if (isPublicSEOPath(location.pathname)) {
+      const { path } = stripLangPrefix(location.pathname)
+      navigate(buildLangPath(path, lang.code))
+    }
+
     setOpen(false)
   }
 

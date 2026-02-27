@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import SEOHead from '../components/SEOHead'
+import { buildLangPath } from '../utils/seoConstants'
 import LandingNav from '../components/LandingNav'
 import AuthModal from '../components/AuthModal'
 import './Blog.css'
@@ -14,6 +16,9 @@ const CATEGORIES = [
 ]
 
 export default function BlogIndex() {
+  const { t } = useTranslation()
+  const { lang } = useParams()
+  const currentLang = lang || 'en'
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
   const [category, setCategory] = useState(null)
@@ -43,9 +48,10 @@ export default function BlogIndex() {
   return (
     <>
       <SEOHead
-        title="Soccer Betting Tips & Match Previews"
-        description="Expert soccer betting tips, match previews, and analysis articles powered by AI. Updated daily with insights across 50+ leagues."
+        title={t('seo.blog.title', 'Soccer Betting Tips & Match Analysis Blog')}
+        description={t('seo.blog.description', 'Expert soccer betting tips and analysis articles powered by AI.')}
         path="/blog"
+        lang={currentLang}
         jsonLd={jsonLd}
       />
 

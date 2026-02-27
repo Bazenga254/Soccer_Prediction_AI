@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useParams, Link } from 'react-router-dom'
 import axios from 'axios'
 import SEOHead from '../components/SEOHead'
@@ -31,7 +32,9 @@ function renderMarkdown(text) {
 }
 
 export default function BlogArticle() {
-  const { slug } = useParams()
+  const { t } = useTranslation()
+  const { slug, lang } = useParams()
+  const currentLang = lang || 'en'
   const [article, setArticle] = useState(null)
   const [related, setRelated] = useState([])
   const [loading, setLoading] = useState(true)
@@ -76,6 +79,7 @@ export default function BlogArticle() {
           title={article.title}
           description={article.excerpt}
           path={`/blog/${slug}`}
+        lang={currentLang}
           jsonLd={jsonLd}
           article={{
             publishedTime: article.published_at,

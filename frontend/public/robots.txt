@@ -1,10 +1,18 @@
 User-agent: *
 Allow: /
+Allow: /today
+Allow: /blog
+Allow: /blog/
+Allow: /predictions/
 Allow: /docs
 Allow: /terms
-Allow: /predictions/
-Allow: /blog/
-Allow: /today
+
+# Language-prefixed versions
+Allow: /fr/
+Allow: /es/
+Allow: /pt/
+Allow: /sw/
+Allow: /ar/
 
 Disallow: /api/
 Disallow: /profile
@@ -14,13 +22,10 @@ Disallow: /my-analysis
 Disallow: /transactions
 Disallow: /creator
 Disallow: /upgrade
+Disallow: /admin
 Disallow: /employee
 Disallow: /login
 Disallow: /reset-password
-Disallow: /invite/
-Disallow: /ref/
-Disallow: /magic-login
-Disallow: /auth/
-Disallow: /spark-ctrl-8k2v9x
+Disallow: /spark-ctrl-*
 
 Sitemap: https://spark-ai-prediction.com/sitemap.xml

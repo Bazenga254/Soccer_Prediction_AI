@@ -5487,17 +5487,42 @@ ul{padding-left:20px}
 
 @app.get("/sitemap.xml")
 async def sitemap_xml():
-    """Generate dynamic XML sitemap for SEO."""
+    """Generate dynamic XML sitemap with hreflang for multilingual SEO."""
     from fastapi.responses import Response
     from league_seo import LEAGUE_SEO
     import blog_content as bc
 
     base = "https://spark-ai-prediction.com"
     today = datetime.now().strftime("%Y-%m-%d")
+    supported_langs = ["en", "fr", "es", "pt", "sw", "ar"]
+
+    def lang_url(path, lang):
+        if lang == "en":
+            return f"{base}{path}"
+        return f"{base}/{lang}{path}"
+
+    def make_url_entry(path, freq, pri):
+        """Generate URL entries for all languages with hreflang annotations."""
+        entries = []
+        for lang in supported_langs:
+            url = lang_url(path, lang)
+            hreflangs = []
+            for alt_lang in supported_langs:
+                alt_url = lang_url(path, alt_lang)
+                hreflangs.append(f'    <xhtml:link rel="alternate" hreflang="{alt_lang}" href="{alt_url}" />')
+            hreflangs.append(f'    <xhtml:link rel="alternate" hreflang="x-default" href="{lang_url(path, "en")}" />')
+            entries.append(f"""  <url>
+    <loc>{url}</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>{freq}</changefreq>
+    <priority>{pri}</priority>
+{chr(10).join(hreflangs)}
+  </url>""")
+        return entries
 
     urls = []
 
-    # Static pages
+    # Static pages (with all language variants)
     static = [
         ("/", "daily", "1.0"),
         ("/today", "daily", "0.9"),
@@ -5506,43 +5531,24 @@ async def sitemap_xml():
         ("/terms", "yearly", "0.3"),
     ]
     for loc, freq, pri in static:
-        urls.append(f"""  <url>
-    <loc>{base}{loc}</loc>
-    <lastmod>{today}</lastmod>
-    <changefreq>{freq}</changefreq>
-    <priority>{pri}</priority>
-  </url>""")
+        urls.extend(make_url_entry(loc, freq, pri))
 
-    # League pages
+    # League pages (with all language variants)
     for code, data in LEAGUE_SEO.items():
-        urls.append(f"""  <url>
-    <loc>{base}/predictions/{data['slug']}</loc>
-    <lastmod>{today}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.8</priority>
-  </url>""")
+        urls.extend(make_url_entry(f"/predictions/{data['slug']}", "daily", "0.8"))
 
-    # Blog articles
+    # Blog articles (with all language variants)
     for article in bc.get_all_articles():
-        urls.append(f"""  <url>
-    <loc>{base}/blog/{article['slug']}</loc>
-    <lastmod>{article.get('updated_at', today)}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>""")
+        urls.extend(make_url_entry(f"/blog/{article['slug']}", "weekly", "0.7"))
 
-    # Doc sections
+    # Doc sections (with all language variants)
     from docs_content import DOCS_SECTIONS
     for section in DOCS_SECTIONS:
-        urls.append(f"""  <url>
-    <loc>{base}/docs/{section['id']}</loc>
-    <lastmod>{today}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>""")
+        urls.extend(make_url_entry(f"/docs/{section['id']}", "monthly", "0.5"))
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
 {chr(10).join(urls)}
 </urlset>"""
 
@@ -5586,7 +5592,7 @@ async def get_today_overview():
 
 
 @app.get("/api/league/{slug}")
-async def get_league_by_slug(slug: str):
+async def get_league_by_slug(slug: str, lang: str = "en"):
     """Get league info and upcoming fixtures by URL slug. No auth required."""
     from league_seo import SLUG_TO_CODE, LEAGUE_SEO
 
@@ -5605,13 +5611,19 @@ async def get_league_by_slug(slug: str):
     daily_preds = community.get_daily_free_predictions()
     league_preds = [p for p in daily_preds if p.get("competition_code") == code or p.get("competition", "") == name]
 
+    # Get localized SEO metadata
+    from league_seo import get_league_seo_localized
+    localized = get_league_seo_localized(code, lang)
+    seo_title = localized["seo_title"] if localized else seo["seo_title"]
+    seo_desc = localized["seo_desc"] if localized else seo["seo_desc"]
+
     return {
         "code": code,
         "slug": slug,
         "name": name,
         "seo": {
-            "title": seo["seo_title"],
-            "description": seo["seo_desc"],
+            "title": seo_title,
+            "description": seo_desc,
             "country": seo["country"],
             "region": seo["region"],
         },
@@ -5653,11 +5665,11 @@ async def get_all_league_slugs():
 
 
 @app.get("/api/blog")
-async def get_blog_articles(category: str = None):
+async def get_blog_articles(category: str = None, lang: str = "en"):
     """Return blog articles, optionally filtered by category. No auth required."""
     import blog_content as bc
 
-    articles = bc.get_all_articles() if not category else bc.get_articles_by_category(category)
+    articles = bc.get_all_articles_i18n(lang) if hasattr(bc, 'get_all_articles_i18n') else bc.get_all_articles() if not category else bc.get_articles_by_category(category)
 
     # Return without body for list view
     return {

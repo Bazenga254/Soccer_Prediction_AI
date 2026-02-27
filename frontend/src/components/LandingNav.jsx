@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import LanguageSelector from './LanguageSelector'
+import { buildLangPath } from '../utils/seoConstants'
 import sparkLogo from '../assets/spark-ai-logo.png'
 
 export default function LandingNav({ onSignIn, onGetStarted }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [installPrompt, setInstallPrompt] = useState(null)
@@ -81,8 +82,8 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
         </div>
 
                 <div className="landing-nav-seo-links">
-          <a href="/today" className="landing-nav-link">Today</a>
-          <a href="/blog" className="landing-nav-link">Blog</a>
+          <a href={buildLangPath("/today", i18n.language)} className="landing-nav-link">Today</a>
+          <a href={buildLangPath("/blog", i18n.language)} className="landing-nav-link">Blog</a>
         </div>
 <div className="landing-nav-actions">
           <LanguageSelector variant="landing" />

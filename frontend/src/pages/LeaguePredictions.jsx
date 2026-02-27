@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useParams, Link } from 'react-router-dom'
 import axios from 'axios'
 import SEOHead from '../components/SEOHead'
+import { buildLangPath } from '../utils/seoConstants'
 import LandingNav from '../components/LandingNav'
 import AuthModal from '../components/AuthModal'
 import './LeaguePredictions.css'
@@ -20,7 +22,9 @@ const RELATED_LEAGUES = [
 ]
 
 export default function LeaguePredictions() {
-  const { leagueSlug } = useParams()
+  const { t } = useTranslation()
+  const { leagueSlug, lang } = useParams()
+  const currentLang = lang || 'en'
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -69,6 +73,7 @@ export default function LeaguePredictions() {
         title={seoTitle}
         description={seoDesc}
         path={`/predictions/${leagueSlug}`}
+        lang={currentLang}
         jsonLd={jsonLd}
       />
 

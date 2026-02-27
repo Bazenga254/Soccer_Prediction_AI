@@ -770,5 +770,34 @@
     "createAccount": "Fungua Akaunti",
     "alreadyHaveAccount": "Una akaunti tayari?",
     "signIn": "Ingia"
+  },
+  "seo": {
+    "landing": {
+      "title": "Ubashiri wa Soka kwa AI, Matokeo ya Moja kwa Moja na Uchambuzi",
+      "description": "Ubashiri sahihi wa soka kwa akili bandia, matokeo ya moja kwa moja na uchambuzi wa kamari kwa ligi zaidi ya 50. Ubashiri wa bure kila siku."
+    },
+    "today": {
+      "title": "Ubashiri wa Soka Leo - Utabiri wa AI Bure",
+      "description": "Ubashiri wa soka wa leo kwa AI kwa Premier League, La Liga, Serie A, Bundesliga na ligi zaidi ya 50. Utabiri wa bure na uchambuzi."
+    },
+    "blog": {
+      "title": "Vidokezo vya Kamari ya Soka na Uchambuzi wa Mechi",
+      "description": "Vidokezo vya wataalamu wa ubashiri wa soka, mikakati ya kamari na uchambuzi wa mechi. Boresha ubashiri wako na akili bandia."
+    },
+    "docs": {
+      "title": "Nyaraka na Mwongozo wa Msaada",
+      "description": "Jifunze jinsi ya kutumia Spark AI Prediction. Miongozo ya ubashiri wa AI, matokeo ya moja kwa moja na huduma za jamii."
+    },
+    "terms": {
+      "title": "Masharti ya Huduma",
+      "description": "Soma masharti ya huduma na sera za matumizi za Spark AI Prediction."
+    },
+    "league": {
+      "titleTemplate": "Ubashiri wa {{leagueName}} Leo - Uchambuzi wa AI",
+      "descriptionTemplate": "Ubashiri wa AI kwa mechi za {{leagueName}} leo. Utabiri sahihi, uchambuzi wa odds na vidokezo vya kamari."
+    },
+    "blogArticle": {
+      "titleSuffix": "Blog ya Spark AI"
+    }
   }
 }

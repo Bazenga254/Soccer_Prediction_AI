@@ -121,6 +121,7 @@ export default function DocsPage({ embedded = false }) {
       title="Documentation - How to Use Spark AI"
       description="Complete guide to Spark AI soccer predictions platform. Learn about AI predictions, live scores, community features, and more."
       path="/docs"
+        lang={currentLang || 'en'}
     />
     <div style={{
       ...styles.container,

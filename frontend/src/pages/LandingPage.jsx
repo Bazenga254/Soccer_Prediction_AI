@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useParams } from 'react-router-dom'
 import { useCurrency } from '../context/CurrencyContext'
 import axios from 'axios'
 import LandingNav from '../components/LandingNav'
@@ -155,6 +156,7 @@ export default function LandingPage() {
   return (
     <>
       <SEOHead
+        lang="en"
         jsonLd={[
           {
             "@context": "https://schema.org",

@@ -770,5 +770,34 @@
     "createAccount": "Criar Conta",
     "alreadyHaveAccount": "Já tem uma conta?",
     "signIn": "Entrar"
+  },
+  "seo": {
+    "landing": {
+      "title": "Palpites de Futebol com IA, Resultados ao Vivo e Análise",
+      "description": "Palpites de futebol precisos com inteligência artificial, resultados ao vivo e análise de apostas para mais de 50 ligas. Previsões diárias gratuitas."
+    },
+    "today": {
+      "title": "Palpites de Futebol Hoje - Previsões IA Grátis",
+      "description": "Palpites de futebol de hoje com IA para Premier League, La Liga, Serie A, Brasileirão e mais de 50 ligas. Previsões gratuitas com análise."
+    },
+    "blog": {
+      "title": "Dicas de Apostas Esportivas e Análise de Futebol",
+      "description": "Dicas de especialistas em palpites de futebol, estratégias de apostas e análises de jogos. Melhore suas previsões com inteligência artificial."
+    },
+    "docs": {
+      "title": "Documentação e Guia de Ajuda",
+      "description": "Aprenda a usar o Spark AI Prediction. Guias para previsões IA, resultados ao vivo e recursos da comunidade."
+    },
+    "terms": {
+      "title": "Termos de Serviço",
+      "description": "Leia os termos de serviço e políticas de uso do Spark AI Prediction."
+    },
+    "league": {
+      "titleTemplate": "Palpites {{leagueName}} Hoje - Análise com IA",
+      "descriptionTemplate": "Palpites IA para os jogos de {{leagueName}} hoje. Previsões precisas, análise de odds e dicas de apostas."
+    },
+    "blogArticle": {
+      "titleSuffix": "Blog Spark AI"
+    }
   }
 }
