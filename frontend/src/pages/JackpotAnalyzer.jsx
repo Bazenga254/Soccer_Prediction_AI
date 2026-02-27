@@ -231,7 +231,7 @@ function MatchChatBox({ matchResult, isKenyan }) {
 
 // --- Sub-components ---
 
-function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onStartAnalysis, maxMatches, tier }) {
+function MatchSelectionPhase({ selectedMatches, onAddMatch, onRemoveMatch, onStartAnalysis, maxMatches, tier, perMatchCost = 130 }) {
   const [selectedLeague, setSelectedLeague] = useState('PL')
   const [fixtures, setFixtures] = useState([])
   const [loadingFixtures, setLoadingFixtures] = useState(false)
@@ -1098,6 +1098,7 @@ export default function JackpotAnalyzer() {
           onStartAnalysis={startAnalysis}
           maxMatches={maxMatches}
           tier={tier}
+          perMatchCost={perMatchCost}
         />
       )}
 
