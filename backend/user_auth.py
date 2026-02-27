@@ -980,6 +980,12 @@ def _generate_verification_code() -> str:
 _zoho_token_cache = {"token": "", "expires_at": 0}
 _zoho_token_lock = threading.Lock()
 
+# Email rate limiter — max 20 emails per 10-minute window to avoid Zoho blocks
+_email_send_times = []
+_email_rate_lock = threading.Lock()
+_EMAIL_RATE_LIMIT = 20       # max emails per window
+_EMAIL_RATE_WINDOW = 600     # 10 minutes in seconds
+
 
 def _get_zoho_access_token() -> str:
     """Get a Zoho access token, using cache when possible (tokens last ~55 min)."""
@@ -1021,6 +1027,20 @@ def _get_zoho_access_token() -> str:
 
 def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email: str = "", sender_name: str = "Spark AI") -> bool:
     """Send an email via Zoho Mail API (HTTPS). Bypasses SMTP port blocking."""
+    import time as _rate_t
+
+    # Rate limiting — prevent Zoho from blocking us for unusual activity
+    with _email_rate_lock:
+        now = _rate_t.time()
+        _email_send_times[:] = [t for t in _email_send_times if now - t < _EMAIL_RATE_WINDOW]
+        if len(_email_send_times) >= _EMAIL_RATE_LIMIT:
+            wait = _EMAIL_RATE_WINDOW - (now - _email_send_times[0]) + 1
+            print("[WARN] Email rate limit hit ({}/{}s). Waiting {:.0f}s for {}".format(
+                _EMAIL_RATE_LIMIT, _EMAIL_RATE_WINDOW, wait, to_email))
+            _rate_t.sleep(min(wait, 30))  # wait up to 30s for window to clear
+            _email_send_times[:] = [t for t in _email_send_times if _rate_t.time() - t < _EMAIL_RATE_WINDOW]
+        _email_send_times.append(_rate_t.time())
+
     account_id = os.environ.get("ZOHO_ACCOUNT_ID", "")
     if not from_email:
         from_email = os.environ.get("ZOHO_FROM_EMAIL", "")
