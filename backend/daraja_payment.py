@@ -1728,16 +1728,21 @@ async def get_withdrawal_fee_preview(amount_usd: float, method: str) -> Dict:
 
 # ==================== QUERIES ====================
 
-def get_user_transactions(user_id: int, limit: int = 20) -> List[Dict]:
-    """Get recent payment transactions for a user."""
+def get_user_transactions(user_id: int, limit: int = 20, offset: int = 0, with_total: bool = False) -> any:
+    """Get recent payment transactions for a user. If with_total=True, returns {items, total}."""
     conn = _get_db()
     rows = conn.execute("""
         SELECT * FROM payment_transactions
         WHERE user_id = ?
-        ORDER BY created_at DESC LIMIT ?
-    """, (user_id, limit)).fetchall()
+        ORDER BY created_at DESC LIMIT ? OFFSET ?
+    """, (user_id, limit, offset)).fetchall()
+    items = [_tx_to_dict(r) for r in rows]
+    if with_total:
+        total = conn.execute("SELECT COUNT(*) FROM payment_transactions WHERE user_id = ?", (user_id,)).fetchone()[0]
+        conn.close()
+        return {"items": items, "total": total}
     conn.close()
-    return [_tx_to_dict(r) for r in rows]
+    return items
 
 
 def get_user_withdrawals(user_id: int) -> List[Dict]:

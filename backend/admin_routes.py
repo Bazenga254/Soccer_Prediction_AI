@@ -759,7 +759,8 @@ async def admin_list_users(x_admin_password: str = Header(None), authorization: 
 
 
 @admin_router.get("/users/{user_id}")
-async def admin_get_user(user_id: int, x_admin_password: str = Header(None), authorization: str = Header(None)):
+async def admin_get_user(user_id: int, tx_page: int = 1, adj_page: int = 1,
+                         x_admin_password: str = Header(None), authorization: str = Header(None)):
     """Get full user profile details including subscription, wallet, transactions."""
     auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'technical_support', 'customer_care'},
                              required_module="users", required_action="read")
@@ -772,12 +773,38 @@ async def admin_get_user(user_id: int, x_admin_password: str = Header(None), aut
 
     conn = user_auth._get_db()
     row = conn.execute("SELECT is_active, login_count, last_login, referred_by FROM users WHERE id = ?", (user_id,)).fetchone()
-    conn.close()
     if row:
         profile["is_active"] = bool(row["is_active"])
         profile["login_count"] = row["login_count"]
         profile["last_login"] = row["last_login"]
         profile["referred_by"] = row["referred_by"]
+
+        # Resolve referrer info
+        if row["referred_by"]:
+            ref_row = conn.execute(
+                "SELECT id, username, display_name, email FROM users WHERE id = ?",
+                (row["referred_by"],)
+            ).fetchone()
+            if ref_row:
+                profile["referrer"] = {
+                    "id": ref_row["id"],
+                    "username": ref_row["username"],
+                    "display_name": ref_row["display_name"],
+                    "email": ref_row["email"],
+                }
+    conn.close()
+
+    # Credits info
+    try:
+        profile["credits"] = community.get_user_credits(user_id)
+    except Exception:
+        profile["credits"] = None
+
+    # Credit usage breakdown
+    try:
+        profile["credit_usage"] = community.get_credit_usage_breakdown(user_id)
+    except Exception:
+        profile["credit_usage"] = None
 
     try:
         profile["subscription"] = subscriptions.get_active_subscription(user_id)
@@ -800,15 +827,25 @@ async def admin_get_user(user_id: int, x_admin_password: str = Header(None), aut
     except Exception:
         profile["user_balance"] = None
 
+    # Paginated balance adjustments (10 per page)
+    adj_offset = (max(adj_page, 1) - 1) * 10
     try:
-        profile["balance_adjustments"] = community.get_balance_adjustments(user_id, limit=10)
+        adj_result = community.get_balance_adjustments(user_id, limit=10, offset=adj_offset, with_total=True)
+        profile["balance_adjustments"] = adj_result["items"]
+        profile["balance_adjustments_total"] = adj_result["total"]
     except Exception:
         profile["balance_adjustments"] = []
+        profile["balance_adjustments_total"] = 0
 
+    # Paginated transactions (10 per page)
+    tx_offset = (max(tx_page, 1) - 1) * 10
     try:
-        profile["transactions"] = daraja_payment.get_user_transactions(user_id, limit=10)
+        tx_result = daraja_payment.get_user_transactions(user_id, limit=10, offset=tx_offset, with_total=True)
+        profile["transactions"] = tx_result["items"]
+        profile["transactions_total"] = tx_result["total"]
     except Exception:
         profile["transactions"] = []
+        profile["transactions_total"] = 0
 
     try:
         profile["withdrawals"] = daraja_payment.get_user_withdrawals(user_id)

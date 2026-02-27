@@ -3639,15 +3639,14 @@ def adjust_user_balance(user_id: int, amount_usd: float, amount_kes: float,
     }
 
 
-def get_balance_adjustments(user_id: int, limit: int = 20) -> List[Dict]:
-    """Get balance adjustment history for a user."""
+def get_balance_adjustments(user_id: int, limit: int = 20, offset: int = 0, with_total: bool = False) -> any:
+    """Get balance adjustment history for a user. If with_total=True, returns {items, total}."""
     conn = _get_db()
     rows = conn.execute("""
         SELECT * FROM balance_adjustments WHERE user_id = ?
-        ORDER BY created_at DESC LIMIT ?
-    """, (user_id, limit)).fetchall()
-    conn.close()
-    return [{
+        ORDER BY created_at DESC LIMIT ? OFFSET ?
+    """, (user_id, limit, offset)).fetchall()
+    items = [{
         "id": r["id"],
         "amount_usd": r["amount_usd"],
         "amount_kes": r["amount_kes"],
@@ -3656,6 +3655,12 @@ def get_balance_adjustments(user_id: int, limit: int = 20) -> List[Dict]:
         "adjusted_by_name": r["adjusted_by_name"],
         "created_at": r["created_at"],
     } for r in rows]
+    if with_total:
+        total = conn.execute("SELECT COUNT(*) FROM balance_adjustments WHERE user_id = ?", (user_id,)).fetchone()[0]
+        conn.close()
+        return {"items": items, "total": total}
+    conn.close()
+    return items
 
 
 def get_balance_adjustment_stats() -> Dict:
@@ -3678,6 +3683,46 @@ def get_balance_adjustment_stats() -> Dict:
         "total_credited_kes": round(stats["total_credited_kes"], 0),
         "total_debited_kes": round(stats["total_debited_kes"], 0),
     }
+
+
+
+
+def get_credit_usage_breakdown(user_id: int) -> Dict:
+    """Get breakdown of how a user has spent credits."""
+    conn = _get_db()
+    rows = conn.execute("""
+        SELECT reason, COUNT(*) as cnt
+        FROM balance_adjustments
+        WHERE user_id = ? AND adjustment_type = 'credit_deduction'
+        GROUP BY reason
+    """, (user_id,)).fetchall()
+    conn.close()
+
+    breakdown = {
+        "predictions": {"count": 0, "total_credits": 0},
+        "jackpot": {"count": 0, "total_credits": 0},
+        "other": {"count": 0, "total_credits": 0},
+    }
+    for row in rows:
+        reason = row["reason"] or ""
+        # Parse credits from reason like "-50 credits: Prediction view: ..."
+        credits = 0
+        if "credits:" in reason:
+            try:
+                credits = abs(int(reason.split(" credits")[0].replace("-", "").strip()))
+            except (ValueError, IndexError):
+                pass
+        count = row["cnt"]
+        if "Prediction view" in reason:
+            breakdown["predictions"]["count"] += count
+            breakdown["predictions"]["total_credits"] += credits * count
+        elif "Jackpot analysis" in reason:
+            breakdown["jackpot"]["count"] += count
+            breakdown["jackpot"]["total_credits"] += credits * count
+        else:
+            breakdown["other"]["count"] += count
+            breakdown["other"]["total_credits"] += credits * count
+    return breakdown
 
 
 # ==================== BROADCAST MESSAGING ====================
