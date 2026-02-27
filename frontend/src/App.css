@@ -26257,6 +26257,10 @@ html, body {
   border-top: 1px solid #1e293b;
 }
 
+body.ai-assistant-active .support-chat-fab {
+  display: none !important;
+}
+
 .ai-input-wrapper {
   display: flex;
   align-items: flex-end;
@@ -26367,7 +26371,7 @@ html, body {
   }
 
   .ai-input-area {
-    padding: 6px 10px 68px;
+    padding: 6px 10px 10px;
   }
 
   .ai-welcome {

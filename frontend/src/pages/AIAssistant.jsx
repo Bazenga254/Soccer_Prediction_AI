@@ -38,6 +38,12 @@ function AIAssistant() {
     'Authorization': `Bearer ${token}`,
   }
 
+  // Hide support chat FAB on this page
+  useEffect(() => {
+    document.body.classList.add('ai-assistant-active')
+    return () => document.body.classList.remove('ai-assistant-active')
+  }, [])
+
   // Load conversations on mount
   useEffect(() => {
     if (token) {
