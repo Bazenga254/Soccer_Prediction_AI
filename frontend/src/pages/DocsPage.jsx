@@ -20,7 +20,7 @@ const ICON_MAP = {
 }
 
 export default function DocsPage({ embedded = false }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -121,7 +121,7 @@ export default function DocsPage({ embedded = false }) {
       title="Documentation - How to Use Spark AI"
       description="Complete guide to Spark AI soccer predictions platform. Learn about AI predictions, live scores, community features, and more."
       path="/docs"
-        lang={currentLang || 'en'}
+        lang={i18n.language || 'en'}
     />
     <div style={{
       ...styles.container,
