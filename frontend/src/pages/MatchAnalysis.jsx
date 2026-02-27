@@ -6,6 +6,7 @@ import PlayerImpact from '../components/PlayerImpact'
 import LiveChatPopup from '../components/LiveChatPopup'
 import { useBetSlip } from '../context/BetSlipContext'
 import { useAuth } from '../context/AuthContext'
+import { useCredits } from '../context/CreditContext'
 
 function formatDateTime(dateStr) {
   if (!dateStr) return ''
@@ -2579,6 +2580,7 @@ export default function MatchAnalysis() {
   const fixtureId = fixture?.id
 
   const { user } = useAuth()
+  const { totalCredits, refreshCredits } = useCredits()
   const [prediction, setPrediction] = useState(null)
   const [h2hData, setH2hData] = useState(null)
   const [matchStats, setMatchStats] = useState(null)
@@ -2590,8 +2592,7 @@ export default function MatchAnalysis() {
   const [showChat, setShowChat] = useState(true)
   const [viewBlocked, setViewBlocked] = useState(false)
   const [viewResetAt, setViewResetAt] = useState(null)
-  const [balanceUsd, setBalanceUsd] = useState(0)
-  const [balanceLoading, setBalanceLoading] = useState(false)
+  const [creditsNeeded, setCreditsNeeded] = useState(50)
   const [fetchTrigger, setFetchTrigger] = useState(0)
   const pollRef = useRef(null)
   const matchKey = `${homeId}-${awayId}-${competition}`
@@ -2628,19 +2629,18 @@ export default function MatchAnalysis() {
       setError(null)
 
       // Check & record analysis view for free users
-      if (user && user.tier !== 'pro' && user.tier !== 'trial') {
+      if (user) {
         try {
           const viewRes = await axios.post('/api/analysis-views/record', { match_key: matchKey })
           if (!viewRes.data.allowed) {
             setViewBlocked(true)
-            setViewResetAt(viewRes.data.reset_at)
-            // Fetch balance to show "Use Balance" option
-            try {
-              const balRes = await axios.get('/api/user/balance')
-              setBalanceUsd(balRes.data.balance?.balance_usd || 0)
-            } catch { /* ignore */ }
+            setCreditsNeeded(viewRes.data.credits_needed || 50)
             setLoading(false)
             return
+          }
+          // Credits deducted successfully — refresh header badge
+          if (viewRes.data.credits_deducted > 0) {
+            refreshCredits()
           }
         } catch (err) {
           if (err.response?.status === 401) {
@@ -2888,38 +2888,14 @@ export default function MatchAnalysis() {
             <div className="blurred-card" /><div className="blurred-card short" /><div className="blurred-card" />
           </div>
           <div className="analysis-blocked-overlay">
-            <div className="analysis-blocked-icon">{'\u{1F512}'}</div>
-            <h2 className="analysis-blocked-title">Free Views Used Up</h2>
+            <div className="analysis-blocked-icon">{"⚡"}</div>
+            <h2 className="analysis-blocked-title">Insufficient Credits</h2>
             <p className="analysis-blocked-text">
-              You've used your 3 free match analyses.
-              {viewResetAt && (<>
-                {' '}Your free views reset in{' '}
-                <CountdownTimer resetAt={viewResetAt} onExpire={() => { setViewBlocked(false); window.location.reload() }} />.
-              </>)}
+              You need <strong>{creditsNeeded} credits</strong> to view this analysis.
+              You currently have <strong>{totalCredits} credits</strong>.
             </p>
-            {balanceUsd >= 0.50 && (
-              <button
-                className="balance-pay-btn"
-                disabled={balanceLoading}
-                onClick={async () => {
-                  setBalanceLoading(true)
-                  try {
-                    const deductRes = await axios.post('/api/balance/use-for-analysis')
-                    if (deductRes.data.success) {
-                      await axios.post('/api/analysis-views/record', { match_key: matchKey, balance_paid: true })
-                      setBalanceUsd(deductRes.data.balance?.balance_usd || 0)
-                      setViewBlocked(false)
-                      setFetchTrigger(prev => prev + 1)
-                    }
-                  } catch { /* ignore */ }
-                  setBalanceLoading(false)
-                }}
-              >
-                {balanceLoading ? 'Processing...' : `Use 250 Credits \u2014 $${balanceUsd.toFixed(2)} available`}
-              </button>
-            )}
             <Link to="/upgrade" className="analysis-blocked-upgrade-btn">
-              {'\u{1F680}'} {balanceUsd < 0.50 ? 'Add Credits to Unlock' : 'Upgrade to Pro for Unlimited Access'}
+              {"⚡"} Add Credits
             </Link>
             <button className="analysis-blocked-back-btn" onClick={() => navigate(-1)}>
               ← Go Back

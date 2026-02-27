@@ -516,19 +516,47 @@ async def analysis_views_status(authorization: str = Header(None)):
 
 @app.post("/api/analysis-views/record")
 async def record_analysis_view(request: dict, authorization: str = Header(None)):
-    """Record a match analysis view for the current user."""
+    """Record a match analysis view — deducts credits for ALL users."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    tier = payload.get("tier", "free")
-    if tier in ("pro", "trial"):
-        max_views = -1 if tier == "pro" else 10
-        return {"views_used": 0, "max_views": max_views, "allowed": True, "reset_at": None}
     match_key = request.get("match_key", "")
     if not match_key:
         raise HTTPException(status_code=400, detail="match_key is required")
-    balance_paid = request.get("balance_paid", False)
-    return user_auth.record_analysis_view(payload["user_id"], match_key, balance_paid=balance_paid)
+
+    user_id = payload["user_id"]
+    cost = int(pricing_config.get("credit_cost_prediction", 50))
+
+    # Don't double-charge if user already viewed this match
+    already_viewed = user_auth.has_viewed_analysis(user_id, match_key)
+    if already_viewed:
+        creds = community.get_user_credits(user_id)
+        return {
+            "allowed": True, "credits_deducted": 0,
+            "credits_remaining": creds.get("total_credits", 0),
+            "views_used": 0, "max_views": -1, "reset_at": None
+        }
+
+    # Deduct credits (daily first, then purchased)
+    try:
+        result = community.deduct_credits(user_id, cost, f"Prediction view: {match_key}")
+        # Record view to prevent future double-charges
+        try:
+            user_auth.record_analysis_view(user_id, match_key, balance_paid=True)
+        except Exception:
+            pass
+        return {
+            "allowed": True, "credits_deducted": cost,
+            "credits_remaining": result.get("total_credits", 0),
+            "views_used": 0, "max_views": -1, "reset_at": None
+        }
+    except ValueError:
+        creds = community.get_user_credits(user_id)
+        return {
+            "allowed": False, "credits_needed": cost,
+            "credits_remaining": creds.get("total_credits", 0),
+            "views_used": 0, "max_views": 0, "reset_at": None
+        }
 
 
 # --- Pay on the Go: Balance Deduction Endpoints ---

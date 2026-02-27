@@ -800,6 +800,20 @@ def get_analysis_views_status(user_id: int) -> dict:
     return {"views_used": count, "max_views": 3, "allowed": count < 3, "reset_at": None}
 
 
+
+def has_viewed_analysis(user_id: int, match_key: str) -> bool:
+    """Check if user has already viewed this match analysis (prevent double-charging)."""
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT id FROM analysis_views WHERE user_id = ? AND match_key = ?",
+            (user_id, match_key)
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def record_analysis_view(user_id: int, match_key: str, balance_paid: bool = False) -> dict:
     """Record that a user viewed a match analysis. Returns updated status."""
     from datetime import datetime, timedelta
