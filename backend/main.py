@@ -5485,6 +5485,15 @@ ul{padding-left:20px}
 
 # ==================== SEO ENDPOINTS ====================
 
+
+
+# =====================================================================
+# Server-side meta tag injection for multilingual SEO
+# Google sees the raw HTML before JS runs, so we inject the correct
+# language meta tags into index.html at the server level.
+# =====================================================================
+
+
 @app.get("/sitemap.xml")
 async def sitemap_xml():
     """Generate dynamic XML sitemap with hreflang for multilingual SEO."""
