@@ -1184,7 +1184,7 @@ export default function LiveScores() {
                                 </div>
                               </div>
                               <div className={`upcoming-analyze-btn ${!isPro ? 'pro-only' : ''}`}>
-                                {isPro ? 'Analyze' : 'Pro Only'}
+                                {isPro ? 'Analyze' : '50 Credits'}
                               </div>
                             </div>
                           )

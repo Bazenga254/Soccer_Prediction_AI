@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import axios from 'axios'
 import NotificationDropdown from './NotificationDropdown'
 import MessagesDropdown from './MessagesDropdown'
-import EarningsDropdown from './EarningsDropdown'
+import CreditBalanceDropdown from './CreditBalanceDropdown'
 import UserMenuDropdown from './UserMenuDropdown'
 import SearchBar from './SearchBar'
 import LanguageSelector from './LanguageSelector'
@@ -198,7 +198,7 @@ export default function Header({ user, logout }) {
             </div>
             <div className="header-row2-controls">
               <div className="hdr-ctrl hdr-ctrl-search"><SearchBar /></div>
-              <div className="hdr-ctrl hdr-ctrl-earnings"><EarningsDropdown /></div>
+              <div className="hdr-ctrl hdr-ctrl-earnings"><CreditBalanceDropdown /></div>
               <div className="hdr-ctrl hdr-ctrl-lang"><LanguageSelector /></div>
             </div>
           </div>

@@ -906,6 +906,7 @@ def _complete_transaction(transaction_id: int) -> Dict:
 
     elif tx["transaction_type"] == "balance_topup":
         amount_usd = tx["amount_usd"] or 0
+        amount_kes = tx["amount_kes"] or 0
         community.adjust_user_balance(
             user_id=tx["user_id"],
             amount_usd=amount_usd,
@@ -913,6 +914,16 @@ def _complete_transaction(transaction_id: int) -> Dict:
             reason="Pay on the Go deposit via M-Pesa",
             adjustment_type="topup",
         )
+        # Convert payment to credits
+        try:
+            import pricing_config as _pc
+            kes_rate = int(_pc.get("credit_rate_kes", 10))
+            credit_amount = int(amount_kes * kes_rate) if amount_kes > 0 else int(amount_usd * int(_pc.get("credit_rate_usd", 1300)))
+            if credit_amount > 0:
+                community.add_credits(tx["user_id"], credit_amount, f"M-Pesa deposit KES {amount_kes:.0f}")
+                logger.info(f"[Credits] User {tx['user_id']} credited {credit_amount} credits from M-Pesa deposit")
+        except Exception as e:
+            logger.error(f"[Credits] Error adding credits for M-Pesa deposit: {e}")
         try:
             import whop_payment
             whop_payment._process_referral_commission(

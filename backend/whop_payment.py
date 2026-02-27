@@ -362,6 +362,16 @@ def _fulfill_payment(user_id: int, transaction_type: str, reference_id: str,
             reason="Pay on the Go deposit via Whop",
             adjustment_type="topup",
         )
+        # Convert payment to credits
+        try:
+            import pricing_config as _pc
+            usd_rate = int(_pc.get("credit_rate_usd", 1300))
+            credit_amount = int(amount_usd * usd_rate) if amount_usd > 0 else 0
+            if credit_amount > 0:
+                community.add_credits(user_id, credit_amount, f"Card deposit ${amount_usd:.2f}")
+                print(f"[Credits] User {user_id} credited {credit_amount} credits from card deposit")
+        except Exception as e:
+            print(f"[Credits] Error adding credits for card deposit: {e}")
         _process_referral_commission(user_id, "balance_topup", "whop",
                                      amount_usd=amount_usd, transaction_type="balance_topup")
         logger.info(f"Balance topped up via polling: user={user_id}, amount=${amount_usd}")

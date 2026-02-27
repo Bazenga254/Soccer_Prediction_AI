@@ -7,7 +7,7 @@ import sqlite3
 import json
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import pricing_config
 
@@ -3962,3 +3962,249 @@ def get_pending_keepalive_for_agent(agent_id: int) -> List[Dict]:
         d["username"] = profile["username"] if profile else ""
         result.append(d)
     return result
+
+
+# =====================================================================
+# CREDIT SYSTEM
+# =====================================================================
+
+def _ensure_credits_columns():
+    """Ensure credits columns exist (idempotent migration)."""
+    conn = _get_db()
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(user_balances)").fetchall()]
+    if "credits" not in cols:
+        conn.execute("ALTER TABLE user_balances ADD COLUMN credits INTEGER DEFAULT 0")
+    if "daily_credits" not in cols:
+        conn.execute("ALTER TABLE user_balances ADD COLUMN daily_credits INTEGER DEFAULT 0")
+    if "credits_daily_expires_at" not in cols:
+        conn.execute("ALTER TABLE user_balances ADD COLUMN credits_daily_expires_at TEXT")
+    conn.commit()
+    conn.close()
+
+# Run migration on import
+try:
+    _ensure_credits_columns()
+except Exception:
+    pass
+
+
+def get_user_credits(user_id: int) -> Dict:
+    """Get a user's credit balance breakdown."""
+    conn = _get_db()
+    now = datetime.now().isoformat()
+
+    # Ensure row exists
+    conn.execute("""
+        INSERT OR IGNORE INTO user_balances (user_id, balance_usd, balance_kes,
+            total_deposited_usd, total_deposited_kes, total_spent_usd, total_spent_kes,
+            credits, daily_credits, updated_at)
+        VALUES (?, 0, 0, 0, 0, 0, 0, 0, 0, ?)
+    """, (user_id, now))
+    conn.commit()
+
+    row = conn.execute("SELECT * FROM user_balances WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+
+    purchased_credits = row["credits"] if row else 0
+    daily_credits = row["daily_credits"] if row else 0
+    daily_expires = row["credits_daily_expires_at"] if row else None
+
+    # Check if daily credits have expired
+    if daily_expires and daily_expires < now:
+        daily_credits = 0
+
+    total = purchased_credits + daily_credits
+
+    return {
+        "total_credits": total,
+        "purchased_credits": purchased_credits,
+        "daily_credits": daily_credits,
+        "daily_expires_at": daily_expires,
+        "total_deposited_usd": row["total_deposited_usd"] if row else 0,
+        "total_deposited_kes": row["total_deposited_kes"] if row else 0,
+    }
+
+
+def add_credits(user_id: int, amount: int, reason: str, credit_type: str = "purchased") -> Dict:
+    """Add credits to a user's account.
+    credit_type: 'purchased' (from deposit) or 'daily' (subscription refresh)
+    """
+    conn = _get_db()
+    now = datetime.now().isoformat()
+
+    # Ensure row exists
+    conn.execute("""
+        INSERT OR IGNORE INTO user_balances (user_id, balance_usd, balance_kes,
+            total_deposited_usd, total_deposited_kes, total_spent_usd, total_spent_kes,
+            credits, daily_credits, updated_at)
+        VALUES (?, 0, 0, 0, 0, 0, 0, 0, 0, ?)
+    """, (user_id, now))
+
+    if credit_type == "daily":
+        conn.execute("""
+            UPDATE user_balances SET daily_credits = daily_credits + ?, updated_at = ?
+            WHERE user_id = ?
+        """, (amount, now, user_id))
+    else:
+        conn.execute("""
+            UPDATE user_balances SET credits = credits + ?, updated_at = ?
+            WHERE user_id = ?
+        """, (amount, now, user_id))
+
+    # Log adjustment
+    conn.execute("""
+        INSERT INTO balance_adjustments (user_id, amount_usd, amount_kes, adjustment_type, reason,
+            adjusted_by_id, adjusted_by_name, created_at)
+        VALUES (?, 0, 0, ?, ?, NULL, 'system', ?)
+    """, (user_id, f"credit_{credit_type}", f"+{amount} credits: {reason}", now))
+
+    conn.commit()
+    result = get_user_credits.__wrapped__(user_id) if hasattr(get_user_credits, '__wrapped__') else None
+
+    # Return fresh data
+    row = conn.execute("SELECT * FROM user_balances WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+
+    daily_credits = row["daily_credits"] if row else 0
+    daily_expires = row["credits_daily_expires_at"] if row else None
+    if daily_expires and daily_expires < now:
+        daily_credits = 0
+
+    return {
+        "total_credits": (row["credits"] if row else 0) + daily_credits,
+        "purchased_credits": row["credits"] if row else 0,
+        "daily_credits": daily_credits,
+    }
+
+
+def deduct_credits(user_id: int, amount: int, reason: str) -> Dict:
+    """Deduct credits from a user. Uses daily credits first, then purchased.
+    Returns updated credit balance or raises ValueError if insufficient.
+    """
+    conn = _get_db()
+    now = datetime.now().isoformat()
+
+    row = conn.execute("SELECT * FROM user_balances WHERE user_id = ?", (user_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise ValueError("No balance record found")
+
+    purchased = row["credits"] or 0
+    daily = row["daily_credits"] or 0
+    daily_expires = row["credits_daily_expires_at"]
+
+    # Check if daily credits expired
+    if daily_expires and daily_expires < now:
+        daily = 0
+        conn.execute("UPDATE user_balances SET daily_credits = 0 WHERE user_id = ?", (user_id,))
+
+    total = purchased + daily
+    if total < amount:
+        conn.close()
+        raise ValueError(f"Insufficient credits. Have {total}, need {amount}")
+
+    # Deduct daily credits first, then purchased
+    remaining_to_deduct = amount
+    daily_deducted = min(daily, remaining_to_deduct)
+    remaining_to_deduct -= daily_deducted
+    purchased_deducted = remaining_to_deduct
+
+    conn.execute("""
+        UPDATE user_balances SET
+            daily_credits = daily_credits - ?,
+            credits = credits - ?,
+            updated_at = ?
+        WHERE user_id = ?
+    """, (daily_deducted, purchased_deducted, now, user_id))
+
+    # Log
+    conn.execute("""
+        INSERT INTO balance_adjustments (user_id, amount_usd, amount_kes, adjustment_type, reason,
+            adjusted_by_id, adjusted_by_name, created_at)
+        VALUES (?, 0, 0, 'credit_deduction', ?, NULL, 'system', ?)
+    """, (user_id, f"-{amount} credits: {reason}", now))
+
+    conn.commit()
+
+    # Return updated balance
+    row = conn.execute("SELECT * FROM user_balances WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+
+    new_daily = row["daily_credits"] if row else 0
+    if daily_expires and daily_expires < now:
+        new_daily = 0
+
+    return {
+        "total_credits": (row["credits"] if row else 0) + new_daily,
+        "purchased_credits": row["credits"] if row else 0,
+        "daily_credits": new_daily,
+        "credits_deducted": amount,
+    }
+
+
+def refresh_daily_credits(user_id: int, amount: int) -> Dict:
+    """Reset daily credits to a fixed amount with midnight expiry.
+    Called when subscription is active and daily credits have expired.
+    """
+    conn = _get_db()
+    now = datetime.now()
+    # Set expiry to next midnight UTC
+    tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    expires_at = tomorrow.isoformat()
+
+    # Ensure row exists
+    conn.execute("""
+        INSERT OR IGNORE INTO user_balances (user_id, balance_usd, balance_kes,
+            total_deposited_usd, total_deposited_kes, total_spent_usd, total_spent_kes,
+            credits, daily_credits, updated_at)
+        VALUES (?, 0, 0, 0, 0, 0, 0, 0, 0, ?)
+    """, (user_id, now.isoformat()))
+
+    conn.execute("""
+        UPDATE user_balances SET
+            daily_credits = ?,
+            credits_daily_expires_at = ?,
+            updated_at = ?
+        WHERE user_id = ?
+    """, (amount, expires_at, now.isoformat(), user_id))
+    conn.commit()
+
+    row = conn.execute("SELECT * FROM user_balances WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+
+    return {
+        "total_credits": (row["credits"] if row else 0) + amount,
+        "purchased_credits": row["credits"] if row else 0,
+        "daily_credits": amount,
+        "daily_expires_at": expires_at,
+    }
+
+
+def is_account_activated(user_id: int) -> bool:
+    """Check if user has ever made a deposit or has an active subscription."""
+    conn = _get_db()
+    row = conn.execute("SELECT * FROM user_balances WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+
+    if not row:
+        return False
+
+    # Activated if they've ever deposited anything or have credits
+    if (row["total_deposited_usd"] or 0) > 0:
+        return True
+    if (row["total_deposited_kes"] or 0) > 0:
+        return True
+    if (row["credits"] or 0) > 0:
+        return True
+
+    # Also check subscriptions
+    import sqlite3 as _sq
+    uconn = _sq.connect("users.db")
+    uconn.row_factory = _sq.Row
+    sub = uconn.execute("""
+        SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active'
+        AND expires_at > datetime('now') LIMIT 1
+    """, (user_id,)).fetchone()
+    uconn.close()
+
+    return sub is not None

@@ -1,0 +1,147 @@
+.activation-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.95);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.activation-card {
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+}
+
+.activation-icon {
+  font-size: 3rem;
+  margin-bottom: 8px;
+}
+
+.activation-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 8px;
+}
+
+.activation-desc {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.activation-credit-info {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+}
+
+.activation-credit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
+.activation-amount {
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.activation-credits {
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.activation-features {
+  text-align: left;
+  margin-bottom: 24px;
+}
+
+.activation-feature {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+}
+
+.activation-check {
+  color: #22c55e;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.activation-feature.free-label {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.activation-free {
+  background: #22c55e;
+  color: #0f172a;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.activation-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.activation-btn {
+  width: 100%;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.activation-btn:hover {
+  transform: translateY(-1px);
+}
+
+.activation-btn-mpesa {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: white;
+}
+
+.activation-btn-card {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+}
+
+.activation-btn-alt {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.activation-note {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin: 0;
+}

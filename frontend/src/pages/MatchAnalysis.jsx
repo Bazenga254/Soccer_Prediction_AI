@@ -2915,11 +2915,11 @@ export default function MatchAnalysis() {
                   setBalanceLoading(false)
                 }}
               >
-                {balanceLoading ? 'Processing...' : `Use Balance ($0.50) \u2014 $${balanceUsd.toFixed(2)} available`}
+                {balanceLoading ? 'Processing...' : `Use 250 Credits \u2014 $${balanceUsd.toFixed(2)} available`}
               </button>
             )}
             <Link to="/upgrade" className="analysis-blocked-upgrade-btn">
-              {'\u{1F680}'} {balanceUsd < 0.50 ? 'Deposit $2 to Unlock' : 'Upgrade to Pro for Unlimited Access'}
+              {'\u{1F680}'} {balanceUsd < 0.50 ? 'Add Credits to Unlock' : 'Upgrade to Pro for Unlimited Access'}
             </Link>
             <button className="analysis-blocked-back-btn" onClick={() => navigate(-1)}>
               ← Go Back

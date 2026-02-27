@@ -1,0 +1,179 @@
+.credit-balance-wrapper {
+  position: relative;
+}
+
+.credit-balance-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 4px 12px;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.credit-balance-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.credit-balance-btn.credit-ok .credit-icon {
+  color: #fbbf24;
+}
+
+.credit-balance-btn.credit-low {
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.credit-balance-btn.credit-low .credit-icon {
+  color: #f59e0b;
+}
+
+.credit-balance-btn.credit-critical {
+  border-color: rgba(239, 68, 68, 0.4);
+  animation: pulse-red 2s infinite;
+}
+
+.credit-balance-btn.credit-critical .credit-icon {
+  color: #ef4444;
+}
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
+  50% { box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.2); }
+}
+
+.credit-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.credit-icon-large {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.credit-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.credit-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 280px;
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.credit-dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.credit-total {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.credit-subtitle {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.credit-breakdown {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.credit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+}
+
+.credit-row-sub {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.credit-costs {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.credit-costs-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.credit-cost-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.credit-actions {
+  padding: 12px 16px;
+  display: flex;
+  gap: 8px;
+}
+
+.credit-add-btn {
+  flex: 1;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.credit-add-btn:hover {
+  transform: translateY(-1px);
+}
+
+.credit-history-btn {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.credit-history-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+}

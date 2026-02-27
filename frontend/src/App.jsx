@@ -5,6 +5,7 @@ import Header from './components/Header'
 import { useTracking } from './hooks/useTracking'
 import { BetSlipProvider } from './context/BetSlipContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { CreditProvider } from './context/CreditContext'
 import { CurrencyProvider } from './context/CurrencyContext'
 import { ThemeProvider } from './context/ThemeContext'
 import OfflineBanner from './components/OfflineBanner'
@@ -66,6 +67,7 @@ class ErrorBoundary extends Component {
 
 // Lazy-load all page components for code splitting
 const LiveScores = lazyRetry(() => import('./pages/LiveScores'))
+const AccountActivation = lazyRetry(() => import('./components/AccountActivation'))
 const FixturesList = lazyRetry(() => import('./components/FixturesList'))
 const MatchAnalysis = lazyRetry(() => import('./pages/MatchAnalysis'))
 const TrackRecord = lazyRetry(() => import('./pages/TrackRecord'))
@@ -157,6 +159,17 @@ function ProtectedApp() {
     )
   }
 
+  // Block access until account is activated (initial deposit required)
+  if (user && user.account_activated === false) {
+    return (
+      <div className="app">
+        <Suspense fallback={<PageLoader />}>
+          <AccountActivation />
+        </Suspense>
+      </div>
+    )
+  }
+
   return (
     <BetSlipProvider>
       <div className="app">
@@ -213,6 +226,7 @@ function App() {
     <OfflineBanner />
     <BrowserRouter>
       <ThemeProvider>
+      <CreditProvider>
       <CurrencyProvider>
       <AuthProvider>
         <Suspense fallback={null}>
@@ -304,6 +318,7 @@ function App() {
         </TrackingWrapper>
       </AuthProvider>
       </CurrencyProvider>
+      </CreditProvider>
       </ThemeProvider>
     </BrowserRouter>
     </>

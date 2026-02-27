@@ -2620,6 +2620,105 @@ async def get_user_balance(authorization: str = Header(None)):
 # Balance admin endpoints moved to admin_routes.py
 
 
+
+
+# =====================================================================
+# CREDIT SYSTEM ENDPOINTS
+# =====================================================================
+
+@app.get("/api/credits/balance")
+async def get_credits_balance(authorization: str = Header(None)):
+    """Get the authenticated user's credit balance breakdown."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    credits = community.get_user_credits(payload["user_id"])
+
+    # Check if user has active subscription and daily credits need refresh
+    sub = subscriptions.get_active_subscription(payload["user_id"])
+    if sub:
+        daily_expires = credits.get("daily_expires_at")
+        from datetime import datetime as _dt
+        now = _dt.now().isoformat()
+        if not daily_expires or daily_expires < now:
+            # Refresh daily credits
+            daily_amount = int(pricing_config.get("daily_credits_subscriber", 2000))
+            credits = community.refresh_daily_credits(payload["user_id"], daily_amount)
+
+    credits["has_subscription"] = sub is not None
+    return credits
+
+
+@app.get("/api/credits/costs")
+async def get_credits_costs():
+    """Get credit costs for all actions (public endpoint)."""
+    return {
+        "prediction": int(pricing_config.get("credit_cost_prediction", 50)),
+        "match_analysis": int(pricing_config.get("credit_cost_match_analysis", 250)),
+        "jackpot": int(pricing_config.get("credit_cost_jackpot", 650)),
+        "chat_prompt": int(pricing_config.get("credit_cost_chat_prompt", 100)),
+        "community_post": int(pricing_config.get("credit_cost_community_post", 25)),
+        "credit_rate_kes": int(pricing_config.get("credit_rate_kes", 10)),
+        "credit_rate_usd": int(pricing_config.get("credit_rate_usd", 1300)),
+        "daily_credits_subscriber": int(pricing_config.get("daily_credits_subscriber", 2000)),
+        "min_deposit_kes": float(pricing_config.get("min_deposit_kes", 35)),
+        "min_deposit_usd": float(pricing_config.get("min_deposit_usd", 1.0)),
+    }
+
+
+class CreditDeductRequest(BaseModel):
+    action: str  # prediction, match_analysis, jackpot, chat_prompt, community_post
+    match_key: str = ""
+
+
+@app.post("/api/credits/deduct")
+async def deduct_credits(request: CreditDeductRequest, authorization: str = Header(None)):
+    """Deduct credits for a specific action."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    cost_map = {
+        "prediction": int(pricing_config.get("credit_cost_prediction", 50)),
+        "match_analysis": int(pricing_config.get("credit_cost_match_analysis", 250)),
+        "jackpot": int(pricing_config.get("credit_cost_jackpot", 650)),
+        "chat_prompt": int(pricing_config.get("credit_cost_chat_prompt", 100)),
+        "community_post": int(pricing_config.get("credit_cost_community_post", 25)),
+    }
+
+    if request.action not in cost_map:
+        raise HTTPException(status_code=400, detail=f"Invalid action: {request.action}")
+
+    cost = cost_map[request.action]
+
+    try:
+        result = community.deduct_credits(
+            payload["user_id"], cost,
+            f"{request.action}" + (f" ({request.match_key})" if request.match_key else "")
+        )
+        return {"success": True, **result}
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/api/user/activation-status")
+async def get_activation_status(authorization: str = Header(None)):
+    """Check if user account is activated (has made initial deposit)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    activated = community.is_account_activated(payload["user_id"])
+    return {
+        "activated": activated,
+        "min_deposit_kes": float(pricing_config.get("min_deposit_kes", 35)),
+        "min_deposit_usd": float(pricing_config.get("min_deposit_usd", 1.0)),
+        "credit_rate_kes": int(pricing_config.get("credit_rate_kes", 10)),
+        "credit_rate_usd": int(pricing_config.get("credit_rate_usd", 1300)),
+    }
+
+
 # ==================== END USER BALANCE ENDPOINTS ====================
 
 

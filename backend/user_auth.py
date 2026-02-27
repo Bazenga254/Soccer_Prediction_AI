@@ -2721,6 +2721,26 @@ def resend_verification_code(email: str) -> Dict:
     return {"success": True, "message": "A new verification code has been sent to your email."}
 
 
+
+
+def _get_account_activated(user_id: int) -> bool:
+    """Check if user has activated their account (made initial deposit)."""
+    try:
+        import community
+        return community.is_account_activated(user_id)
+    except Exception:
+        return True  # Default to activated to avoid blocking
+
+
+def _get_user_credits_total(user_id: int) -> int:
+    """Get user total credits for profile response."""
+    try:
+        import community
+        credits = community.get_user_credits(user_id)
+        return credits.get("total_credits", 0)
+    except Exception:
+        return 0
+
 def get_user_profile(user_id: int) -> Optional[Dict]:
     """Get user profile by ID."""
     conn = _get_db()
@@ -2759,6 +2779,8 @@ def get_user_profile(user_id: int) -> Optional[Dict]:
         "sensitive_actions_restricted": not sensitive_check["allowed"],
         "sensitive_actions_message": sensitive_check.get("message", ""),
         "sensitive_actions_remaining_seconds": sensitive_check.get("remaining_seconds", 0),
+        "account_activated": _get_account_activated(user["id"]),
+        "credits": _get_user_credits_total(user["id"]),
     }
 
 

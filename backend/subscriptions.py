@@ -326,6 +326,15 @@ def create_subscription(
         except Exception as e:
             print(f"[WARN] Failed to create referral notification: {e}")
 
+    # Refresh daily credits for the new subscription
+    try:
+        import community as _comm
+        import pricing_config as _pc
+        daily_amount = int(_pc.get("daily_credits_subscriber", 2000))
+        _comm.refresh_daily_credits(user_id, daily_amount)
+    except Exception as e:
+        print(f"[Credits] Error refreshing daily credits on subscription: {e}")
+
     return {
         "success": True,
         "expires_at": expires.isoformat(),
