@@ -859,15 +859,27 @@ def _complete_transaction(transaction_id: int) -> Dict:
             payment_ref=payment_ref,
         )
         if not result.get("success"):
-            logger.error(f"[Callback] Subscription creation failed for tx {transaction_id}: {result}")
-            conn.execute("""
-                UPDATE payment_transactions
-                SET payment_status = 'failed', failure_reason = ?, updated_at = ?
-                WHERE id = ?
-            """, (result.get("error", "Subscription creation failed"), now, transaction_id))
-            conn.commit()
-            conn.close()
-            return {"success": False, "error": result.get("error", "Subscription creation failed")}
+            # If user already paid but trial check failed, force-create the subscription
+            # (user's money was already deducted by M-Pesa - don't lose it)
+            if result.get("error") == "Trial already used":
+                logger.warning(f"[Callback] Overriding 'Trial already used' for tx {transaction_id} - user already paid KES {tx['amount_kes']}")
+                result = subscriptions.create_subscription(
+                    user_id=tx["user_id"],
+                    plan_id=plan_id,
+                    payment_method="mpesa",
+                    payment_ref=payment_ref,
+                    force=True,
+                )
+            if not result.get("success"):
+                logger.error(f"[Callback] Subscription creation failed for tx {transaction_id}: {result}")
+                conn.execute("""
+                    UPDATE payment_transactions
+                    SET payment_status = 'failed', failure_reason = ?, updated_at = ?
+                    WHERE id = ?
+                """, (result.get("error", "Subscription creation failed"), now, transaction_id))
+                conn.commit()
+                conn.close()
+                return {"success": False, "error": result.get("error", "Subscription creation failed")}
 
         try:
             import whop_payment

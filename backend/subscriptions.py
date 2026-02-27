@@ -262,6 +262,7 @@ def create_subscription(
     plan_id: str,
     payment_method: str = "",
     payment_ref: str = "",
+    force: bool = False,
 ) -> Dict:
     """Create a new subscription for a user."""
     plans = get_plans()
@@ -270,8 +271,8 @@ def create_subscription(
 
     is_trial = plan_id in TRIAL_PLAN_IDS
 
-    # Check if user already used trial
-    if is_trial:
+    # Check if user already used trial (skip if force=True, e.g. M-Pesa already charged)
+    if is_trial and not force:
         import user_auth
         if user_auth.has_used_trial(user_id):
             return {"success": False, "error": "Trial already used"}

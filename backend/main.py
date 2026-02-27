@@ -2129,6 +2129,11 @@ async def initiate_mpesa_payment(request: MpesaPaymentRequest, authorization: st
         plans = subscriptions.get_plans()
         if not request.reference_id or request.reference_id not in plans:
             raise HTTPException(status_code=400, detail="Invalid subscription plan")
+        # Check trial eligibility BEFORE charging (prevent M-Pesa charge then rejection)
+        if request.reference_id in subscriptions.TRIAL_PLAN_IDS:
+            import user_auth
+            if user_auth.has_used_trial(payload["user_id"]):
+                raise HTTPException(status_code=400, detail="You have already used your free trial. Please select a different plan.")
         plan = plans[request.reference_id]
         if plan["currency"] == "KES":
             # Amount must match the plan price exactly
