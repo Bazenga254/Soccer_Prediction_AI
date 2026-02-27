@@ -20,28 +20,40 @@ export default function AccountSetup() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // Track if security Q is already set (from user profile OR detected at submit time)
+  const [securityAlreadySet, setSecurityAlreadySet] = useState(false)
+
   // Step 2 fields (WhatsApp OTP)
   const [otpCode, setOtpCode] = useState('')
   const [verifying, setVerifying] = useState(false)
   const [otpError, setOtpError] = useState('')
   const [resendCooldown, setResendCooldown] = useState(0)
 
-  // If user already has security Q&A set, pre-fill and skip those fields
+  // Detect if security Q is already set from user profile
+  const hasSecurityFromProfile = !!(user?.security_question && user?.has_security_answer)
+  const hasSecuritySetup = hasSecurityFromProfile || securityAlreadySet
+
+  // Initialize from user profile
   useEffect(() => {
-    if (user?.security_question && user?.has_security_answer) {
-      // Security already set — skip to phone verification
-      if (user?.whatsapp_number && !user?.whatsapp_verified) {
-        setWhatsappNumber(user.whatsapp_number)
+    if (!user) return
+
+    // Detect security already set
+    if (user.security_question && user.has_security_answer) {
+      setSecurityAlreadySet(true)
+    }
+
+    // Pre-fill phone if available
+    if (user.whatsapp_number) {
+      setWhatsappNumber(user.whatsapp_number)
+      // If phone exists but not verified, skip to OTP step
+      if (!user.whatsapp_verified) {
         setStep(2)
       }
-      // If they have a phone number already, pre-fill it
-      if (user?.whatsapp_number) {
-        setWhatsappNumber(user.whatsapp_number)
-      }
     }
-    // Pre-fill date of birth and country if available
-    if (user?.date_of_birth) setDateOfBirth(user.date_of_birth)
-    if (user?.country) setCountry(user.country)
+
+    // Pre-fill other fields
+    if (user.date_of_birth) setDateOfBirth(user.date_of_birth)
+    if (user.country) setCountry(user.country)
   }, [user])
 
   // Countdown timer for resend cooldown
@@ -51,11 +63,11 @@ export default function AccountSetup() {
     return () => clearTimeout(timer)
   }, [resendCooldown])
 
-  const canSubmitStep1 = securityQuestion && securityAnswer.trim().length >= 2 && dateOfBirth && whatsappNumber.trim().length >= 10
-
-  // For returning users who already have security Q&A
-  const hasSecuritySetup = user?.security_question && user?.has_security_answer
-  const canSubmitStep1Returning = hasSecuritySetup && whatsappNumber.trim().length >= 10
+  // Validation for step 1
+  const isPhoneValid = whatsappNumber.trim().length >= 10
+  const isSecurityValid = hasSecuritySetup || (securityQuestion && securityAnswer.trim().length >= 2)
+  const isDobValid = !!dateOfBirth
+  const canSubmitStep1 = isSecurityValid && isDobValid && isPhoneValid
 
   // Step 1: Submit personal info and send WhatsApp OTP
   const handleStep1Submit = async (e) => {
@@ -63,7 +75,7 @@ export default function AccountSetup() {
     setError('')
     setSaving(true)
     try {
-      // Save personal info first (only if not already set)
+      // Save personal info (only fields that need setting)
       if (!hasSecuritySetup) {
         const payload = {
           security_question: securityQuestion,
@@ -74,7 +86,25 @@ export default function AccountSetup() {
         if (!user?.full_name) {
           payload.full_name = user?.display_name || ''
         }
-        await axios.put('/api/user/personal-info', payload)
+        const infoRes = await axios.put('/api/user/personal-info', payload)
+        const data = infoRes.data
+        // If backend says security already set, mark it and continue
+        if (data && data.success === false && data.error && data.error.toLowerCase().includes('security')) {
+          setSecurityAlreadySet(true)
+          // Don't stop — continue to send OTP
+        }
+      } else {
+        // Still update DOB and country if needed
+        if (dateOfBirth || country) {
+          try {
+            await axios.put('/api/user/personal-info', {
+              date_of_birth: dateOfBirth || undefined,
+              country: country || undefined,
+            })
+          } catch (e) {
+            // Non-critical, continue
+          }
+        }
       }
 
       // Send WhatsApp OTP
@@ -85,15 +115,37 @@ export default function AccountSetup() {
       setResendCooldown(60)
       setStep(2)
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Something went wrong.'
-      if (msg.includes('phone') || msg.includes('Phone') || msg.includes('number')) {
-        setError('Please enter a valid phone number in international format (e.g., +254712345678).')
-      } else if (msg.includes('security')) {
-        setError('Please complete the security question and answer.')
+      const msg = err.response?.data?.detail || err.response?.data?.error || 'Something went wrong.'
+
+      // If security question already set, mark it and retry without security fields
+      if (msg.toLowerCase().includes('security') && msg.toLowerCase().includes('cannot')) {
+        setSecurityAlreadySet(true)
+        setError('')
+        // Auto-retry: now just send the phone OTP
+        try {
+          await axios.post('/api/user/whatsapp/verify-send', {
+            phone_number: whatsappNumber.trim()
+          })
+          setResendCooldown(60)
+          setStep(2)
+        } catch (retryErr) {
+          const retryMsg = retryErr.response?.data?.detail || 'Failed to send verification code.'
+          setError(retryMsg)
+        }
+        setSaving(false)
+        return
+      }
+
+      if (msg.includes('phone') || msg.includes('Phone') || msg.includes('number') || msg.includes('Number')) {
+        if (msg.toLowerCase().includes('already linked') || msg.toLowerCase().includes('already')) {
+          setError(msg)
+        } else {
+          setError('Please enter a valid phone number in international format (e.g., +254712345678).')
+        }
       } else if (err.response?.status === 429) {
         setError('Too many attempts. Please wait a minute and try again.')
       } else {
-        setError(msg + ' If the issue persists, try refreshing the page.')
+        setError(msg)
       }
     } finally {
       setSaving(false)
@@ -168,6 +220,23 @@ export default function AccountSetup() {
             </p>
 
             <form onSubmit={handleStep1Submit} className="account-setup-form">
+              {/* Security Q already set — show confirmation */}
+              {hasSecuritySetup && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)',
+                  borderRadius: '10px', padding: '12px 14px', marginBottom: '4px'
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                  <span style={{ color: '#86efac', fontSize: '13px', lineHeight: '1.4' }}>
+                    Security question is already set up.{user?.security_question ? ` (${user.security_question})` : ''}
+                  </span>
+                </div>
+              )}
+
               {/* Only show DOB/Security fields if not already set */}
               {!hasSecuritySetup && (
                 <>
@@ -256,7 +325,7 @@ export default function AccountSetup() {
               <button
                 type="submit"
                 className="account-setup-btn"
-                disabled={hasSecuritySetup ? !canSubmitStep1Returning : !canSubmitStep1 || saving}
+                disabled={!canSubmitStep1 || saving}
               >
                 {saving ? t('common.saving') : 'Continue & Verify Phone'}
               </button>

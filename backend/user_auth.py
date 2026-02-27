@@ -3084,21 +3084,21 @@ def update_personal_info(user_id: int, full_name: str = None, date_of_birth: str
         params.append(date_of_birth or None)
 
     if security_question is not None:
-        # Once set, security question cannot be changed
-        if user["security_question"]:
-            conn.close()
-            return {"success": False, "error": "Security question cannot be changed once set."}
-        updates.append("security_question = ?")
-        params.append(security_question.strip() or None)
+        # Once set, security question cannot be changed — skip silently
+        if not user["security_question"]:
+            updates.append("security_question = ?")
+            params.append(security_question.strip() or None)
 
     if security_answer is not None:
-        if security_answer.strip():
-            answer_hash = _hash_password(security_answer.strip().lower())
-            updates.append("security_answer_hash = ?")
-            params.append(answer_hash)
-        else:
-            updates.append("security_answer_hash = ?")
-            params.append(None)
+        # Only update answer if security question isn't already set
+        if not user["security_question"]:
+            if security_answer.strip():
+                answer_hash = _hash_password(security_answer.strip().lower())
+                updates.append("security_answer_hash = ?")
+                params.append(answer_hash)
+            else:
+                updates.append("security_answer_hash = ?")
+                params.append(None)
 
     if country is not None:
         updates.append("country = ?")
