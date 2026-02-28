@@ -28,6 +28,7 @@ import access_codes
 import prediction_tracker
 import user_auth
 import community
+import push_notifications
 import team_aliases
 import subscriptions
 import pricing_config
@@ -3615,6 +3616,48 @@ async def get_unread_count(authorization: str = Header(None)):
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return {"unread_count": community.get_unread_count(payload["user_id"])}
+
+
+
+# ==================== WEB PUSH NOTIFICATIONS ====================
+
+class PushSubscribeRequest(BaseModel):
+    subscription: dict
+    user_agent: str = ""
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(req: PushSubscribeRequest, authorization: str = Header(None)):
+    """Store a Web Push subscription for the authenticated user."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    success = push_notifications.save_subscription(
+        user_id=payload["user_id"],
+        subscription=req.subscription,
+        user_agent=req.user_agent,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail="Invalid subscription data")
+    return {"success": True}
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(req: PushUnsubscribeRequest, authorization: str = Header(None)):
+    """Remove a Web Push subscription."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    push_notifications.remove_subscription(req.endpoint)
+    return {"success": True}
+
+
+@app.get("/api/push/vapid-key")
+async def get_vapid_key():
+    """Return the VAPID public key for push subscription."""
+    return {"vapid_public_key": config.VAPID_PUBLIC_KEY}
 
 
 @app.get("/api/user/notifications/stream")

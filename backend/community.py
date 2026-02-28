@@ -374,6 +374,19 @@ def init_community_db():
         CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_notif_unread ON notifications(user_id, is_read);
 
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            endpoint TEXT NOT NULL UNIQUE,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            user_agent TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            last_used_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_push_sub_user ON push_subscriptions(user_id);
+
         CREATE TABLE IF NOT EXISTS direct_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sender_id INTEGER NOT NULL,
@@ -605,6 +618,23 @@ def create_notification(user_id: int, notif_type: str, title: str, message: str,
     notif_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
     _signal_notification(user_id, notif_id)
+
+    # Send Web Push notification (background thread, best-effort)
+    # Skip if user has an active SSE connection (they will see it in-app)
+    if user_id not in _notification_events or not _notification_events[user_id]:
+        try:
+            import push_notifications
+            push_notifications.send_push_notification(
+                user_id=user_id,
+                notif_type=notif_type,
+                title=title,
+                message=message,
+                metadata=metadata,
+                notif_id=notif_id,
+            )
+        except Exception:
+            pass  # Push is best-effort, never block notification creation
+
     return notif_id
 
 

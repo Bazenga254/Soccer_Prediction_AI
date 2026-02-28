@@ -58,6 +58,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ['/push-sw.js'],
         globPatterns: ['assets/index-*.js', 'assets/index-*.css'],
         cleanupOutdatedCaches: true,
         skipWaiting: true,

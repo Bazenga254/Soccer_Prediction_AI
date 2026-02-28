@@ -53,6 +53,12 @@ export function AuthProvider({ children }) {
           if (prefs.tracked_matches) localStorage.setItem('trackedMatches', JSON.stringify(prefs.tracked_matches))
           if (prefs.live_favorites) localStorage.setItem('live_favorites', JSON.stringify(prefs.live_favorites))
         }).catch(() => {})
+        // Re-subscribe to push if permission was previously granted
+        if ('Notification' in window && Notification.permission === 'granted') {
+          import('../utils/pushSubscription').then(({ subscribeToPush }) => {
+            subscribeToPush().catch(() => {})
+          })
+        }
       } else {
         clearAuth()
       }

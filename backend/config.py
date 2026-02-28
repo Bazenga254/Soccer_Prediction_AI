@@ -14,6 +14,11 @@ import os
 API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY", "")
 API_FOOTBALL_HOST = "v3.football.api-sports.io"
 
+
+# Web Push VAPID keys
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_CLAIMS_EMAIL = os.environ.get("VAPID_CLAIMS_EMAIL", "mailto:admin@spark-ai-prediction.com")
 # The Odds API Key (for betting odds)
 # Sign up at: https://the-odds-api.com/
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")

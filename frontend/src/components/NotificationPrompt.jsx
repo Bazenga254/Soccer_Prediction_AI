@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { subscribeToPush } from '../utils/pushSubscription'
 
 export default function NotificationPrompt() {
   const [show, setShow] = useState(false)
@@ -18,6 +19,13 @@ export default function NotificationPrompt() {
     return () => clearTimeout(timer)
   }, [])
 
+  // If permission was already granted, ensure push subscription exists
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      subscribeToPush().catch(() => {})
+    }
+  }, [])
+
   const handleEnable = async () => {
     localStorage.setItem('spark_notif_prompted', '1')
     try {
@@ -27,6 +35,8 @@ export default function NotificationPrompt() {
           body: 'Notifications enabled! You\'ll get live goal alerts and updates.',
           icon: '/pwa-192x192.png',
         })
+        // Subscribe to Web Push (sends subscription to server)
+        subscribeToPush().catch(() => {})
       }
     } catch { /* browser blocked it */ }
     setShow(false)

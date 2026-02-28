@@ -19,6 +19,8 @@ if ('serviceWorker' in navigator) {
     registerSW({
       onRegisteredSW(swUrl, registration) {
         if (registration) {
+          // Expose registration globally for push subscription
+          window.__swRegistration = registration
           setInterval(() => {
             registration.update()
           }, 60 * 60 * 1000)
