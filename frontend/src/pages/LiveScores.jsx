@@ -273,6 +273,8 @@ export default function LiveScores() {
   const [upcomingLoading, setUpcomingLoading] = useState(true)
   const [upcomingPage, setUpcomingPage] = useState(1)
   const [activeView, setActiveView] = useState('live') // 'live' | 'upcoming'
+  const [leagueFilter, setLeagueFilter] = useState('')
+  const [selectedLeague, setSelectedLeague] = useState(null)
 
   const toggleFavorite = (matchId) => {
     setFavorites(prev => {
@@ -1129,7 +1131,32 @@ export default function LiveScores() {
               <p>No upcoming matches found.</p>
             </div>
           ) : (() => {
-            const allSorted = [...upcomingMatches].sort((a, b) => new Date(a.date) - new Date(b.date))
+            // Extract unique leagues from upcoming matches
+            const leagueMap = new Map()
+            upcomingMatches.forEach(fx => {
+              const comp = fx.competition
+              if (comp && comp.id && !leagueMap.has(comp.id)) {
+                leagueMap.set(comp.id, { id: comp.id, name: comp.name, code: comp.code, emblem: comp.emblem, flag: comp.flag })
+              }
+            })
+            const LEAGUE_PRIORITY_MAP = typeof LEAGUE_PRIORITY !== 'undefined' ? LEAGUE_PRIORITY : {}
+            const upcomingLeagues = [...leagueMap.values()].sort((a, b) => {
+              const pa = LEAGUE_PRIORITY_MAP[a.id] || 999
+              const pb = LEAGUE_PRIORITY_MAP[b.id] || 999
+              return pa !== pb ? pa - pb : a.name.localeCompare(b.name)
+            })
+            const filteredLeagues = leagueFilter
+              ? upcomingLeagues.filter(l =>
+                  l.name.toLowerCase().includes(leagueFilter.toLowerCase()) ||
+                  (l.code || '').toLowerCase().includes(leagueFilter.toLowerCase())
+                )
+              : upcomingLeagues
+
+            // Filter matches by selected league
+            const filteredMatches = selectedLeague
+              ? upcomingMatches.filter(fx => fx.competition?.id === selectedLeague)
+              : upcomingMatches
+            const allSorted = [...filteredMatches].sort((a, b) => new Date(a.date) - new Date(b.date))
             const UPCOMING_PER_PAGE = 15
             const totalUpcomingPages = Math.max(1, Math.ceil(allSorted.length / UPCOMING_PER_PAGE))
             const paged = allSorted.slice((upcomingPage - 1) * UPCOMING_PER_PAGE, upcomingPage * UPCOMING_PER_PAGE)
@@ -1143,6 +1170,48 @@ export default function LiveScores() {
 
             return (
               <>
+                {/* League Filter Bar */}
+                <div className="upcoming-league-filter">
+                  <div className="upcoming-league-search">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search leagues..."
+                      value={leagueFilter}
+                      onChange={e => { setLeagueFilter(e.target.value); setSelectedLeague(null) }}
+                      className="upcoming-league-search-input"
+                    />
+                    {leagueFilter && (
+                      <button onClick={() => setLeagueFilter('')} className="upcoming-league-search-clear">&times;</button>
+                    )}
+                  </div>
+                  <div className="upcoming-league-chips">
+                    <button
+                      className={`upcoming-league-chip ${!selectedLeague ? 'active' : ''}`}
+                      onClick={() => { setSelectedLeague(null); setLeagueFilter('') }}
+                    >
+                      All
+                    </button>
+                    {filteredLeagues.map(league => (
+                      <button
+                        key={league.id}
+                        className={`upcoming-league-chip ${selectedLeague === league.id ? 'active' : ''}`}
+                        onClick={() => { setSelectedLeague(league.id); setLeagueFilter('') }}
+                      >
+                        {league.emblem && <img src={league.emblem} alt="" className="upcoming-league-chip-icon" />}
+                        {league.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filteredMatches.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: '#64748b' }}>
+                    <p>No upcoming matches for this league.</p>
+                  </div>
+                ) : (
                 <div className="upcoming-fixtures-list">
                   {sortedDates.map(date => (
                     <div key={date} className="upcoming-date-group">
@@ -1193,6 +1262,7 @@ export default function LiveScores() {
                     </div>
                   ))}
                 </div>
+                )}
                 {totalUpcomingPages > 1 && (() => {
                   const maxVis = 5
                   let s = Math.max(1, upcomingPage - Math.floor(maxVis / 2))
