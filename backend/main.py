@@ -4387,9 +4387,14 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
     avg_team_a_goals = team_a_goals / total_matches if total_matches > 0 else 0
     avg_team_b_goals = team_b_goals / total_matches if total_matches > 0 else 0
 
-    # Calculate percentages
+    # Calculate percentages (cap at 98% — nothing is 100% certain)
     def pct(count):
-        return round((count / total_matches) * 100, 1) if total_matches > 0 else 0
+        if total_matches <= 0:
+            return 0
+        val = round((count / total_matches) * 100, 1)
+        if val >= 100:
+            val = 98.0
+        return val
 
     # Goals analysis
     goals_analysis = {
@@ -4416,6 +4421,9 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
     team_a_win_pct = pct(team_a_wins)
     team_b_win_pct = pct(team_b_wins)
     draw_pct = pct(draws)
+
+    # Flag for low data — fewer than 5 H2H matches
+    low_data = total_matches < 5
 
     # Draw No Bet (only team_a or team_b can win)
     total_decisive = team_a_wins + team_b_wins
@@ -4459,7 +4467,12 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
 
     # Helper for HT percentage calculations
     def ht_pct(count):
-        return round((count / ht_matches) * 100, 1) if ht_matches > 0 else 0
+        if ht_matches <= 0:
+            return 0
+        val = round((count / ht_matches) * 100, 1)
+        if val >= 100:
+            val = 98.0
+        return val
 
     # First Half analysis - use actual HT data if available, else estimate
     if ht_matches > 0:
@@ -4658,6 +4671,10 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
     if fg_total > 0:
         first_goal_1x2_data = {k: round(v / fg_total * 100, 1) for k, v in first_goal_1x2_data.items()}
 
+    # Cap double chance percentages at 98%
+    def cap(val):
+        return min(98.0, val)
+
     result_analysis = {
         "1x2": {
             "team_a_wins": {"count": team_a_wins, "percentage": team_a_win_pct},
@@ -4667,13 +4684,13 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
                          ("2" if team_b_win_pct > team_a_win_pct and team_b_win_pct > draw_pct else "X")
         },
         "double_chance": {
-            "1X": {"percentage": round(team_a_win_pct + draw_pct, 1), "matches": team_a_wins + draws},
-            "X2": {"percentage": round(draw_pct + team_b_win_pct, 1), "matches": draws + team_b_wins},
-            "12": {"percentage": round(team_a_win_pct + team_b_win_pct, 1), "matches": team_a_wins + team_b_wins},
+            "1X": {"percentage": cap(round(team_a_win_pct + draw_pct, 1)), "matches": team_a_wins + draws},
+            "X2": {"percentage": cap(round(draw_pct + team_b_win_pct, 1)), "matches": draws + team_b_wins},
+            "12": {"percentage": cap(round(team_a_win_pct + team_b_win_pct, 1)), "matches": team_a_wins + team_b_wins},
         },
         "draw_no_bet": {
-            "team_a": {"percentage": dnb_team_a, "name": team_a.get("name")},
-            "team_b": {"percentage": dnb_team_b, "name": team_b.get("name")},
+            "team_a": {"percentage": cap(dnb_team_a), "name": team_a.get("name")},
+            "team_b": {"percentage": cap(dnb_team_b), "name": team_b.get("name")},
             "prediction": "1" if dnb_team_a > dnb_team_b else "2"
         },
         "first_goal": {
@@ -4736,6 +4753,7 @@ async def get_h2h_analysis(team_a_id: int, team_b_id: int, competition: str = "P
         "team_b": {"id": team_b_id, "name": team_b.get("name"), "crest": team_b.get("crest")},
         "matches": formatted_matches,
         "total_matches": total_matches,
+        "low_data": low_data,
         "goals_analysis": goals_analysis,
         "result_analysis": result_analysis,
         "home_form": home_form_analysis,

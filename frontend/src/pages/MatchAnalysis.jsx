@@ -326,6 +326,19 @@ function CollapsibleH2H({ h2hData, teamAName, teamBName, homeId, awayId }) {
 
       {isExpanded && (
         <div className="h2h-content">
+          {(h2hData.low_data || totalMatches < 5) && totalMatches > 0 && (
+            <div className="h2h-low-data-warning">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>
+                These teams have only met <strong>{totalMatches} time{totalMatches !== 1 ? 's' : ''}</strong> in recent history.
+                Limited data may affect prediction accuracy. We'll do our best with the available information to provide useful insights.
+              </span>
+            </div>
+          )}
           <div className="h2h-tabs">
             <button
               className={`h2h-tab ${activeTab === 'direct' ? 'active' : ''}`}

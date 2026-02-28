@@ -26632,3 +26632,29 @@ body.ai-assistant-active .support-chat-fab {
   font-size: 14px;
   user-select: none;
 }
+
+
+/* ── H2H Low Data Warning ── */
+
+.h2h-low-data-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 10px;
+  color: #fbbf24;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.h2h-low-data-warning svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.h2h-low-data-warning strong {
+  color: #fcd34d;
+}
