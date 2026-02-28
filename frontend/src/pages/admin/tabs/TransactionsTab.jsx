@@ -34,7 +34,10 @@ export default function TransactionsTab() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [offset, setOffset] = useState(0)
-  const LIMIT = 50
+  const [selectedUser, setSelectedUser] = useState(null)
+  const [userDetail, setUserDetail] = useState(null)
+  const [loadingUser, setLoadingUser] = useState(false)
+  const LIMIT = 10
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true)
@@ -66,10 +69,39 @@ export default function TransactionsTab() {
     return `$${(t.amount_usd || 0).toFixed(2)}`
   }
 
+  const formatPhone = (phone) => {
+    if (!phone) return '-'
+    // Format 254XXXXXXXXX to +254 XXX XXXXXX
+    if (phone.startsWith('254') && phone.length >= 12) {
+      return `+${phone.slice(0,3)} ${phone.slice(3,6)} ${phone.slice(6)}`
+    }
+    return phone
+  }
+
   const getReference = (t) => {
     if (method === 'mpesa') return t.mpesa_receipt || t.reference_id || '-'
     return t.whop_payment_id || t.whop_checkout_id || '-'
   }
+
+  const handleUserClick = async (userId) => {
+    if (selectedUser === userId) {
+      setSelectedUser(null)
+      setUserDetail(null)
+      return
+    }
+    setSelectedUser(userId)
+    setLoadingUser(true)
+    try {
+      const res = await axios.get(`/api/admin/users/${userId}`, { headers: getAuthHeaders() })
+      setUserDetail(res.data.user || res.data)
+    } catch {
+      setUserDetail(null)
+    }
+    setLoadingUser(false)
+  }
+
+  const currentPage = Math.floor(offset / LIMIT) + 1
+  const totalPages = Math.ceil(total / LIMIT)
 
   return (
     <div className="admin-tab-content">
@@ -84,7 +116,7 @@ export default function TransactionsTab() {
           <button
             key={m.key}
             className={`tx-subtab-btn ${method === m.key ? 'active' : ''}`}
-            onClick={() => setMethod(m.key)}
+            onClick={() => { setMethod(m.key); setSelectedUser(null); setUserDetail(null) }}
           >
             <span>{m.icon}</span>
             {m.label}
@@ -115,6 +147,30 @@ export default function TransactionsTab() {
         <StatCard label="Completed" value={summary.count || 0} color="#6c5ce7" />
       </div>
 
+      {/* User Detail Panel (when username clicked) */}
+      {selectedUser && userDetail && (
+        <div className="tx-user-detail-card">
+          <div className="tx-user-detail-header">
+            <span className="admin-user-avatar" style={{ background: userDetail.avatar_color || '#6c5ce7', width: 40, height: 40, fontSize: 16 }}>
+              {(userDetail.display_name || '?')[0].toUpperCase()}
+            </span>
+            <div>
+              <strong style={{ fontSize: 15 }}>{userDetail.display_name}</strong>
+              <div style={{ color: '#64748b', fontSize: 12 }}>@{userDetail.username} &middot; {userDetail.email}</div>
+            </div>
+            <button onClick={() => { setSelectedUser(null); setUserDetail(null) }}
+              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 18 }}>✕</button>
+          </div>
+          <div className="tx-user-detail-stats">
+            <div><span>Tier</span><strong style={{ color: userDetail.tier === 'pro' ? '#a78bfa' : '#94a3b8', textTransform: 'capitalize' }}>{userDetail.tier}</strong></div>
+            <div><span>Credits</span><strong>{userDetail.credits ?? 0}</strong></div>
+            <div><span>Joined</span><strong>{userDetail.created_at ? new Date(userDetail.created_at).toLocaleDateString() : '-'}</strong></div>
+            <div><span>Phone</span><strong>{formatPhone(userDetail.whatsapp_number || userDetail.mpesa_phone || '')}</strong></div>
+          </div>
+        </div>
+      )}
+      {loadingUser && <div style={{ padding: 12, color: '#94a3b8', fontSize: 13 }}>Loading user details...</div>}
+
       {/* Transactions Table */}
       {loading ? (
         <div className="admin-loading">Loading transactions...</div>
@@ -123,8 +179,9 @@ export default function TransactionsTab() {
       ) : (
         <>
           <div className="admin-users-table" style={{ overflowX: 'auto' }}>
-            <div className="admin-table-header tx-table-header">
+            <div className={`admin-table-header ${method === 'mpesa' ? 'tx-mpesa-header' : 'tx-card-header'}`}>
               <span className="col-name">User</span>
+              {method === 'mpesa' && <span>Phone</span>}
               <span>Amount</span>
               <span>Type</span>
               <span>Status</span>
@@ -132,11 +189,16 @@ export default function TransactionsTab() {
               <span>Date</span>
             </div>
             {transactions.map(t => (
-              <div key={`${method}-${t.id}`} className="admin-table-row tx-table-row">
+              <div key={`${method}-${t.id}`} className={`admin-table-row ${method === 'mpesa' ? 'tx-mpesa-row' : 'tx-card-row'}`}>
                 <span className="col-name">
-                  <strong>{t.display_name || 'Unknown'}</strong>
+                  <button className="tx-user-link" onClick={() => handleUserClick(t.user_id)}>
+                    <strong>{t.display_name || 'Unknown'}</strong>
+                  </button>
                   <small>@{t.username}</small>
                 </span>
+                {method === 'mpesa' && (
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{formatPhone(t.phone_number)}</span>
+                )}
                 <span style={{ fontWeight: 600 }}>{formatAmount(t)}</span>
                 <span style={{ textTransform: 'capitalize', fontSize: 12 }}>{(t.transaction_type || '').replace(/_/g, ' ')}</span>
                 <span>
@@ -154,27 +216,25 @@ export default function TransactionsTab() {
           </div>
 
           {/* Pagination */}
-          {total > LIMIT && (
-            <div className="tx-pagination">
-              <button
-                className="tx-page-btn"
-                disabled={offset === 0}
-                onClick={() => setOffset(o => Math.max(0, o - LIMIT))}
-              >
-                Previous
-              </button>
-              <span style={{ color: '#94a3b8', fontSize: 13 }}>
-                {offset + 1}–{Math.min(offset + LIMIT, total)} of {total}
-              </span>
-              <button
-                className="tx-page-btn"
-                disabled={offset + LIMIT >= total}
-                onClick={() => setOffset(o => o + LIMIT)}
-              >
-                Next
-              </button>
-            </div>
-          )}
+          <div className="tx-pagination">
+            <button
+              className="tx-page-btn"
+              disabled={offset === 0}
+              onClick={() => setOffset(o => Math.max(0, o - LIMIT))}
+            >
+              Previous
+            </button>
+            <span style={{ color: '#94a3b8', fontSize: 13 }}>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              className="tx-page-btn"
+              disabled={offset + LIMIT >= total}
+              onClick={() => setOffset(o => o + LIMIT)}
+            >
+              Next
+            </button>
+          </div>
         </>
       )}
     </div>
