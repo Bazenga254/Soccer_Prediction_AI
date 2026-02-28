@@ -1721,15 +1721,16 @@ async def admin_balance_history(user_id: int, x_admin_password: str = Header(Non
 async def admin_list_subscriptions(
     x_admin_password: str = Header(None),
     authorization: str = Header(None),
-    method: str = Query(None),
 ):
-    """List all subscriptions with user and payment details, optionally filtered by payment method."""
+    """List all subscriptions AND pay-on-the-go topups, grouped by type."""
     auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'accounting'},
                              required_module="subscriptions", required_action="read")
     if not auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    sconn = subscriptions._get_db()
+    # 1. Get subscriptions from users.db
+    import subscriptions as subs_mod
+    sconn = subs_mod._get_db()
     sub_rows = sconn.execute("""
         SELECT id, user_id, plan, price_amount, price_currency,
                status, payment_method, payment_ref, started_at,
@@ -1738,24 +1739,45 @@ async def admin_list_subscriptions(
     """).fetchall()
     sconn.close()
 
-    subs = [dict(r) for r in sub_rows]
+    # 2. Get pay-on-the-go topups from community.db (M-Pesa)
+    conn = sqlite3.connect("community.db", timeout=10)
+    conn.row_factory = sqlite3.Row
+    mpesa_topups = conn.execute("""
+        SELECT id, user_id, transaction_type, amount_kes, amount_usd,
+               phone_number, mpesa_receipt, payment_status, created_at, completed_at
+        FROM payment_transactions
+        WHERE transaction_type = 'balance_topup' AND payment_status IN ('completed', 'confirmed')
+        ORDER BY created_at DESC
+    """).fetchall()
 
-    if method:
-        ml = method.lower()
-        if ml == "mpesa":
-            subs = [s for s in subs if (s.get("payment_method") or "").lower() in ("mpesa", "daraja", "m-pesa")]
-        elif ml in ("whop", "card"):
-            subs = [s for s in subs if (s.get("payment_method") or "").lower() in ("whop", "card", "usd_card")]
+    # 3. Get pay-on-the-go topups from community.db (Whop/Card)
+    whop_topups = conn.execute("""
+        SELECT id, user_id, transaction_type, amount_usd,
+               whop_payment_id, payment_status, created_at, completed_at
+        FROM whop_transactions
+        WHERE transaction_type = 'balance_topup' AND payment_status = 'completed'
+        ORDER BY created_at DESC
+    """).fetchall()
+    conn.close()
 
-    user_ids = list(set(s["user_id"] for s in subs))
+    # Collect all user IDs
+    all_user_ids = set()
+    for r in sub_rows:
+        all_user_ids.add(r["user_id"])
+    for r in mpesa_topups:
+        all_user_ids.add(r["user_id"])
+    for r in whop_topups:
+        all_user_ids.add(r["user_id"])
+    all_user_ids = list(all_user_ids)
+
+    # Batch fetch user details
     user_map = {}
     balance_map = {}
-
-    if user_ids:
+    if all_user_ids:
         uconn = user_auth._get_db()
-        placeholders = ",".join("?" * len(user_ids))
+        ph = ",".join("?" * len(all_user_ids))
         user_rows = uconn.execute(
-            f"SELECT id, display_name, username, email, avatar_color, created_at, tier FROM users WHERE id IN ({placeholders})", user_ids
+            f"SELECT id, display_name, username, email, avatar_color, tier FROM users WHERE id IN ({ph})", all_user_ids
         ).fetchall()
         uconn.close()
         user_map = {r["id"]: dict(r) for r in user_rows}
@@ -1763,52 +1785,85 @@ async def admin_list_subscriptions(
         bconn = sqlite3.connect("community.db", timeout=10)
         bconn.row_factory = sqlite3.Row
         bal_rows = bconn.execute(
-            f"SELECT user_id, balance_usd, balance_kes, total_deposited_usd, total_deposited_kes FROM user_balances WHERE user_id IN ({placeholders})", user_ids
+            f"SELECT user_id, balance_usd, balance_kes, total_deposited_usd, total_deposited_kes FROM user_balances WHERE user_id IN ({ph})", all_user_ids
         ).fetchall()
         bconn.close()
         balance_map = {r["user_id"]: dict(r) for r in bal_rows}
 
-    result = []
     now = datetime.now()
-    for s in subs:
-        uid = s["user_id"]
+
+    def _enrich_user(uid):
         user = user_map.get(uid, {})
-        days_remaining = 0
-        try:
-            expires = datetime.fromisoformat(s["expires_at"])
-            days_remaining = max(0, (expires - now).days)
-        except Exception:
-            pass
         bal = balance_map.get(uid, {})
-        result.append({
-            **s,
+        return {
             "display_name": user.get("display_name", "Unknown"),
             "username": user.get("username", ""),
             "email": user.get("email", ""),
             "avatar_color": user.get("avatar_color", "#6c5ce7"),
             "tier": user.get("tier", "free"),
-            "days_remaining": days_remaining,
             "balance_usd": bal.get("balance_usd", 0),
             "balance_kes": bal.get("balance_kes", 0),
             "total_deposited_usd": bal.get("total_deposited_usd", 0),
             "total_deposited_kes": bal.get("total_deposited_kes", 0),
-        })
+        }
 
-    grouped = {"mpesa": [], "whop": [], "other": []}
-    for s in result:
-        pm = (s.get("payment_method") or "").lower()
-        if pm in ("mpesa", "daraja", "m-pesa"):
-            grouped["mpesa"].append(s)
-        elif pm in ("whop", "card", "usd_card"):
-            grouped["whop"].append(s)
-        else:
-            grouped["other"].append(s)
+    # Build subscriptions list
+    subscriptions_list = []
+    for s in sub_rows:
+        d = dict(s)
+        days_remaining = 0
+        try:
+            expires = datetime.fromisoformat(d["expires_at"])
+            days_remaining = max(0, (expires - now).days)
+        except Exception:
+            pass
+        d["days_remaining"] = days_remaining
+        d.update(_enrich_user(d["user_id"]))
+        subscriptions_list.append(d)
+
+    # Build pay-on-the-go list (M-Pesa)
+    payg_list = []
+    for t in mpesa_topups:
+        d = dict(t)
+        d["source"] = "mpesa"
+        d["payment_method"] = "M-Pesa"
+        d.update(_enrich_user(d["user_id"]))
+        payg_list.append(d)
+
+    # Build pay-on-the-go list (Whop/Card)
+    for t in whop_topups:
+        d = dict(t)
+        d["source"] = "whop"
+        d["payment_method"] = "Card"
+        d["amount_kes"] = 0
+        d.update(_enrich_user(d["user_id"]))
+        payg_list.append(d)
+
+    # Sort payg by created_at desc
+    payg_list.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+    # Group subscriptions by plan type
+    weekly = [s for s in subscriptions_list if "weekly" in (s.get("plan") or "").lower()]
+    monthly = [s for s in subscriptions_list if "monthly" in (s.get("plan") or "").lower()]
+    # Trial and pro go into weekly (they are short-term subs)
+    trial_and_other = [s for s in subscriptions_list if s not in weekly and s not in monthly]
+    weekly = trial_and_other + weekly  # trials + weekly together
+
+    active_subs = [s for s in subscriptions_list if s.get("status") == "active"]
 
     return {
-        "subscriptions": result,
-        "users": result,
-        "grouped": grouped,
-        "total": len(result),
+        "subscriptions": subscriptions_list,
+        "users": subscriptions_list,
+        "pay_on_the_go": payg_list,
+        "weekly": weekly,
+        "monthly": monthly,
+        "stats": {
+            "total_subscriptions": len(subscriptions_list),
+            "active_subscriptions": len(active_subs),
+            "total_topups": len(payg_list),
+            "weekly_count": len(weekly),
+            "monthly_count": len(monthly),
+        },
     }
 
 

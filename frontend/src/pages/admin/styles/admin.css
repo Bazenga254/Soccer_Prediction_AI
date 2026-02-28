@@ -4462,3 +4462,26 @@
   color: #e2e8f0;
   font-size: 14px;
 }
+
+
+/* Pay on the Go table (8 cols) */
+.tx-payg-header {
+  grid-template-columns: 40px 140px 90px 80px 130px 130px 110px 140px !important;
+  min-width: 860px !important;
+}
+
+.tx-payg-row {
+  grid-template-columns: 40px 140px 90px 80px 130px 130px 110px 140px !important;
+  min-width: 860px !important;
+}
+
+/* Subscription v3 table (10 cols) */
+.tx-sub-v3-header {
+  grid-template-columns: 40px 140px 95px 85px 80px 110px 80px 80px 100px 90px !important;
+  min-width: 1000px !important;
+}
+
+.tx-sub-v3-row {
+  grid-template-columns: 40px 140px 95px 85px 80px 110px 80px 80px 100px 90px !important;
+  min-width: 1000px !important;
+}
