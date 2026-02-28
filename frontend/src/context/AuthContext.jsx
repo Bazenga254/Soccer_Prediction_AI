@@ -42,9 +42,12 @@ export function AuthProvider({ children }) {
         setUser(response.data.user)
         setIsAuthenticated(true)
         // Load synced preferences from server for cross-device consistency
-        axios.get('/api/user/preferences').then(res => {
-          const prefs = res.data?.preferences || {}
+        // MUST await so localStorage is populated before components mount
+        try {
+          const prefsRes = await axios.get('/api/user/preferences')
+          const prefs = prefsRes.data?.preferences || {}
           if (prefs.sound_enabled !== undefined) localStorage.setItem('spark_sound_enabled', String(prefs.sound_enabled))
+          if (prefs.earnings_hidden !== undefined) localStorage.setItem('earnings_hidden', String(prefs.earnings_hidden))
           if (prefs.theme) {
             localStorage.setItem('spark_theme', prefs.theme)
             if (prefs.theme === 'dark') document.documentElement.removeAttribute('data-theme')
@@ -52,7 +55,7 @@ export function AuthProvider({ children }) {
           }
           if (prefs.tracked_matches) localStorage.setItem('trackedMatches', JSON.stringify(prefs.tracked_matches))
           if (prefs.live_favorites) localStorage.setItem('live_favorites', JSON.stringify(prefs.live_favorites))
-        }).catch(() => {})
+        } catch { /* preferences fetch failed, use localStorage defaults */ }
         // Re-subscribe to push if permission was previously granted
         if ('Notification' in window && Notification.permission === 'granted') {
           import('../utils/pushSubscription').then(({ subscribeToPush }) => {

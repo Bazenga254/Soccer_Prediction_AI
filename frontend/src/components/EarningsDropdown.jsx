@@ -61,6 +61,17 @@ export default function EarningsDropdown() {
     const next = !hidden
     setHidden(next)
     localStorage.setItem('earnings_hidden', next ? 'true' : 'false')
+    // Sync to server for cross-device consistency
+    try {
+      const token = localStorage.getItem('spark_token')
+      if (token) {
+        fetch('/api/user/preferences', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ preferences: { earnings_hidden: next } }),
+        }).catch(() => {})
+      }
+    } catch { /* ignore */ }
   }
 
   const goToDashboard = () => {
