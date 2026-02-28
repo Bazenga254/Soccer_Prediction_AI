@@ -3,26 +3,36 @@ import { subscribeToPush } from '../utils/pushSubscription'
 
 export default function NotificationPrompt() {
   const [show, setShow] = useState(false)
-  const [step, setStep] = useState('prompt') // 'prompt' | 'denied'
+  const [step, setStep] = useState('prompt') // 'prompt' | 'denied' | 'already_enabled'
 
   useEffect(() => {
     // Only prompt if Notification API exists
     if (!('Notification' in window)) return
 
-    // If already granted, just ensure push subscription and don't show
-    if (Notification.permission === 'granted') {
-      subscribeToPush().catch(() => {})
-      return
-    }
-
     // If browser has permanently denied, don't show (can't do anything)
     if (Notification.permission === 'denied') return
 
-    // Skip if user already completed the notification setup
-    if (localStorage.getItem('spark_notif_setup_done')) return
+    // Skip if user already completed the notification setup gate
+    if (localStorage.getItem('spark_notif_setup_done')) {
+      // Still ensure push subscription exists silently
+      if (Notification.permission === 'granted') {
+        subscribeToPush().catch(() => {})
+      }
+      return
+    }
 
-    // Show immediately — this is a blocking gate
-    setShow(true)
+    // Show the gate — even if permission was already granted from old prompt
+    // This ensures every user goes through the new setup flow once
+    if (Notification.permission === 'granted') {
+      // Already granted but hasn't seen the new gate — show confirmation
+      setStep('already_enabled')
+      setShow(true)
+      subscribeToPush().catch(() => {})
+    } else {
+      // Permission is 'default' — show the enable prompt
+      setStep('prompt')
+      setShow(true)
+    }
   }, [])
 
   const handleEnable = async () => {
@@ -38,13 +48,19 @@ export default function NotificationPrompt() {
         localStorage.setItem('spark_notif_prompted', '1')
         setShow(false)
       } else {
-        // User denied in browser popup — show explanation
+        // User denied in browser popup
         setStep('denied')
       }
     } catch {
-      // Browser blocked the request entirely
       setStep('denied')
     }
+  }
+
+  const handleGotIt = () => {
+    // User already had notifications enabled, just acknowledge the gate
+    localStorage.setItem('spark_notif_setup_done', '1')
+    localStorage.setItem('spark_notif_prompted', '1')
+    setShow(false)
   }
 
   const handleContinueWithout = () => {
@@ -182,9 +198,97 @@ export default function NotificationPrompt() {
           </>
         )}
 
+        {step === 'already_enabled' && (
+          <>
+            {/* Green check icon */}
+            <div style={{
+              width: 80,
+              height: 80,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.05))',
+              border: '2px solid rgba(34, 197, 94, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 24px',
+            }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+
+            <h2 style={{
+              color: '#f8fafc',
+              fontSize: 22,
+              fontWeight: 800,
+              marginBottom: 8,
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+            }}>
+              Notifications Are On!
+            </h2>
+
+            <p style={{
+              color: '#94a3b8',
+              fontSize: 14,
+              lineHeight: 1.7,
+              marginBottom: 28,
+              maxWidth: 300,
+              marginLeft: 'auto',
+              marginRight: 'auto',
+            }}>
+              You'll receive push notifications for goals, predictions, payments, messages and more — even when the app is closed.
+            </p>
+
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              marginBottom: 32,
+              textAlign: 'left',
+            }}>
+              {[
+                { emoji: '\u26BD', text: 'Live goal alerts for tracked matches' },
+                { emoji: '\uD83D\uDCB0', text: 'Payment & credit confirmations' },
+                { emoji: '\uD83D\uDCC8', text: 'Prediction results & community tips' },
+                { emoji: '\uD83D\uDD14', text: 'Messages & referral earnings' },
+              ].map((item, i) => (
+                <div key={i} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 14px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  borderRadius: 10,
+                  border: '1px solid rgba(255, 255, 255, 0.04)',
+                }}>
+                  <span style={{ fontSize: 20, flexShrink: 0 }}>{item.emoji}</span>
+                  <span style={{ color: '#cbd5e1', fontSize: 13, fontWeight: 500 }}>{item.text}</span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleGotIt} style={{
+              width: '100%',
+              padding: '16px 24px',
+              background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: 16,
+              border: 'none',
+              borderRadius: 14,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              boxShadow: '0 4px 16px rgba(34, 197, 94, 0.3)',
+              letterSpacing: '0.3px',
+            }}>
+              Got It
+            </button>
+          </>
+        )}
+
         {step === 'denied' && (
           <>
-            {/* Info icon */}
+            {/* Warning icon */}
             <div style={{
               width: 72,
               height: 72,
