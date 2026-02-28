@@ -714,6 +714,136 @@ async def admin_transaction_analytics(
     }
 
 
+
+@admin_router.get("/transactions")
+async def admin_list_transactions(
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+    method: str = Query("mpesa"),
+    period: str = Query("all"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """List individual transactions with user details, filtered by payment method and time period."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'accounting'},
+                             required_module="sales", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    EAT = timezone(timedelta(hours=3))
+    now_eat = datetime.now(EAT)
+
+    if period == "daily":
+        period_start = now_eat.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    elif period == "weekly":
+        days_since_monday = now_eat.weekday()
+        period_start = (now_eat - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    elif period == "monthly":
+        period_start = now_eat.replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        period_start = None
+
+    conn = sqlite3.connect("community.db", timeout=10)
+    conn.row_factory = sqlite3.Row
+
+    if method == "mpesa":
+        base_sql = """SELECT id, user_id, transaction_type, reference_id,
+                      amount_kes, amount_usd, exchange_rate, phone_number,
+                      mpesa_receipt, payment_status, created_at, completed_at
+                      FROM payment_transactions"""
+        count_sql = "SELECT COUNT(*) as total FROM payment_transactions"
+        sum_sql = """SELECT COALESCE(SUM(amount_kes), 0) as total_kes,
+                     COALESCE(SUM(amount_usd), 0) as total_usd, COUNT(*) as count
+                     FROM payment_transactions WHERE payment_status IN ('completed', 'confirmed')"""
+    elif method in ("whop", "card"):
+        base_sql = """SELECT id, user_id, transaction_type, reference_id,
+                      amount_usd, whop_checkout_id, whop_payment_id,
+                      payment_status, metadata, created_at, completed_at
+                      FROM whop_transactions"""
+        count_sql = "SELECT COUNT(*) as total FROM whop_transactions"
+        sum_sql = """SELECT COALESCE(SUM(amount_usd), 0) as total_usd, COUNT(*) as count
+                     FROM whop_transactions WHERE payment_status = 'completed'"""
+    else:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid method. Use: mpesa, whop, card")
+
+    where_clauses = []
+    params = []
+    if period_start:
+        where_clauses.append("datetime(created_at) >= datetime(?)")
+        params.append(period_start)
+
+    where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    total_row = conn.execute(count_sql + where_str, params).fetchone()
+    total_count = total_row["total"] if total_row else 0
+
+    if period_start:
+        sum_sql_filtered = sum_sql + " AND datetime(completed_at) >= datetime(?)"
+        summary_row = conn.execute(sum_sql_filtered, [period_start]).fetchone()
+    else:
+        summary_row = conn.execute(sum_sql).fetchone()
+
+    rows = conn.execute(
+        base_sql + where_str + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        params + [limit, offset]
+    ).fetchall()
+    conn.close()
+
+    transactions = [dict(r) for r in rows]
+
+    user_ids = list(set(t["user_id"] for t in transactions))
+    user_map = {}
+    balance_map = {}
+
+    if user_ids:
+        uconn = user_auth._get_db()
+        placeholders = ",".join("?" * len(user_ids))
+        user_rows = uconn.execute(
+            f"SELECT id, display_name, username, email FROM users WHERE id IN ({placeholders})", user_ids
+        ).fetchall()
+        uconn.close()
+        user_map = {r["id"]: dict(r) for r in user_rows}
+
+        bconn = sqlite3.connect("community.db", timeout=10)
+        bconn.row_factory = sqlite3.Row
+        bal_rows = bconn.execute(
+            f"SELECT user_id, balance_usd, balance_kes, total_deposited_usd, total_deposited_kes FROM user_balances WHERE user_id IN ({placeholders})", user_ids
+        ).fetchall()
+        bconn.close()
+        balance_map = {r["user_id"]: dict(r) for r in bal_rows}
+
+    for t in transactions:
+        uid = t["user_id"]
+        user = user_map.get(uid, {})
+        t["display_name"] = user.get("display_name", "Unknown")
+        t["username"] = user.get("username", "")
+        t["email"] = user.get("email", "")
+        bal = balance_map.get(uid, {})
+        t["balance_usd"] = bal.get("balance_usd", 0)
+        t["balance_kes"] = bal.get("balance_kes", 0)
+
+    summary = {
+        "total_usd": round(summary_row["total_usd"], 2) if summary_row else 0,
+        "count": summary_row["count"] if summary_row else 0,
+    }
+    if method == "mpesa" and summary_row:
+        try:
+            summary["total_kes"] = round(summary_row["total_kes"], 2)
+        except Exception:
+            summary["total_kes"] = 0
+
+    return {
+        "transactions": transactions,
+        "total": total_count,
+        "offset": offset,
+        "limit": limit,
+        "method": method,
+        "period": period,
+        "summary": summary,
+    }
+
+
 @admin_router.get("/referral-stats")
 async def admin_referral_stats(x_admin_password: str = Header(None), authorization: str = Header(None)):
     """Get referral leaderboard."""
@@ -1588,25 +1718,98 @@ async def admin_balance_history(user_id: int, x_admin_password: str = Header(Non
 # ═══════════════════════════════════════════════════════════
 
 @admin_router.get("/subscriptions")
-async def admin_list_subscriptions(x_admin_password: str = Header(None), authorization: str = Header(None)):
-    """List all pro-tier users with subscription details."""
+async def admin_list_subscriptions(
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+    method: str = Query(None),
+):
+    """List all subscriptions with user and payment details, optionally filtered by payment method."""
     auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'accounting'},
                              required_module="subscriptions", required_action="read")
     if not auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    # Get pro users
-    conn = user_auth._get_db()
-    rows = conn.execute(
-        "SELECT id, email, display_name, username, avatar_color, created_at FROM users WHERE tier = 'pro' ORDER BY created_at DESC"
-    ).fetchall()
-    conn.close()
-    pro_users = [dict(r) for r in rows]
-    for u in pro_users:
+
+    sconn = subscriptions._get_db()
+    sub_rows = sconn.execute("""
+        SELECT id, user_id, plan, price_amount, price_currency,
+               status, payment_method, payment_ref, started_at,
+               expires_at, created_at
+        FROM subscriptions ORDER BY created_at DESC
+    """).fetchall()
+    sconn.close()
+
+    subs = [dict(r) for r in sub_rows]
+
+    if method:
+        ml = method.lower()
+        if ml == "mpesa":
+            subs = [s for s in subs if (s.get("payment_method") or "").lower() in ("mpesa", "daraja", "m-pesa")]
+        elif ml in ("whop", "card"):
+            subs = [s for s in subs if (s.get("payment_method") or "").lower() in ("whop", "card", "usd_card")]
+
+    user_ids = list(set(s["user_id"] for s in subs))
+    user_map = {}
+    balance_map = {}
+
+    if user_ids:
+        uconn = user_auth._get_db()
+        placeholders = ",".join("?" * len(user_ids))
+        user_rows = uconn.execute(
+            f"SELECT id, display_name, username, email, avatar_color, created_at, tier FROM users WHERE id IN ({placeholders})", user_ids
+        ).fetchall()
+        uconn.close()
+        user_map = {r["id"]: dict(r) for r in user_rows}
+
+        bconn = sqlite3.connect("community.db", timeout=10)
+        bconn.row_factory = sqlite3.Row
+        bal_rows = bconn.execute(
+            f"SELECT user_id, balance_usd, balance_kes, total_deposited_usd, total_deposited_kes FROM user_balances WHERE user_id IN ({placeholders})", user_ids
+        ).fetchall()
+        bconn.close()
+        balance_map = {r["user_id"]: dict(r) for r in bal_rows}
+
+    result = []
+    now = datetime.now()
+    for s in subs:
+        uid = s["user_id"]
+        user = user_map.get(uid, {})
+        days_remaining = 0
         try:
-            u["subscription"] = subscriptions.get_active_subscription(u["id"])
+            expires = datetime.fromisoformat(s["expires_at"])
+            days_remaining = max(0, (expires - now).days)
         except Exception:
-            u["subscription"] = None
-    return {"users": pro_users}
+            pass
+        bal = balance_map.get(uid, {})
+        result.append({
+            **s,
+            "display_name": user.get("display_name", "Unknown"),
+            "username": user.get("username", ""),
+            "email": user.get("email", ""),
+            "avatar_color": user.get("avatar_color", "#6c5ce7"),
+            "tier": user.get("tier", "free"),
+            "days_remaining": days_remaining,
+            "balance_usd": bal.get("balance_usd", 0),
+            "balance_kes": bal.get("balance_kes", 0),
+            "total_deposited_usd": bal.get("total_deposited_usd", 0),
+            "total_deposited_kes": bal.get("total_deposited_kes", 0),
+        })
+
+    grouped = {"mpesa": [], "whop": [], "other": []}
+    for s in result:
+        pm = (s.get("payment_method") or "").lower()
+        if pm in ("mpesa", "daraja", "m-pesa"):
+            grouped["mpesa"].append(s)
+        elif pm in ("whop", "card", "usd_card"):
+            grouped["whop"].append(s)
+        else:
+            grouped["other"].append(s)
+
+    return {
+        "subscriptions": result,
+        "users": result,
+        "grouped": grouped,
+        "total": len(result),
+    }
 
 
 # ═══════════════════════════════════════════════════════════

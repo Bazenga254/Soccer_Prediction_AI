@@ -4203,3 +4203,173 @@
 .referrer-link:hover {
   text-decoration: underline;
 }
+
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  TRANSACTIONS TAB + SUBSCRIPTIONS ENHANCEMENTS              */
+/* ═══════════════════════════════════════════════════════════ */
+
+.tx-subtab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.tx-subtab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tx-subtab-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+}
+
+.tx-subtab-btn.active {
+  background: rgba(108, 92, 231, 0.15);
+  color: #a78bfa;
+  font-weight: 600;
+}
+
+.tx-period-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.tx-period-btn {
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tx-period-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+.tx-period-btn.active {
+  background: rgba(108, 92, 231, 0.2);
+  border-color: rgba(108, 92, 231, 0.4);
+  color: #a78bfa;
+  font-weight: 600;
+}
+
+/* Transaction table grid layout */
+.tx-table-header {
+  grid-template-columns: 160px 120px 120px 100px 160px 140px !important;
+  min-width: 800px !important;
+}
+
+.tx-table-row {
+  grid-template-columns: 160px 120px 120px 100px 160px 140px !important;
+  min-width: 800px !important;
+}
+
+/* Subscription table grid layout */
+.tx-sub-header {
+  grid-template-columns: 40px 150px 100px 90px 80px 120px 80px 90px 100px 90px !important;
+  min-width: 1040px !important;
+}
+
+.tx-sub-row {
+  grid-template-columns: 40px 150px 100px 90px 80px 120px 80px 90px 100px 90px !important;
+  min-width: 1040px !important;
+}
+
+.tx-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.tx-plan-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(108, 92, 231, 0.15);
+  color: #a78bfa;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.tx-reference {
+  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tx-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.tx-page-btn {
+  padding: 8px 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tx-page-btn:hover:not(:disabled) {
+  background: rgba(108, 92, 231, 0.15);
+  border-color: rgba(108, 92, 231, 0.3);
+  color: #a78bfa;
+}
+
+.tx-page-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .tx-subtab-bar {
+    flex-wrap: wrap;
+  }
+  .tx-subtab-btn {
+    flex: 1 1 45%;
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+  .tx-period-bar {
+    flex-wrap: wrap;
+  }
+}

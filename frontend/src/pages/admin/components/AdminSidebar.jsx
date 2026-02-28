@@ -17,6 +17,7 @@ const ALL_TABS = [
   { id: 'online', icon: '🟢', label: 'Online Users', module: 'online_users' },
   { id: 'users', icon: '👥', label: 'Users', module: 'users' },
   { id: 'subscriptions', icon: '💎', label: 'Subscriptions', module: 'subscriptions' },
+  { id: 'transactions', icon: '🧾', label: 'Transactions', module: 'sales' },
   { id: 'withdrawals', icon: '💸', label: 'Withdrawals', module: 'withdrawals' },
   { id: 'community', icon: '💬', label: 'Community', module: 'community' },
   { id: 'referrals', icon: '🔗', label: 'Referrals', module: 'referrals' },
