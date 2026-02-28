@@ -38,7 +38,13 @@ function formatCardLabel(key) {
 }
 
 function round1(val) {
-  return Math.round(val * 10) / 10
+  const r = Math.round(val * 10) / 10
+  return r >= 100 ? 98 : r
+}
+
+// Cap any raw percentage value at 98 (nothing is 100% certain)
+function capPct(val) {
+  return val >= 100 ? 98 : val
 }
 
 const COMPETITION_NAMES = {
@@ -69,17 +75,17 @@ function HomeFormSection({ homeForm, teamName }) {
         <div className="form-stat win">
           <div className="form-stat-value">{homeForm.wins}</div>
           <div className="form-stat-label">Wins</div>
-          <div className="form-stat-pct">{homeForm.win_percentage}%</div>
+          <div className="form-stat-pct">{capPct(homeForm.win_percentage)}%</div>
         </div>
         <div className="form-stat draw">
           <div className="form-stat-value">{homeForm.draws}</div>
           <div className="form-stat-label">Draws</div>
-          <div className="form-stat-pct">{homeForm.draw_percentage}%</div>
+          <div className="form-stat-pct">{capPct(homeForm.draw_percentage)}%</div>
         </div>
         <div className="form-stat loss">
           <div className="form-stat-value">{homeForm.losses}</div>
           <div className="form-stat-label">Losses</div>
-          <div className="form-stat-pct">{homeForm.loss_percentage}%</div>
+          <div className="form-stat-pct">{capPct(homeForm.loss_percentage)}%</div>
         </div>
       </div>
 
@@ -124,17 +130,17 @@ function AwayFormSection({ awayForm, teamName }) {
         <div className="form-stat win">
           <div className="form-stat-value">{awayForm.wins}</div>
           <div className="form-stat-label">Wins</div>
-          <div className="form-stat-pct">{awayForm.win_percentage}%</div>
+          <div className="form-stat-pct">{capPct(awayForm.win_percentage)}%</div>
         </div>
         <div className="form-stat draw">
           <div className="form-stat-value">{awayForm.draws}</div>
           <div className="form-stat-label">Draws</div>
-          <div className="form-stat-pct">{awayForm.draw_percentage}%</div>
+          <div className="form-stat-pct">{capPct(awayForm.draw_percentage)}%</div>
         </div>
         <div className="form-stat loss">
           <div className="form-stat-value">{awayForm.losses}</div>
           <div className="form-stat-label">Losses</div>
-          <div className="form-stat-pct">{awayForm.loss_percentage}%</div>
+          <div className="form-stat-pct">{capPct(awayForm.loss_percentage)}%</div>
         </div>
       </div>
 
@@ -193,17 +199,17 @@ function H2HSection({ h2hData, teamAName, teamBName }) {
         <div className="h2h-1x2-grid">
           <div className={`result-card ${result_analysis['1x2'].prediction === '1' ? 'recommended' : ''}`}>
             <div className="result-label">1 ({teamAName})</div>
-            <div className="result-value">{result_analysis['1x2'].team_a_wins.percentage}%</div>
+            <div className="result-value">{capPct(result_analysis['1x2'].team_a_wins.percentage)}%</div>
             <div className="result-count">{result_analysis['1x2'].team_a_wins.count} wins</div>
           </div>
           <div className={`result-card ${result_analysis['1x2'].prediction === 'X' ? 'recommended' : ''}`}>
             <div className="result-label">X (Draw)</div>
-            <div className="result-value">{result_analysis['1x2'].draws.percentage}%</div>
+            <div className="result-value">{capPct(result_analysis['1x2'].draws.percentage)}%</div>
             <div className="result-count">{result_analysis['1x2'].draws.count} draws</div>
           </div>
           <div className={`result-card ${result_analysis['1x2'].prediction === '2' ? 'recommended' : ''}`}>
             <div className="result-label">2 ({teamBName})</div>
-            <div className="result-value">{result_analysis['1x2'].team_b_wins.percentage}%</div>
+            <div className="result-value">{capPct(result_analysis['1x2'].team_b_wins.percentage)}%</div>
             <div className="result-count">{result_analysis['1x2'].team_b_wins.count} wins</div>
           </div>
         </div>
@@ -216,23 +222,23 @@ function H2HSection({ h2hData, teamAName, teamBName }) {
           <div className={`dc-option ${result_analysis.double_chance['1X'].percentage >= 70 ? 'strong' : ''}`}>
             <span className="dc-label">1X</span>
             <div className="dc-bar">
-              <div className="dc-fill" style={{ width: `${result_analysis.double_chance['1X'].percentage}%` }}></div>
+              <div className="dc-fill" style={{ width: `${capPct(result_analysis.double_chance['1X'].percentage)}%` }}></div>
             </div>
-            <span className="dc-value">{result_analysis.double_chance['1X'].percentage}%</span>
+            <span className="dc-value">{capPct(result_analysis.double_chance['1X'].percentage)}%</span>
           </div>
           <div className={`dc-option ${result_analysis.double_chance['X2'].percentage >= 70 ? 'strong' : ''}`}>
             <span className="dc-label">X2</span>
             <div className="dc-bar">
-              <div className="dc-fill" style={{ width: `${result_analysis.double_chance['X2'].percentage}%` }}></div>
+              <div className="dc-fill" style={{ width: `${capPct(result_analysis.double_chance['X2'].percentage)}%` }}></div>
             </div>
-            <span className="dc-value">{result_analysis.double_chance['X2'].percentage}%</span>
+            <span className="dc-value">{capPct(result_analysis.double_chance['X2'].percentage)}%</span>
           </div>
           <div className={`dc-option ${result_analysis.double_chance['12'].percentage >= 70 ? 'strong' : ''}`}>
             <span className="dc-label">12</span>
             <div className="dc-bar">
-              <div className="dc-fill" style={{ width: `${result_analysis.double_chance['12'].percentage}%` }}></div>
+              <div className="dc-fill" style={{ width: `${capPct(result_analysis.double_chance['12'].percentage)}%` }}></div>
             </div>
-            <span className="dc-value">{result_analysis.double_chance['12'].percentage}%</span>
+            <span className="dc-value">{capPct(result_analysis.double_chance['12'].percentage)}%</span>
           </div>
         </div>
       </div>
@@ -260,7 +266,7 @@ function H2HSection({ h2hData, teamAName, teamBName }) {
           {Object.entries(goals_analysis.over_under).map(([key, data]) => (
             <div key={key} className={`ou-item ${data.prediction === 'Yes' ? 'likely' : 'unlikely'}`}>
               <span className="ou-label">{formatOverUnderLabel(key)}</span>
-              <span className="ou-pct">{data.percentage}%</span>
+              <span className="ou-pct">{capPct(data.percentage)}%</span>
               <span className={`ou-prediction ${data.prediction === 'Yes' ? 'yes' : 'no'}`}>
                 {data.prediction}
               </span>
@@ -272,10 +278,10 @@ function H2HSection({ h2hData, teamAName, teamBName }) {
           <div className="btts-label">Both Teams to Score (BTTS)</div>
           <div className="btts-options">
             <span className={`btts-option ${goals_analysis.btts.prediction === 'Yes' ? 'selected' : ''}`}>
-              Yes: {goals_analysis.btts.yes.percentage}%
+              Yes: {capPct(goals_analysis.btts.yes.percentage)}%
             </span>
             <span className={`btts-option ${goals_analysis.btts.prediction === 'No' ? 'selected' : ''}`}>
-              No: {goals_analysis.btts.no.percentage}%
+              No: {capPct(goals_analysis.btts.no.percentage)}%
             </span>
           </div>
         </div>
@@ -416,7 +422,7 @@ function DirectH2HContent({ h2hData, teamAName, teamBName, homeId, awayId }) {
             onClick={() => handleSelectBet('1X2', `${teamAName} Win`, result_analysis['1x2'].team_a_wins.percentage)}
           >
             <div className="result-label">1 ({teamAName})</div>
-            <div className="result-value">{result_analysis['1x2'].team_a_wins.percentage}%</div>
+            <div className="result-value">{capPct(result_analysis['1x2'].team_a_wins.percentage)}%</div>
             <div className="result-count">{result_analysis['1x2'].team_a_wins.count} wins</div>
             <div className="selection-indicator">{isSelected('1X2', `${teamAName} Win`) ? '✓' : '+'}</div>
           </div>
@@ -425,7 +431,7 @@ function DirectH2HContent({ h2hData, teamAName, teamBName, homeId, awayId }) {
             onClick={() => handleSelectBet('1X2', 'Draw', result_analysis['1x2'].draws.percentage)}
           >
             <div className="result-label">X (Draw)</div>
-            <div className="result-value">{result_analysis['1x2'].draws.percentage}%</div>
+            <div className="result-value">{capPct(result_analysis['1x2'].draws.percentage)}%</div>
             <div className="result-count">{result_analysis['1x2'].draws.count} draws</div>
             <div className="selection-indicator">{isSelected('1X2', 'Draw') ? '✓' : '+'}</div>
           </div>
@@ -434,7 +440,7 @@ function DirectH2HContent({ h2hData, teamAName, teamBName, homeId, awayId }) {
             onClick={() => handleSelectBet('1X2', `${teamBName} Win`, result_analysis['1x2'].team_b_wins.percentage)}
           >
             <div className="result-label">2 ({teamBName})</div>
-            <div className="result-value">{result_analysis['1x2'].team_b_wins.percentage}%</div>
+            <div className="result-value">{capPct(result_analysis['1x2'].team_b_wins.percentage)}%</div>
             <div className="result-count">{result_analysis['1x2'].team_b_wins.count} wins</div>
             <div className="selection-indicator">{isSelected('1X2', `${teamBName} Win`) ? '✓' : '+'}</div>
           </div>
@@ -451,9 +457,9 @@ function DirectH2HContent({ h2hData, teamAName, teamBName, homeId, awayId }) {
           >
             <span className="dc-label">1X</span>
             <div className="dc-bar">
-              <div className="dc-fill" style={{ width: `${result_analysis.double_chance['1X'].percentage}%` }}></div>
+              <div className="dc-fill" style={{ width: `${capPct(result_analysis.double_chance['1X'].percentage)}%` }}></div>
             </div>
-            <span className="dc-value">{result_analysis.double_chance['1X'].percentage}%</span>
+            <span className="dc-value">{capPct(result_analysis.double_chance['1X'].percentage)}%</span>
             <div className="selection-indicator">{isSelected('Double Chance', '1X') ? '✓' : '+'}</div>
           </div>
           <div
@@ -462,9 +468,9 @@ function DirectH2HContent({ h2hData, teamAName, teamBName, homeId, awayId }) {
           >
             <span className="dc-label">X2</span>
             <div className="dc-bar">
-              <div className="dc-fill" style={{ width: `${result_analysis.double_chance['X2'].percentage}%` }}></div>
+              <div className="dc-fill" style={{ width: `${capPct(result_analysis.double_chance['X2'].percentage)}%` }}></div>
             </div>
-            <span className="dc-value">{result_analysis.double_chance['X2'].percentage}%</span>
+            <span className="dc-value">{capPct(result_analysis.double_chance['X2'].percentage)}%</span>
             <div className="selection-indicator">{isSelected('Double Chance', 'X2') ? '✓' : '+'}</div>
           </div>
           <div
@@ -473,9 +479,9 @@ function DirectH2HContent({ h2hData, teamAName, teamBName, homeId, awayId }) {
           >
             <span className="dc-label">12</span>
             <div className="dc-bar">
-              <div className="dc-fill" style={{ width: `${result_analysis.double_chance['12'].percentage}%` }}></div>
+              <div className="dc-fill" style={{ width: `${capPct(result_analysis.double_chance['12'].percentage)}%` }}></div>
             </div>
-            <span className="dc-value">{result_analysis.double_chance['12'].percentage}%</span>
+            <span className="dc-value">{capPct(result_analysis.double_chance['12'].percentage)}%</span>
             <div className="selection-indicator">{isSelected('Double Chance', '12') ? '✓' : '+'}</div>
           </div>
         </div>
@@ -512,7 +518,7 @@ function DirectH2HContent({ h2hData, teamAName, teamBName, homeId, awayId }) {
                   onClick={() => handleSelectBet('Over/Under', overLabel, data.percentage)}
                 >
                   <span className="ou-label">{overLabel}</span>
-                  <span className="ou-pct">{data.percentage}%</span>
+                  <span className="ou-pct">{capPct(data.percentage)}%</span>
                   <span className={`ou-prediction ${data.percentage >= 50 ? 'yes' : 'no'}`}>{data.percentage >= 50 ? 'Yes' : 'No'}</span>
                   <div className="selection-indicator">{isSelected('Over/Under', overLabel) ? '✓' : '+'}</div>
                 </div>
@@ -537,14 +543,14 @@ function DirectH2HContent({ h2hData, teamAName, teamBName, homeId, awayId }) {
               className={`btts-option selectable-probability ${goals_analysis.btts.prediction === 'Yes' ? 'selected-pred' : ''} ${isSelected('BTTS', 'Yes') ? 'selected' : ''}`}
               onClick={() => handleSelectBet('BTTS', 'Yes', goals_analysis.btts.yes.percentage)}
             >
-              Yes: {goals_analysis.btts.yes.percentage}%
+              Yes: {capPct(goals_analysis.btts.yes.percentage)}%
               <div className="selection-indicator">{isSelected('BTTS', 'Yes') ? '✓' : '+'}</div>
             </span>
             <span
               className={`btts-option selectable-probability ${goals_analysis.btts.prediction === 'No' ? 'selected-pred' : ''} ${isSelected('BTTS', 'No') ? 'selected' : ''}`}
               onClick={() => handleSelectBet('BTTS', 'No', goals_analysis.btts.no.percentage)}
             >
-              No: {goals_analysis.btts.no.percentage}%
+              No: {capPct(goals_analysis.btts.no.percentage)}%
               <div className="selection-indicator">{isSelected('BTTS', 'No') ? '✓' : '+'}</div>
             </span>
           </div>
@@ -590,17 +596,17 @@ function TeamMatchesContent({ form, teamName, isHome }) {
         <div className="form-stat win">
           <div className="form-stat-value">{form.wins}</div>
           <div className="form-stat-label">Wins</div>
-          <div className="form-stat-pct">{form.win_percentage}%</div>
+          <div className="form-stat-pct">{capPct(form.win_percentage)}%</div>
         </div>
         <div className="form-stat draw">
           <div className="form-stat-value">{form.draws}</div>
           <div className="form-stat-label">Draws</div>
-          <div className="form-stat-pct">{form.draw_percentage}%</div>
+          <div className="form-stat-pct">{capPct(form.draw_percentage)}%</div>
         </div>
         <div className="form-stat loss">
           <div className="form-stat-value">{form.losses}</div>
           <div className="form-stat-label">Losses</div>
-          <div className="form-stat-pct">{form.loss_percentage}%</div>
+          <div className="form-stat-pct">{capPct(form.loss_percentage)}%</div>
         </div>
       </div>
 
@@ -667,9 +673,9 @@ function GoalMarketsSection({ h2hData, teamAName, teamBName, matchId, matchName 
             >
               <span className="dc-label">{teamAName}</span>
               <div className="dc-bar">
-                <div className="dc-fill" style={{ width: `${dnb.team_a.percentage}%` }}></div>
+                <div className="dc-fill" style={{ width: `${capPct(dnb.team_a.percentage)}%` }}></div>
               </div>
-              <span className="dc-value">{dnb.team_a.percentage}%</span>
+              <span className="dc-value">{capPct(dnb.team_a.percentage)}%</span>
               <div className="selection-indicator">{isSelected('Draw No Bet', teamAName) ? '✓' : '+'}</div>
             </div>
             <div
@@ -678,9 +684,9 @@ function GoalMarketsSection({ h2hData, teamAName, teamBName, matchId, matchName 
             >
               <span className="dc-label">{teamBName}</span>
               <div className="dc-bar">
-                <div className="dc-fill" style={{ width: `${dnb.team_b.percentage}%` }}></div>
+                <div className="dc-fill" style={{ width: `${capPct(dnb.team_b.percentage)}%` }}></div>
               </div>
-              <span className="dc-value">{dnb.team_b.percentage}%</span>
+              <span className="dc-value">{capPct(dnb.team_b.percentage)}%</span>
               <div className="selection-indicator">{isSelected('Draw No Bet', teamBName) ? '✓' : '+'}</div>
             </div>
           </div>
@@ -697,7 +703,7 @@ function GoalMarketsSection({ h2hData, teamAName, teamBName, matchId, matchName 
               onClick={() => handleSelect('First Goal', teamAName, firstGoal.team_a.percentage)}
             >
               <div className="result-label">{teamAName}</div>
-              <div className="result-value">{firstGoal.team_a.percentage}%</div>
+              <div className="result-value">{capPct(firstGoal.team_a.percentage)}%</div>
               <div className="selection-indicator">{isSelected('First Goal', teamAName) ? '✓' : '+'}</div>
             </div>
             <div
@@ -705,7 +711,7 @@ function GoalMarketsSection({ h2hData, teamAName, teamBName, matchId, matchName 
               onClick={() => handleSelect('First Goal', 'No Goal', firstGoal.no_goal?.percentage || 5)}
             >
               <div className="result-label">No Goal</div>
-              <div className="result-value">{firstGoal.no_goal?.percentage}%</div>
+              <div className="result-value">{capPct(firstGoal.no_goal?.percentage)}%</div>
               <div className="selection-indicator">{isSelected('First Goal', 'No Goal') ? '✓' : '+'}</div>
             </div>
             <div
@@ -713,7 +719,7 @@ function GoalMarketsSection({ h2hData, teamAName, teamBName, matchId, matchName 
               onClick={() => handleSelect('First Goal', teamBName, firstGoal.team_b.percentage)}
             >
               <div className="result-label">{teamBName}</div>
-              <div className="result-value">{firstGoal.team_b.percentage}%</div>
+              <div className="result-value">{capPct(firstGoal.team_b.percentage)}%</div>
               <div className="selection-indicator">{isSelected('First Goal', teamBName) ? '✓' : '+'}</div>
             </div>
           </div>
@@ -797,7 +803,7 @@ function GoalMarketsSection({ h2hData, teamAName, teamBName, matchId, matchName 
               <div key={k} className="ou-pair">
                 <div className={`ou-item ${firstHalf[k] >= 50 ? 'likely' : 'unlikely'}`}>
                   <span className="ou-label">Over {t}</span>
-                  <span className="ou-pct">{firstHalf[k]}%</span>
+                  <span className="ou-pct">{capPct(firstHalf[k])}%</span>
                 </div>
                 <div className={`ou-item ${(100 - firstHalf[k]) >= 50 ? 'likely' : 'unlikely'}`}>
                   <span className="ou-label">Under {t}</span>
@@ -1299,7 +1305,7 @@ function CornersSection({ cornerAnalysis, teamAName, teamBName, matchId, matchNa
             onClick={() => handleSelect('Corner 1X2', teamAName, corner1x2.team_a?.percentage)}
           >
             <div className="result-label">{teamAName}</div>
-            <div className="result-value">{corner1x2.team_a?.percentage}%</div>
+            <div className="result-value">{capPct(corner1x2.team_a?.percentage)}%</div>
             <div className="selection-indicator">{isSelected('Corner 1X2', teamAName) ? '✓' : '+'}</div>
           </div>
           <div
@@ -1307,7 +1313,7 @@ function CornersSection({ cornerAnalysis, teamAName, teamBName, matchId, matchNa
             onClick={() => handleSelect('Corner 1X2', 'Draw', corner1x2.draw?.percentage)}
           >
             <div className="result-label">Draw</div>
-            <div className="result-value">{corner1x2.draw?.percentage}%</div>
+            <div className="result-value">{capPct(corner1x2.draw?.percentage)}%</div>
             <div className="selection-indicator">{isSelected('Corner 1X2', 'Draw') ? '✓' : '+'}</div>
           </div>
           <div
@@ -1315,7 +1321,7 @@ function CornersSection({ cornerAnalysis, teamAName, teamBName, matchId, matchNa
             onClick={() => handleSelect('Corner 1X2', teamBName, corner1x2.team_b?.percentage)}
           >
             <div className="result-label">{teamBName}</div>
-            <div className="result-value">{corner1x2.team_b?.percentage}%</div>
+            <div className="result-value">{capPct(corner1x2.team_b?.percentage)}%</div>
             <div className="selection-indicator">{isSelected('Corner 1X2', teamBName) ? '✓' : '+'}</div>
           </div>
         </div>
@@ -1332,9 +1338,9 @@ function CornersSection({ cornerAnalysis, teamAName, teamBName, matchId, matchNa
             >
               <span className="dc-label">{teamAName}</span>
               <div className="dc-bar">
-                <div className="dc-fill" style={{ width: `${firstCorner.team_a.percentage}%` }}></div>
+                <div className="dc-fill" style={{ width: `${capPct(firstCorner.team_a.percentage)}%` }}></div>
               </div>
-              <span className="dc-value">{firstCorner.team_a.percentage}%</span>
+              <span className="dc-value">{capPct(firstCorner.team_a.percentage)}%</span>
               <div className="selection-indicator">{isSelected('First Corner', teamAName) ? '✓' : '+'}</div>
             </div>
             <div
@@ -1343,9 +1349,9 @@ function CornersSection({ cornerAnalysis, teamAName, teamBName, matchId, matchNa
             >
               <span className="dc-label">{teamBName}</span>
               <div className="dc-bar">
-                <div className="dc-fill" style={{ width: `${firstCorner.team_b.percentage}%` }}></div>
+                <div className="dc-fill" style={{ width: `${capPct(firstCorner.team_b.percentage)}%` }}></div>
               </div>
-              <span className="dc-value">{firstCorner.team_b.percentage}%</span>
+              <span className="dc-value">{capPct(firstCorner.team_b.percentage)}%</span>
               <div className="selection-indicator">{isSelected('First Corner', teamBName) ? '✓' : '+'}</div>
             </div>
           </div>
@@ -1385,7 +1391,7 @@ function CornersSection({ cornerAnalysis, teamAName, teamBName, matchId, matchNa
                 onClick={() => handleSelect('Corners O/U', overLabel, data.percentage)}
               >
                 <span className="ou-label">{overLabel}</span>
-                <span className="ou-pct">{data.percentage}%</span>
+                <span className="ou-pct">{capPct(data.percentage)}%</span>
                 <span className={`ou-prediction ${data.percentage >= 50 ? 'yes' : 'no'}`}>{data.percentage >= 50 ? 'Yes' : 'No'}</span>
                 <div className="selection-indicator">{isSelected('Corners O/U', overLabel) ? '✓' : '+'}</div>
               </div>
@@ -1458,7 +1464,7 @@ function CardsSection({ cardAnalysis, teamAName, teamBName, matchId, matchName }
               onClick={() => handleSelect('Booking 1X2', teamAName, booking1x2.team_a.percentage)}
             >
               <div className="result-label">{teamAName}</div>
-              <div className="result-value">{booking1x2.team_a.percentage}%</div>
+              <div className="result-value">{capPct(booking1x2.team_a.percentage)}%</div>
               <div className="selection-indicator">{isSelected('Booking 1X2', teamAName) ? '✓' : '+'}</div>
             </div>
             <div
@@ -1466,7 +1472,7 @@ function CardsSection({ cardAnalysis, teamAName, teamBName, matchId, matchName }
               onClick={() => handleSelect('Booking 1X2', 'Draw', booking1x2.draw?.percentage)}
             >
               <div className="result-label">Draw</div>
-              <div className="result-value">{booking1x2.draw?.percentage}%</div>
+              <div className="result-value">{capPct(booking1x2.draw?.percentage)}%</div>
               <div className="selection-indicator">{isSelected('Booking 1X2', 'Draw') ? '✓' : '+'}</div>
             </div>
             <div
@@ -1474,7 +1480,7 @@ function CardsSection({ cardAnalysis, teamAName, teamBName, matchId, matchName }
               onClick={() => handleSelect('Booking 1X2', teamBName, booking1x2.team_b.percentage)}
             >
               <div className="result-label">{teamBName}</div>
-              <div className="result-value">{booking1x2.team_b.percentage}%</div>
+              <div className="result-value">{capPct(booking1x2.team_b.percentage)}%</div>
               <div className="selection-indicator">{isSelected('Booking 1X2', teamBName) ? '✓' : '+'}</div>
             </div>
           </div>
@@ -1532,7 +1538,7 @@ function CardsSection({ cardAnalysis, teamAName, teamBName, matchId, matchName }
                 onClick={() => handleSelect('Cards O/U', overLabel, data.percentage)}
               >
                 <span className="ou-label">{overLabel}</span>
-                <span className="ou-pct">{data.percentage}%</span>
+                <span className="ou-pct">{capPct(data.percentage)}%</span>
                 <span className={`ou-prediction ${data.percentage >= 50 ? 'yes' : 'no'}`}>{data.percentage >= 50 ? 'Yes' : 'No'}</span>
                 <div className="selection-indicator">{isSelected('Cards O/U', overLabel) ? '✓' : '+'}</div>
               </div>
@@ -2013,7 +2019,7 @@ function SquadInfo({ matchStats, teamAName, teamBName }) {
         <div className="stability-info">
           <span className="formation-label">Formation: <strong>{stability.primary_formation}</strong></span>
           <span className={`stability-badge ${stabilityColor(stability.rating)}`}>
-            {stability.rating} Stability ({stability.usage_percentage}%)
+            {stability.rating} Stability ({capPct(stability.usage_percentage)}%)
           </span>
           {stability.formations_used > 1 && (
             <span className="formations-used">{stability.formations_used} formations used this season</span>
@@ -2115,7 +2121,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: dc['1X'].percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `${teamAName} wins or draws in ${dc['1X'].percentage}% of H2H matches`
+      reasoning: `${teamAName} wins or draws in ${capPct(dc['1X'].percentage)}% of H2H matches`
     })
   }
   if (dc['X2']?.percentage >= 55) {
@@ -2125,7 +2131,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: dc['X2'].percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `${teamBName} wins or draws in ${dc['X2'].percentage}% of H2H matches`
+      reasoning: `${teamBName} wins or draws in ${capPct(dc['X2'].percentage)}% of H2H matches`
     })
   }
   if (dc['12']?.percentage >= 65) {
@@ -2135,7 +2141,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: dc['12'].percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `Decisive result (no draw) in ${dc['12'].percentage}% of H2H matches`
+      reasoning: `Decisive result (no draw) in ${capPct(dc['12'].percentage)}% of H2H matches`
     })
   }
 
@@ -2148,7 +2154,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: dnb.team_a.percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `${teamAName} wins ${dnb.team_a.percentage}% when excluding draws`
+      reasoning: `${teamAName} wins ${capPct(dnb.team_a.percentage)}% when excluding draws`
     })
   }
   if (dnb.team_b?.percentage >= 55) {
@@ -2158,7 +2164,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: dnb.team_b.percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `${teamBName} wins ${dnb.team_b.percentage}% when excluding draws`
+      reasoning: `${teamBName} wins ${capPct(dnb.team_b.percentage)}% when excluding draws`
     })
   }
 
@@ -2173,7 +2179,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
         probability: data.percentage,
         odds: null,
         bookmaker: null,
-        reasoning: `${data.percentage}% of H2H matches had ${label.toLowerCase()} goals`
+        reasoning: `${capPct(data.percentage)}% of H2H matches had ${label.toLowerCase()} goals`
       })
     }
   })
@@ -2187,7 +2193,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: btts.yes.percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `Both teams scored in ${btts.yes.percentage}% of H2H matches`
+      reasoning: `Both teams scored in ${capPct(btts.yes.percentage)}% of H2H matches`
     })
   }
   if (btts.no?.percentage >= 50) {
@@ -2197,7 +2203,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: btts.no.percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `At least one team failed to score in ${btts.no.percentage}% of H2H`
+      reasoning: `At least one team failed to score in ${capPct(btts.no.percentage)}% of H2H`
     })
   }
 
@@ -2210,7 +2216,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: firstGoal.team_a.percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `${teamAName} scores first ${firstGoal.team_a.percentage}% of the time`
+      reasoning: `${teamAName} scores first ${capPct(firstGoal.team_a.percentage)}% of the time`
     })
   }
   if (firstGoal.team_b?.percentage >= 55) {
@@ -2220,7 +2226,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: firstGoal.team_b.percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `${teamBName} scores first ${firstGoal.team_b.percentage}% of the time`
+      reasoning: `${teamBName} scores first ${capPct(firstGoal.team_b.percentage)}% of the time`
     })
   }
 
@@ -2296,7 +2302,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
         probability: data.percentage,
         odds: null,
         bookmaker: null,
-        reasoning: `${data.percentage}% probability based on team corner averages`
+        reasoning: `${capPct(data.percentage)}% probability based on team corner averages`
       })
     }
   })
@@ -2310,7 +2316,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: corner1x2.team_a.percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `${teamAName} wins corner count ${corner1x2.team_a.percentage}% of matches`
+      reasoning: `${teamAName} wins corner count ${capPct(corner1x2.team_a.percentage)}% of matches`
     })
   }
   if (corner1x2.team_b?.percentage >= 55) {
@@ -2320,7 +2326,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
       probability: corner1x2.team_b.percentage,
       odds: null,
       bookmaker: null,
-      reasoning: `${teamBName} wins corner count ${corner1x2.team_b.percentage}% of matches`
+      reasoning: `${teamBName} wins corner count ${capPct(corner1x2.team_b.percentage)}% of matches`
     })
   }
 
@@ -2350,7 +2356,7 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
         probability: data.percentage,
         odds: null,
         bookmaker: null,
-        reasoning: `${data.percentage}% probability based on team discipline records`
+        reasoning: `${capPct(data.percentage)}% probability based on team discipline records`
       })
     }
   })
@@ -2497,17 +2503,17 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
             <span className="market-label">Double Chance</span>
             <span className="market-value">
               {dc['1X']?.percentage >= dc['X2']?.percentage && dc['1X']?.percentage >= dc['12']?.percentage
-                ? `1X (${dc['1X']?.percentage}%)`
+                ? `1X (${capPct(dc['1X']?.percentage)}%)`
                 : dc['X2']?.percentage >= dc['12']?.percentage
-                  ? `X2 (${dc['X2']?.percentage}%)`
-                  : `12 (${dc['12']?.percentage}%)`}
+                  ? `X2 (${capPct(dc['X2']?.percentage)}%)`
+                  : `12 (${capPct(dc['12']?.percentage)}%)`}
             </span>
           </div>
           <div className="market-item">
             <span className="market-label">Over/Under 2.5</span>
             <span className="market-value">
               {(ouGoals.over_25?.percentage || 0) >= 50
-                ? `Over (${ouGoals.over_25?.percentage}%)`
+                ? `Over (${capPct(ouGoals.over_25?.percentage)}%)`
                 : `Under (${100 - (ouGoals.over_25?.percentage || 50)}%)`}
             </span>
           </div>
@@ -2515,24 +2521,24 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
             <span className="market-label">BTTS</span>
             <span className="market-value">
               {(btts.yes?.percentage || 0) >= 50
-                ? `Yes (${btts.yes?.percentage}%)`
-                : `No (${btts.no?.percentage}%)`}
+                ? `Yes (${capPct(btts.yes?.percentage)}%)`
+                : `No (${capPct(btts.no?.percentage)}%)`}
             </span>
           </div>
           <div className="market-item">
             <span className="market-label">Draw No Bet</span>
             <span className="market-value">
               {dnb.team_a?.percentage >= dnb.team_b?.percentage
-                ? `${teamAName.split(' ')[0]} (${dnb.team_a?.percentage}%)`
-                : `${teamBName.split(' ')[0]} (${dnb.team_b?.percentage}%)`}
+                ? `${teamAName.split(' ')[0]} (${capPct(dnb.team_a?.percentage)}%)`
+                : `${teamBName.split(' ')[0]} (${capPct(dnb.team_b?.percentage)}%)`}
             </span>
           </div>
           <div className="market-item">
             <span className="market-label">1st Goal</span>
             <span className="market-value">
               {firstGoal.team_a?.percentage >= firstGoal.team_b?.percentage
-                ? `${teamAName.split(' ')[0]} (${firstGoal.team_a?.percentage}%)`
-                : `${teamBName.split(' ')[0]} (${firstGoal.team_b?.percentage}%)`}
+                ? `${teamAName.split(' ')[0]} (${capPct(firstGoal.team_a?.percentage)}%)`
+                : `${teamBName.split(' ')[0]} (${capPct(firstGoal.team_b?.percentage)}%)`}
             </span>
           </div>
           <div className="market-item">
@@ -2547,8 +2553,8 @@ function FinalPrediction({ prediction, h2hData, matchStats, odds, teamAName, tea
             <span className="market-label">Corner Winner</span>
             <span className="market-value">
               {corner1x2.team_a?.percentage >= corner1x2.team_b?.percentage
-                ? `${teamAName.split(' ')[0]} (${corner1x2.team_a?.percentage}%)`
-                : `${teamBName.split(' ')[0]} (${corner1x2.team_b?.percentage}%)`}
+                ? `${teamAName.split(' ')[0]} (${capPct(corner1x2.team_a?.percentage)}%)`
+                : `${teamBName.split(' ')[0]} (${capPct(corner1x2.team_b?.percentage)}%)`}
             </span>
           </div>
           <div className="market-item">
