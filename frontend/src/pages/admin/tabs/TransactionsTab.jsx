@@ -163,7 +163,7 @@ export default function TransactionsTab() {
           </div>
           <div className="tx-user-detail-stats">
             <div><span>Tier</span><strong style={{ color: userDetail.tier === 'pro' ? '#a78bfa' : '#94a3b8', textTransform: 'capitalize' }}>{userDetail.tier}</strong></div>
-            <div><span>Credits</span><strong>{userDetail.credits ?? 0}</strong></div>
+            <div><span>Credits</span><strong>{typeof userDetail.credits === "object" ? (userDetail.credits?.total_credits ?? 0) : (userDetail.credits ?? 0)}</strong></div>
             <div><span>Joined</span><strong>{userDetail.created_at ? new Date(userDetail.created_at).toLocaleDateString() : '-'}</strong></div>
             <div><span>Phone</span><strong>{formatPhone(userDetail.whatsapp_number || userDetail.mpesa_phone || '')}</strong></div>
           </div>
