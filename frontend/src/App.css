@@ -26592,3 +26592,43 @@ body.ai-assistant-active .support-chat-fab {
   object-fit: contain;
   border-radius: 2px;
 }
+
+
+/* ── Account Setup: Logout / Switch Account ── */
+
+.account-setup-alt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.account-setup-alt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: color 0.2s, background 0.2s;
+  font-family: inherit;
+}
+
+.account-setup-alt-btn:hover {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.account-setup-alt-divider {
+  color: rgba(255, 255, 255, 0.1);
+  font-size: 14px;
+  user-select: none;
+}
