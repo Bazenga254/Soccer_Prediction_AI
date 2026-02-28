@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useCredits } from '../context/CreditContext'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import axios from 'axios'
@@ -747,6 +748,7 @@ function groupFixturesByDate(fixtures) {
 
 function UpcomingMatchesTab() {
   const { user } = useAuth()
+  const { totalCredits } = useCredits()
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [selectedLeague, setSelectedLeague] = useState('ALL')
@@ -756,7 +758,7 @@ function UpcomingMatchesTab() {
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const MATCHES_PER_PAGE = 15
-  const isPro = user?.tier === 'pro'
+  const isPro = user?.tier === 'pro' || totalCredits > 0
 
   useEffect(() => {
     const fetchFixtures = async () => {
