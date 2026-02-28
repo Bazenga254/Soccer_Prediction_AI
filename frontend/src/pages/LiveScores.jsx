@@ -1,3 +1,4 @@
+import { isSoundEnabled } from '../sounds'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -213,6 +214,7 @@ const LEAGUE_PRIORITY = {
 
 // Play whistle sound for goals
 function playGoalSound() {
+  if (!isSoundEnabled()) return
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
     const osc = ctx.createOscillator()
