@@ -3923,17 +3923,34 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
     # Send email if channel is 'email' or 'both'
     if channel in ("email", "both"):
         import threading
+        import time as _bcast_time
         def _send_broadcast_emails():
-            try:
-                for uid in user_ids:
-                    _send_notif_email(
-                        user_id=uid,
-                        notif_type="broadcast",
-                        title=broadcast["title"],
-                        message=broadcast["message"],
-                    )
-            except Exception as e:
-                print(f"[WARN] Broadcast email error: {e}")
+            """Send emails sequentially with delay to avoid Zoho rate limits."""
+            import user_auth
+            sent = 0
+            failed = 0
+            for uid in user_ids:
+                try:
+                    user_info = user_auth.get_user_email_by_id(uid)
+                    if user_info and user_info.get("email"):
+                        ok = user_auth.send_notification_email(
+                            to_email=user_info["email"],
+                            display_name=user_info.get("display_name", ""),
+                            notif_type="broadcast",
+                            title=broadcast["title"],
+                            message=broadcast["message"],
+                        )
+                        if ok:
+                            sent += 1
+                        else:
+                            failed += 1
+                    # Delay between each email to avoid Zoho rate limits
+                    _bcast_time.sleep(3)
+                except Exception as e:
+                    failed += 1
+                    print(f"[WARN] Broadcast email to user {uid} failed: {e}")
+                    _bcast_time.sleep(3)
+            print(f"[INFO] Broadcast emails done: {sent} sent, {failed} failed out of {len(user_ids)}")
         threading.Thread(target=_send_broadcast_emails, daemon=True).start()
 
     # Send WhatsApp if channel is 'whatsapp' or 'both'

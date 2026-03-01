@@ -1791,52 +1791,88 @@ def reset_password(email: str, token: str, new_password: str) -> Dict:
     return {"success": True, "message": "Password reset successfully. You can now log in with your new password."}
 
 
-def _is_disposable_email(email: str) -> bool:
-    """Check if an email uses a known disposable/temporary email domain."""
-    domain = email.lower().strip().split("@")[-1]
-    return domain in DISPOSABLE_EMAIL_DOMAINS
+# --- Disposable Email Blocking (auto-updating) ---
 
+_DISPOSABLE_BLOCKLIST_URL = "https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/main/disposable_email_blocklist.conf"
+_disposable_cache = {"domains": set(), "loaded_at": 0}
+_disposable_cache_lock = threading.Lock()
+_DISPOSABLE_CACHE_TTL = 86400  # 24 hours
 
-DISPOSABLE_EMAIL_DOMAINS = {
+# Fallback list used if GitHub fetch fails (subset of most common ones)
+_FALLBACK_DISPOSABLE_DOMAINS = {
     "10minutemail.com", "guerrillamail.com", "guerrillamail.net", "guerrillamail.org",
     "guerrillamailblock.com", "mailinator.com", "maildrop.cc", "tempmail.com",
     "throwaway.email", "temp-mail.org", "fakeinbox.com", "sharklasers.com",
     "guerrillamail.info", "grr.la", "guerrillamail.biz", "guerrillamail.de",
     "tempail.com", "dispostable.com", "yopmail.com", "yopmail.fr", "yopmail.net",
-    "cool.fr.nf", "jetable.fr.nf", "nospam.ze.tc", "nomail.xl.cx",
-    "mega.zik.dj", "speed.1s.fr", "courriel.fr.nf", "moncourrier.fr.nf",
-    "monemail.fr.nf", "monmail.fr.nf", "mailnesia.com", "mailcatch.com",
-    "trashmail.com", "trashmail.me", "trashmail.net", "trashmail.org",
-    "trashmail.at", "trashmail.ws", "trashmail.io", "0-mail.com",
-    "bugmenot.com", "deadaddress.com", "discard.email", "discardmail.com",
-    "discardmail.de", "emailondeck.com", "example.com",
-    "fakemailgenerator.com", "getnada.com", "getairmail.com",
-    "harakirimail.com", "inboxkitten.com",
-    "jetable.org", "kostenloseemail.de", "kurzepost.de",
-    "luxusmail.org", "mailexpire.com", "mailforspam.com", "mailhub.top",
-    "mailnator.com", "mailsac.com", "mailtemp.info", "mailtothis.com",
-    "mohmal.com", "mt2015.com", "mytemp.email", "mytrashmail.com",
-    "nowmymail.com", "objectmail.com", "one-time.email",
-    "rcpt.at", "reallymymail.com", "safetymail.info",
-    "shieldedmail.com", "spamavert.com",
-    "spambox.us", "spamfree24.com", "spamfree24.de",
-    "spamfree24.eu", "spamfree24.info", "spamfree24.net", "spamfree24.org",
-    "spamgourmet.com", "spamgourmet.net", "spamgourmet.org",
-    "spamherelots.com", "spamhereplease.com", "tempemail.co.za",
-    "tempemail.net", "tempinbox.com", "tempinbox.co.uk",
-    "tempomail.fr", "temporaryemail.net", "temporaryemail.us",
-    "temporaryforwarding.com", "temporaryinbox.com", "temporarymailaddress.com",
-    "thankyou2010.com", "thisisnotmyrealemail.com", "throwam.com",
-    "tmail.ws", "tmpmail.net", "tmpmail.org", "trash-mail.at",
-    "trash-mail.com", "trash-mail.de", "trash2009.com", "trashdevil.com",
-    "trashdevil.de", "trashymail.com", "trashymail.net",
-    "wegwerfmail.de", "wegwerfmail.net", "wegwerfmail.org",
-    "wh4f.org", "za.com", "zehnminutenmail.de", "zoemail.org",
-    "tempmailo.com", "burpcollaborator.net", "mailseal.de",
-    "crazymailing.com", "tempmailer.com", "mailtemp.net", "emailfake.com",
-    "cuvox.de", "armyspy.com", "dayrep.com", "einrot.com", "fleckens.hu",
-    "gustr.com", "jourrapide.com", "rhyta.com", "superrito.com", "teleworm.us",
+    "mailnesia.com", "mailcatch.com", "trashmail.com", "trashmail.me",
+    "trashmail.net", "trashmail.org", "bugmenot.com", "discard.email",
+    "discardmail.com", "emailondeck.com", "getnada.com", "getairmail.com",
+    "mailsac.com", "mytemp.email", "tempinbox.com", "temporaryemail.net",
+    "trashymail.com", "wegwerfmail.de", "example.com", "mailtemp.net",
+    "emailfake.com", "cuvox.de", "armyspy.com", "dayrep.com", "einrot.com",
+    "fleckens.hu", "gustr.com", "jourrapide.com", "rhyta.com", "superrito.com",
+    "teleworm.us", "tempmailo.com", "mohmal.com", "one-time.email",
 }
+
+
+def _fetch_disposable_domains() -> set:
+    """Fetch disposable email domains from GitHub. Returns set of domains or empty set on failure."""
+    try:
+        req = urllib.request.Request(_DISPOSABLE_BLOCKLIST_URL, method="GET")
+        req.add_header("User-Agent", "SparkAI/1.0")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            text = resp.read().decode("utf-8", errors="ignore")
+            domains = set()
+            for line in text.splitlines():
+                line = line.strip().lower()
+                if line and not line.startswith("#"):
+                    domains.add(line)
+            if len(domains) > 100:
+                print(f"[OK] Loaded {len(domains)} disposable email domains from GitHub")
+                return domains
+            print(f"[WARN] Disposable list too small ({len(domains)}), using fallback")
+    except Exception as e:
+        print(f"[WARN] Failed to fetch disposable email list: {e}")
+    return set()
+
+
+def _get_disposable_domains() -> set:
+    """Get cached disposable domains set, refreshing if stale."""
+    import time as _t
+    now = _t.time()
+    with _disposable_cache_lock:
+        if _disposable_cache["domains"] and (now - _disposable_cache["loaded_at"]) < _DISPOSABLE_CACHE_TTL:
+            return _disposable_cache["domains"]
+
+    # Fetch outside lock to avoid blocking
+    domains = _fetch_disposable_domains()
+    with _disposable_cache_lock:
+        if domains:
+            _disposable_cache["domains"] = domains
+            _disposable_cache["loaded_at"] = now
+        elif not _disposable_cache["domains"]:
+            # First load failed — use fallback
+            _disposable_cache["domains"] = _FALLBACK_DISPOSABLE_DOMAINS
+            _disposable_cache["loaded_at"] = now
+            print(f"[WARN] Using fallback disposable list ({len(_FALLBACK_DISPOSABLE_DOMAINS)} domains)")
+    return _disposable_cache["domains"]
+
+
+def _is_disposable_email(email: str) -> bool:
+    """Check if an email uses a known disposable/temporary email domain."""
+    domain = email.lower().strip().split("@")[-1]
+    return domain in _get_disposable_domains()
+
+
+# Pre-load disposable domains in background on startup
+def _preload_disposable_domains():
+    try:
+        _get_disposable_domains()
+    except Exception:
+        pass
+
+threading.Thread(target=_preload_disposable_domains, daemon=True).start()
 
 
 # --- API Functions ---
