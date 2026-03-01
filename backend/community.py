@@ -570,6 +570,10 @@ def init_community_db():
         "ALTER TABLE community_predictions ADD COLUMN slip_id TEXT",
         "ALTER TABLE community_predictions ADD COLUMN combined_odds REAL",
         "ALTER TABLE community_predictions ADD COLUMN is_daily_free INTEGER DEFAULT 0",
+        "ALTER TABLE broadcast_messages ADD COLUMN channel TEXT DEFAULT 'email'",
+        "ALTER TABLE broadcast_messages ADD COLUMN target_type TEXT DEFAULT 'all'",
+        "ALTER TABLE broadcast_messages ADD COLUMN target_user_ids TEXT DEFAULT NULL",
+        "ALTER TABLE broadcast_messages ADD COLUMN target_user_names TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(col_sql)
@@ -3779,18 +3783,28 @@ def get_credit_usage_breakdown(user_id: int) -> Dict:
 # ==================== BROADCAST MESSAGING ====================
 
 def create_broadcast(sender_id: int, sender_name: str, title: str, message: str,
-                     auto_approve: bool = False, channel: str = "email") -> Dict:
+                     auto_approve: bool = False, channel: str = "email",
+                     target_type: str = "all", target_user_ids: list = None,
+                     target_user_names: list = None) -> Dict:
     """Create a broadcast message. If auto_approve=True (super admin), it's sent immediately.
-    channel: 'email', 'whatsapp', or 'both'."""
+    channel: 'email', 'whatsapp', or 'both'.
+    target_type: 'all' or 'specific'. If 'specific', target_user_ids must be provided."""
     if channel not in ("email", "whatsapp", "both"):
         channel = "email"
+    if target_type not in ("all", "specific"):
+        target_type = "all"
+    import json
+    user_ids_json = json.dumps(target_user_ids) if target_user_ids else None
+    user_names_json = json.dumps(target_user_names) if target_user_names else None
     conn = _get_db()
     now = datetime.now().isoformat()
     status = "approved" if auto_approve else "pending_approval"
     conn.execute("""
-        INSERT INTO broadcast_messages (sender_id, sender_name, title, message, status, channel, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (sender_id, sender_name, title, message, status, channel, now))
+        INSERT INTO broadcast_messages (sender_id, sender_name, title, message, status, channel,
+                                        target_type, target_user_ids, target_user_names, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (sender_id, sender_name, title, message, status, channel,
+          target_type, user_ids_json, user_names_json, now))
     broadcast_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.commit()
     conn.close()
@@ -3859,8 +3873,9 @@ def reject_broadcast(broadcast_id: int, approver_id: int, approver_name: str, re
 
 
 def _execute_broadcast(broadcast_id: int) -> Dict:
-    """Actually send a broadcast to all active users. Updates status to 'sent'."""
+    """Actually send a broadcast to users. If target_type='specific', only sends to targeted users."""
     import user_auth
+    import json as _json
     conn = _get_db()
     broadcast = conn.execute("SELECT * FROM broadcast_messages WHERE id = ?", (broadcast_id,)).fetchone()
     if not broadcast:
@@ -3868,12 +3883,28 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
         return {"recipient_count": 0}
 
     channel = broadcast["channel"] if "channel" in broadcast.keys() else "email"
+    target_type = broadcast["target_type"] if "target_type" in broadcast.keys() else "all"
 
-    # Get all active users (include WhatsApp fields for channel routing)
+    # Get users based on target type
     auth_conn = user_auth._get_db()
-    users = auth_conn.execute(
-        "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1"
-    ).fetchall()
+    target_user_ids_raw = broadcast["target_user_ids"] if "target_user_ids" in broadcast.keys() else None
+    if target_type == "specific" and target_user_ids_raw:
+        try:
+            specific_ids = _json.loads(target_user_ids_raw)
+        except (ValueError, TypeError):
+            specific_ids = []
+        if specific_ids:
+            placeholders = ",".join("?" for _ in specific_ids)
+            users = auth_conn.execute(
+                f"SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1 AND id IN ({placeholders})",
+                specific_ids
+            ).fetchall()
+        else:
+            users = []
+    else:
+        users = auth_conn.execute(
+            "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1"
+        ).fetchall()
     auth_conn.close()
 
     user_ids = [u["id"] for u in users]
@@ -3937,6 +3968,7 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
 
 def get_broadcasts(status_filter: str = None, limit: int = 50) -> List[Dict]:
     """Get broadcast messages, optionally filtered by status."""
+    import json as _json
     conn = _get_db()
     if status_filter:
         rows = conn.execute("""
@@ -3948,7 +3980,22 @@ def get_broadcasts(status_filter: str = None, limit: int = 50) -> List[Dict]:
             SELECT * FROM broadcast_messages ORDER BY created_at DESC LIMIT ?
         """, (limit,)).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    results = []
+    for r in rows:
+        d = dict(r)
+        # Parse JSON target fields
+        if d.get("target_user_ids"):
+            try:
+                d["target_user_ids"] = _json.loads(d["target_user_ids"])
+            except (ValueError, TypeError):
+                d["target_user_ids"] = []
+        if d.get("target_user_names"):
+            try:
+                d["target_user_names"] = _json.loads(d["target_user_names"])
+            except (ValueError, TypeError):
+                d["target_user_names"] = []
+        results.append(d)
+    return results
 
 
 # ==================== CHAT KEEP-ALIVE ====================

@@ -102,6 +102,9 @@ class BroadcastRequest(BaseModel):
     title: str
     message: str
     channel: str = "email"
+    target_type: str = "all"
+    target_user_ids: Optional[List[int]] = None
+    target_user_names: Optional[List[str]] = None
 
 class RejectBroadcastRequest(BaseModel):
     reason: str = ""
@@ -1884,15 +1887,21 @@ async def admin_create_broadcast(request: Request, body: BroadcastRequest,
     if not body.title.strip() or not body.message.strip():
         raise HTTPException(status_code=400, detail="Title and message are required")
 
+    if body.target_type == "specific" and (not body.target_user_ids or len(body.target_user_ids) == 0):
+        raise HTTPException(status_code=400, detail="At least one target user is required")
+
     # Super admin (level 0 owner or legacy password) auto-approves
     is_super = auth.get("role_level", 99) <= 1 or auth.get("is_admin")
     result = community.create_broadcast(
-        sender_id=auth.get("user_id", 0),
+        sender_id=auth.get("user_id") or 0,
         sender_name=auth.get("display_name", "Admin"),
         title=body.title.strip(),
         message=body.message.strip(),
         auto_approve=is_super,
         channel=body.channel,
+        target_type=body.target_type,
+        target_user_ids=body.target_user_ids,
+        target_user_names=body.target_user_names,
     )
     _log_action(auth, "create_broadcast", "community", request, "broadcast", result.get("broadcast_id"),
                 {"title": body.title, "auto_approved": is_super})
