@@ -189,14 +189,14 @@ export default function LandingPage() {
         ]}
       />
     <div className="landing-page">
-      <LandingNav onSignIn={openSignIn} onGetStarted={scrollToPricing} />
+      <LandingNav onSignIn={openSignIn} onGetStarted={openSignUp} />
 
       {/* Hero Section */}
       <HeroCarousel images={heroImages} interval={5000}>
         <h1 className="hero-title">{t('landing.heroTitle')}</h1>
         <p className="hero-subtitle">{t('landing.heroSubtitle')}</p>
         <div className="hero-actions">
-          <button className="hero-cta-btn" onClick={scrollToPricing}>
+          <button className="hero-cta-btn" onClick={openSignUp}>
 Get Started
           </button>
           <button className="hero-secondary-btn" onClick={() => {
