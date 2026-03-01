@@ -858,24 +858,170 @@
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
   .admin-sidebar {
-    width: 60px;
+    width: 52px;
   }
   .admin-main {
-    margin-left: 60px;
-    padding: 16px;
+    margin-left: 52px;
+    padding: 10px;
+    overflow-x: hidden;
+  }
+  .admin-content {
+    max-width: 100%;
+    overflow-x: hidden;
   }
   .admin-tab-label {
     display: none;
   }
+  .admin-sidebar-header {
+    padding: 12px 6px;
+  }
   .admin-sidebar-header h2,
   .admin-sidebar-user {
     display: none;
+  }
+  .admin-sidebar-role {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+  .admin-sidebar-tab {
+    padding: 10px 8px;
+    justify-content: center;
+  }
+  .admin-tab-icon {
+    font-size: 18px;
+    width: auto;
   }
   .admin-support-layout {
     grid-template-columns: 1fr;
   }
   .admin-stats-grid {
     grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .admin-section-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .admin-section-header h3 {
+    font-size: 16px;
+  }
+
+  /* Generic admin tables — card layout on mobile */
+  .admin-users-table,
+  .admin-users-table-wide {
+    overflow-x: visible;
+    border: none;
+  }
+  .admin-table-header {
+    display: none !important;
+  }
+  .admin-table-row {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 12px 10px;
+    min-width: 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 10px;
+    margin-bottom: 8px;
+  }
+
+  /* Users table: show avatar + name on first row */
+  .admin-table-row .col-avatar {
+    flex-shrink: 0;
+  }
+  .admin-table-row .col-avatar .admin-user-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+  .admin-table-row .col-name {
+    flex: 1;
+    min-width: 0;
+  }
+  .admin-table-row .col-name strong {
+    font-size: 14px;
+    display: block;
+  }
+  .admin-table-row .col-name small {
+    font-size: 11px;
+  }
+
+  /* Hide less important columns on mobile */
+  .admin-table-row .col-country,
+  .admin-table-row .col-ip,
+  .admin-table-row .col-device,
+  .admin-table-row .col-browser-os,
+  .admin-table-row .col-source,
+  .admin-table-row .col-email,
+  .admin-table-row .col-logins {
+    display: none !important;
+  }
+
+  /* Show tier, status, joined inline */
+  .admin-table-row .col-tier,
+  .admin-table-row .col-status,
+  .admin-table-row .col-joined {
+    font-size: 12px;
+  }
+
+  /* Actions row: full width, compact buttons */
+  .admin-table-row .col-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .admin-table-row .col-actions .admin-action-btn {
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+
+  /* Filters / toolbar on mobile */
+  .admin-users-toolbar,
+  .admin-filter-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .admin-users-toolbar .admin-search-input,
+  .admin-filter-bar .admin-search-input {
+    width: 100%;
+    flex: unset;
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+  .admin-users-toolbar .admin-filter-select,
+  .admin-filter-bar select {
+    flex: 1 1 45%;
+    font-size: 12px;
+    padding: 6px 8px;
+    min-width: 0;
+  }
+  .admin-user-count {
+    width: 100%;
+    text-align: right;
+    font-size: 12px;
+  }
+
+  /* Stat cards mobile */
+  .admin-stat-card {
+    padding: 12px;
+  }
+  .admin-stat-value {
+    font-size: 20px;
+  }
+  .admin-stat-label {
+    font-size: 11px;
+  }
+
+  /* Admin modals on mobile */
+  .admin-modal {
+    width: 92vw !important;
+    max-width: 92vw !important;
+    margin: 16px;
   }
 }
 
@@ -4365,12 +4511,123 @@
     flex-wrap: wrap;
   }
   .tx-subtab-btn {
-    flex: 1 1 45%;
+    flex: 1 1 30%;
     font-size: 12px;
     padding: 8px 10px;
   }
   .tx-period-bar {
     flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tx-period-btn {
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+
+  /* Switch ALL transaction/subscription tables to card layout on mobile */
+  .admin-users-table {
+    overflow-x: visible !important;
+  }
+  .tx-mpesa-header,
+  .tx-card-header,
+  .tx-payg-header,
+  .tx-sub-v3-header {
+    display: none !important;
+  }
+  .tx-mpesa-row,
+  .tx-card-row,
+  .tx-payg-row,
+  .tx-sub-v3-row {
+    display: grid !important;
+    grid-template-columns: 40px 1fr;
+    gap: 0;
+    padding: 12px 10px !important;
+    min-width: 0 !important;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  /* Avatar in left column, row 1 */
+  .tx-mpesa-row .col-avatar,
+  .tx-card-row .col-avatar,
+  .tx-payg-row .col-avatar,
+  .tx-sub-v3-row .col-avatar {
+    grid-row: 1;
+    grid-column: 1;
+    align-self: start;
+    padding-top: 2px;
+  }
+
+  /* Name next to avatar, row 1 */
+  .tx-mpesa-row .col-name,
+  .tx-card-row .col-name,
+  .tx-payg-row .col-name,
+  .tx-sub-v3-row .col-name {
+    grid-row: 1;
+    grid-column: 2;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 4px;
+  }
+
+  /* All data fields stack below, full width, one per line */
+  .tx-mpesa-row > span:not(.col-avatar):not(.col-name),
+  .tx-card-row > span:not(.col-avatar):not(.col-name),
+  .tx-payg-row > span:not(.col-avatar):not(.col-name),
+  .tx-sub-v3-row > span:not(.col-avatar):not(.col-name) {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0 4px 48px;
+    font-size: 13px;
+    min-width: 0;
+    word-break: break-word;
+  }
+
+  .tx-reference {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Mobile data labels — show field name before each value */
+  .tx-mpesa-row > span[data-label]::before,
+  .tx-card-row > span[data-label]::before,
+  .tx-payg-row > span[data-label]::before,
+  .tx-sub-v3-row > span[data-label]::before {
+    content: attr(data-label);
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    min-width: 58px;
+    flex-shrink: 0;
+  }
+
+  /* User detail card mobile */
+  .tx-user-detail-header {
+    flex-wrap: wrap;
+  }
+  .tx-user-detail-stats {
+    gap: 12px;
+  }
+  .tx-user-detail-stats > div > strong {
+    font-size: 12px;
+  }
+
+  /* Pagination mobile */
+  .tx-pagination {
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+  .tx-page-btn {
+    font-size: 12px;
+    padding: 6px 12px;
   }
 }
 

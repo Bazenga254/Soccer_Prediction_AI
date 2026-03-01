@@ -119,10 +119,10 @@ export default function SubscriptionsTab() {
                     <strong>{t.display_name || 'Unknown'}</strong>
                     <small>@{t.username}</small>
                   </span>
-                  <span style={{ fontWeight: 600 }}>
+                  <span data-label="Amount" style={{ fontWeight: 600 }}>
                     {t.amount_kes > 0 ? `KES ${t.amount_kes}` : `$${(t.amount_usd || 0).toFixed(2)}`}
                   </span>
-                  <span>
+                  <span data-label="Method">
                     <span className="tx-status-badge" style={{
                       background: t.source === 'mpesa' ? '#2ecc7120' : '#3498db20',
                       color: t.source === 'mpesa' ? '#2ecc71' : '#3498db'
@@ -130,10 +130,10 @@ export default function SubscriptionsTab() {
                       {t.payment_method}
                     </span>
                   </span>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{formatPhone(t.phone_number)}</span>
-                  <span className="tx-reference">{t.mpesa_receipt || t.whop_payment_id || '-'}</span>
-                  <span style={{ fontSize: 12 }}>${(t.balance_usd || 0).toFixed(2)} / KES {Math.round(t.balance_kes || 0)}</span>
-                  <span style={{ fontSize: 12 }}>{formatDateTime(t.created_at)}</span>
+                  <span data-label="Phone" style={{ fontSize: 12, color: '#94a3b8' }}>{formatPhone(t.phone_number)}</span>
+                  <span data-label="Ref" className="tx-reference">{t.mpesa_receipt || t.whop_payment_id || '-'}</span>
+                  <span data-label="Credits" style={{ fontSize: 12 }}>${(t.balance_usd || 0).toFixed(2)} / KES {Math.round(t.balance_kes || 0)}</span>
+                  <span data-label="Date" style={{ fontSize: 12 }}>{formatDateTime(t.created_at)}</span>
                 </div>
               ))}
             </div>
@@ -171,15 +171,15 @@ export default function SubscriptionsTab() {
                     <strong>{s.display_name || 'No Name'}</strong>
                     <small>@{s.username}</small>
                   </span>
-                  <span>
+                  <span data-label="Plan">
                     <span className="tx-plan-badge">{(s.plan || '').replace(/_/g, ' ')}</span>
                   </span>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>
+                  <span data-label="Price" style={{ fontWeight: 600, fontSize: 13 }}>
                     {s.price_currency === 'KES' ? `KES ${s.price_amount}` : `$${s.price_amount}`}
                   </span>
-                  <span style={{ textTransform: 'capitalize', fontSize: 12 }}>{s.payment_method || '-'}</span>
-                  <span style={{ fontSize: 12 }}>${(s.balance_usd || 0).toFixed(2)} / KES {Math.round(s.balance_kes || 0)}</span>
-                  <span>
+                  <span data-label="Method" style={{ textTransform: 'capitalize', fontSize: 12 }}>{s.payment_method || '-'}</span>
+                  <span data-label="Credits" style={{ fontSize: 12 }}>${(s.balance_usd || 0).toFixed(2)} / KES {Math.round(s.balance_kes || 0)}</span>
+                  <span data-label="Status">
                     <span className="tx-status-badge" style={{
                       background: s.status === 'active' ? '#2ecc7120' : s.status === 'cancelled' ? '#e74c3c20' : '#f39c1220',
                       color: s.status === 'active' ? '#2ecc71' : s.status === 'cancelled' ? '#e74c3c' : '#f39c12'
@@ -187,8 +187,8 @@ export default function SubscriptionsTab() {
                       {s.status}
                     </span>
                   </span>
-                  <span style={{ fontSize: 11 }}>{formatDate(s.started_at)}</span>
-                  <span style={{ fontSize: 11 }}>
+                  <span data-label="Started" style={{ fontSize: 11 }}>{formatDate(s.started_at)}</span>
+                  <span data-label="Expires" style={{ fontSize: 11 }}>
                     {formatDate(s.expires_at)}
                     {s.days_remaining > 0 && <small style={{ color: '#00b894' }}> ({s.days_remaining}d)</small>}
                   </span>
@@ -236,15 +236,15 @@ export default function SubscriptionsTab() {
                     <strong>{s.display_name || 'No Name'}</strong>
                     <small>@{s.username}</small>
                   </span>
-                  <span>
+                  <span data-label="Plan">
                     <span className="tx-plan-badge">{(s.plan || '').replace(/_/g, ' ')}</span>
                   </span>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>
+                  <span data-label="Price" style={{ fontWeight: 600, fontSize: 13 }}>
                     {s.price_currency === 'KES' ? `KES ${s.price_amount}` : `$${s.price_amount}`}
                   </span>
-                  <span style={{ textTransform: 'capitalize', fontSize: 12 }}>{s.payment_method || '-'}</span>
-                  <span style={{ fontSize: 12 }}>${(s.balance_usd || 0).toFixed(2)} / KES {Math.round(s.balance_kes || 0)}</span>
-                  <span>
+                  <span data-label="Method" style={{ textTransform: 'capitalize', fontSize: 12 }}>{s.payment_method || '-'}</span>
+                  <span data-label="Credits" style={{ fontSize: 12 }}>${(s.balance_usd || 0).toFixed(2)} / KES {Math.round(s.balance_kes || 0)}</span>
+                  <span data-label="Status">
                     <span className="tx-status-badge" style={{
                       background: s.status === 'active' ? '#2ecc7120' : s.status === 'cancelled' ? '#e74c3c20' : '#f39c1220',
                       color: s.status === 'active' ? '#2ecc71' : s.status === 'cancelled' ? '#e74c3c' : '#f39c12'
@@ -252,8 +252,8 @@ export default function SubscriptionsTab() {
                       {s.status}
                     </span>
                   </span>
-                  <span style={{ fontSize: 11 }}>{formatDate(s.started_at)}</span>
-                  <span style={{ fontSize: 11 }}>
+                  <span data-label="Started" style={{ fontSize: 11 }}>{formatDate(s.started_at)}</span>
+                  <span data-label="Expires" style={{ fontSize: 11 }}>
                     {formatDate(s.expires_at)}
                     {s.days_remaining > 0 && <small style={{ color: '#00b894' }}> ({s.days_remaining}d)</small>}
                   </span>

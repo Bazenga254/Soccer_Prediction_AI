@@ -197,11 +197,11 @@ export default function TransactionsTab() {
                   <small>@{t.username}</small>
                 </span>
                 {method === 'mpesa' && (
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{formatPhone(t.phone_number)}</span>
+                  <span data-label="Phone" style={{ fontSize: 12, color: '#94a3b8' }}>{formatPhone(t.phone_number)}</span>
                 )}
-                <span style={{ fontWeight: 600 }}>{formatAmount(t)}</span>
-                <span style={{ textTransform: 'capitalize', fontSize: 12 }}>{(t.transaction_type || '').replace(/_/g, ' ')}</span>
-                <span>
+                <span data-label="Amount" style={{ fontWeight: 600 }}>{formatAmount(t)}</span>
+                <span data-label="Type" style={{ textTransform: 'capitalize', fontSize: 12 }}>{(t.transaction_type || '').replace(/_/g, ' ')}</span>
+                <span data-label="Status">
                   <span className="tx-status-badge" style={{
                     background: `${STATUS_COLORS[t.payment_status] || '#636e72'}20`,
                     color: STATUS_COLORS[t.payment_status] || '#636e72'
@@ -209,8 +209,8 @@ export default function TransactionsTab() {
                     {t.payment_status}
                   </span>
                 </span>
-                <span className="tx-reference">{getReference(t)}</span>
-                <span style={{ fontSize: 12 }}>{formatDate(t.created_at)}</span>
+                <span data-label="Ref" className="tx-reference">{getReference(t)}</span>
+                <span data-label="Date" style={{ fontSize: 12 }}>{formatDate(t.created_at)}</span>
               </div>
             ))}
           </div>
