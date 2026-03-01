@@ -127,8 +127,16 @@ export default function Upgrade() {
       const res = await axios.get('/api/subscription/status')
       setActiveSub(res.data)
     } catch {}
+    // Track purchase conversion
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'purchase', {
+        currency: isKenyan ? 'KES' : 'USD',
+        value: parseFloat(depositAmount) || 0,
+        items: [{ item_name: 'Credits Purchase', quantity: 1 }],
+      })
+    }
     setDepositAmount('')
-  }, [refreshCredits, refreshProfile])
+  }, [refreshCredits, refreshProfile, isKenyan, depositAmount])
 
   const costPrediction = creditCosts?.prediction || 50
   const costAnalysis = creditCosts?.match_analysis || 250

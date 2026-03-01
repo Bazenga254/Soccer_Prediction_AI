@@ -31,6 +31,15 @@ export default function AccountActivation() {
     setShowMpesa(false)
     setShowWhop(false)
     refreshProfile()
+    // Track account activation conversion
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'sign_up', { method: isKenyan ? 'mpesa' : 'card' })
+      window.gtag('event', 'purchase', {
+        currency: isKenyan ? 'KES' : 'USD',
+        value: isKenyan ? minKes : minUsd,
+        items: [{ item_name: 'Account Activation', quantity: 1 }],
+      })
+    }
   }
 
   return (
