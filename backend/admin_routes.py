@@ -1302,6 +1302,16 @@ async def admin_active_users(detailed: bool = False,
 #  SUPPORT CHAT
 # ═══════════════════════════════════════════════════════════
 
+@admin_router.get("/support/pending-count")
+async def admin_support_pending_count(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get count of active conversations with unread user messages."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'customer_care', 'technical_support'},
+                             required_module="support", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"pending_count": community.get_pending_support_count()}
+
+
 @admin_router.get("/support/conversations")
 async def admin_support_conversations(x_admin_password: str = Header(None), authorization: str = Header(None)):
     """List all support conversations."""
@@ -1356,7 +1366,7 @@ async def admin_close_conversation(user_id: int, request: Request,
         f"Chat ended by {agent_name}. We hope we could help! Please rate your experience below.",
         agent_id=auth.get("user_id"), agent_name=agent_name,
     )
-    community.close_conversation(user_id, "agent_closed")
+    community.close_conversation(user_id, "agent_closed", closed_by_name=agent_name)
     _log_action(auth, "close_conversation", "support", request, "user", user_id)
     return {"success": True}
 

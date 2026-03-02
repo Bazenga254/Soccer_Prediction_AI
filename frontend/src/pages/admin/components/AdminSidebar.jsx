@@ -37,7 +37,7 @@ const ALL_TABS = [
   { id: 'extension', icon: '🧩', label: 'Chrome Extension', module: 'dashboard' },
 ]
 
-export default function AdminSidebar({ activeTab, setActiveTab }) {
+export default function AdminSidebar({ activeTab, setActiveTab, pendingSupport = 0 }) {
   const { roleInfo, hasPermission, logout, currentUser } = useAdmin()
 
   const visibleTabs = ALL_TABS.filter(tab => hasPermission(tab.module, 'read'))
@@ -65,6 +65,9 @@ export default function AdminSidebar({ activeTab, setActiveTab }) {
           >
             <span className="admin-tab-icon">{tab.icon}</span>
             <span className="admin-tab-label">{tab.label}</span>
+            {tab.id === 'support' && pendingSupport > 0 && (
+              <span className="admin-sidebar-badge">{pendingSupport}</span>
+            )}
           </button>
         ))}
       </nav>

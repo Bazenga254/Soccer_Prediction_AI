@@ -1,4 +1,4 @@
-import { useState, Component } from 'react'
+import { useState, useEffect, useRef, useCallback, Component } from 'react'
 import { AdminProvider, useAdmin } from './context/AdminContext'
 import AdminLogin from './AdminLogin'
 import AdminSidebar from './components/AdminSidebar'
@@ -82,8 +82,29 @@ const TAB_COMPONENTS = {
 }
 
 function AdminShell() {
-  const { isLoggedIn, loading } = useAdmin()
+  const { isLoggedIn, loading, getAuthHeaders } = useAdmin()
   const [activeTab, setActiveTab] = useState('overview')
+  const [pendingSupport, setPendingSupport] = useState(0)
+  const pendingTimer = useRef(null)
+
+  const fetchPendingCount = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/support/pending-count', {
+        headers: getAuthHeaders(),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setPendingSupport(data.pending_count || 0)
+      }
+    } catch {}
+  }, [getAuthHeaders])
+
+  useEffect(() => {
+    if (!isLoggedIn) return
+    fetchPendingCount()
+    pendingTimer.current = setInterval(fetchPendingCount, 30000)
+    return () => clearInterval(pendingTimer.current)
+  }, [isLoggedIn, fetchPendingCount])
 
   if (loading) {
     return (
@@ -102,7 +123,7 @@ function AdminShell() {
 
   return (
     <div className="admin-page">
-      <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} pendingSupport={pendingSupport} />
       <div className="admin-main">
         <div className="admin-content">
           {ActiveTabComponent ? <ActiveTabComponent /> : <div>Tab not found</div>}

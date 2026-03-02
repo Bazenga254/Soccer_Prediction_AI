@@ -574,6 +574,7 @@ def init_community_db():
         "ALTER TABLE broadcast_messages ADD COLUMN target_type TEXT DEFAULT 'all'",
         "ALTER TABLE broadcast_messages ADD COLUMN target_user_ids TEXT DEFAULT NULL",
         "ALTER TABLE broadcast_messages ADD COLUMN target_user_names TEXT DEFAULT NULL",
+        "ALTER TABLE support_conversations ADD COLUMN closed_by_name TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(col_sql)
@@ -3348,14 +3349,14 @@ def get_conversation_by_user(user_id: int):
     return dict(row) if row else None
 
 
-def close_conversation(user_id: int, reason: str) -> bool:
+def close_conversation(user_id: int, reason: str, closed_by_name: str = None) -> bool:
     """Close the active conversation for a user."""
     conn = _get_db()
     now = datetime.now().isoformat()
     result = conn.execute(
-        "UPDATE support_conversations SET status = 'closed', closed_at = ?, closed_reason = ? "
+        "UPDATE support_conversations SET status = 'closed', closed_at = ?, closed_reason = ?, closed_by_name = ? "
         "WHERE user_id = ? AND status = 'active'",
-        (now, reason, user_id)
+        (now, reason, closed_by_name, user_id)
     )
     conn.commit()
     affected = result.rowcount
@@ -3525,7 +3526,7 @@ def get_support_conversations() -> List[Dict]:
 
         # Get conversation status
         conv_row = conn.execute(
-            "SELECT id, status, assigned_agent_id, assigned_agent_name, closed_at, closed_reason "
+            "SELECT id, status, assigned_agent_id, assigned_agent_name, closed_at, closed_reason, closed_by_name "
             "FROM support_conversations WHERE user_id = ? ORDER BY id DESC LIMIT 1",
             (r["user_id"],)
         ).fetchone()
@@ -3553,6 +3554,7 @@ def get_support_conversations() -> List[Dict]:
             "conv_status": conv_row["status"] if conv_row else "active",
             "assigned_agent_name": conv_row["assigned_agent_name"] if conv_row else None,
             "closed_reason": conv_row["closed_reason"] if conv_row else None,
+            "closed_by_name": conv_row["closed_by_name"] if conv_row and "closed_by_name" in conv_row.keys() else None,
             "rating": rating_val,
         })
 
@@ -3567,6 +3569,19 @@ def get_support_unread_count(user_id: int) -> int:
         "SELECT COUNT(*) as c FROM support_messages WHERE user_id = ? AND sender = 'admin' AND is_read = 0",
         (user_id,)
     ).fetchone()["c"]
+    conn.close()
+    return count
+
+
+def get_pending_support_count() -> int:
+    """Admin: get count of active conversations with unread user messages."""
+    conn = _get_db()
+    count = conn.execute("""
+        SELECT COUNT(DISTINCT sm.user_id) as c
+        FROM support_messages sm
+        JOIN support_conversations sc ON sm.user_id = sc.user_id AND sc.status = 'active'
+        WHERE sm.sender = 'user' AND sm.is_read = 0
+    """).fetchone()["c"]
     conn.close()
     return count
 

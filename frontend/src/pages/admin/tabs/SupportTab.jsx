@@ -261,9 +261,11 @@ export default function SupportTab() {
                       </span>
                     )}
                     {conv.conv_status === 'closed' && (
-                      <span className="admin-support-status-tag closed">Closed</span>
+                      <span className="admin-support-status-tag closed">
+                        {conv.closed_by_name ? `Closed by ${conv.closed_by_name}` : 'Closed'}
+                      </span>
                     )}
-                    {conv.assigned_agent_name && (
+                    {conv.conv_status !== 'closed' && conv.assigned_agent_name && (
                       <span className="admin-support-agent-tag">{conv.assigned_agent_name}</span>
                     )}
                     {conv.rating && (
@@ -368,7 +370,9 @@ export default function SupportTab() {
                   </span>
                 )}
                 {activeChat.conv_status === 'closed' && (
-                  <span className="admin-support-status-tag closed" style={{ marginLeft: 8 }}>Closed</span>
+                  <span className="admin-support-status-tag closed" style={{ marginLeft: 8 }}>
+                    {activeChat.closed_by_name ? `Closed by ${activeChat.closed_by_name}` : 'Closed'}
+                  </span>
                 )}
                 <div className="admin-support-header-actions">
                   <button className="admin-support-view-profile" onClick={() => viewProfile(activeChat.user_id)}>
