@@ -28,6 +28,8 @@ NOTIFICATION_URL_MAP = {
     "broadcast": "/",
     "broadcast_rejected": "/",
     "suspension": "/",
+    "goal_scored": "/live",
+    "match_ended": "/live",
 }
 
 # Notification types that should NOT trigger push
@@ -122,12 +124,16 @@ def send_push_notification(
                 return
 
             click_url = NOTIFICATION_URL_MAP.get(notif_type, "/")
+            # Unique tags for goal notifications so multiple can coexist
+            tag = notif_type
+            if notif_type in ("goal_scored", "match_ended") and metadata:
+                tag = f"{notif_type}_{metadata.get('fixture_id', '')}_{metadata.get('home_goals', '')}_{metadata.get('away_goals', '')}"
             payload = json.dumps({
                 "title": title,
                 "body": message,
                 "icon": "/pwa-192x192.png",
                 "badge": "/pwa-64x64.png",
-                "tag": notif_type,
+                "tag": tag,
                 "data": {
                     "url": click_url,
                     "notif_id": notif_id,

@@ -29,6 +29,7 @@ import prediction_tracker
 import user_auth
 import community
 import push_notifications
+import goal_monitor
 import team_aliases
 import subscriptions
 import pricing_config
@@ -215,6 +216,7 @@ async def startup():
     asyncio.create_task(_prediction_result_checker())
     asyncio.create_task(_weekly_disbursement_generator())
     asyncio.create_task(_daily_predictions_generator())
+    asyncio.create_task(goal_monitor.goal_score_monitor())
     print("[OK] Support keep-alive checker started (30-min idle, 3-min response)")
     print("[OK] Payment expiry checker started (15-min timeout)")
     print("[OK] Active user tracking started")
@@ -222,6 +224,7 @@ async def startup():
     print("[OK] Prediction result checker started (5-min interval)")
     print("[OK] Weekly disbursement generator started (Fridays 10:00 EAT)")
     print("[OK] Daily free predictions generator started (30-min check interval)")
+    print("[OK] Goal score monitor started (45-sec interval)")
     print("=" * 50)
 
 
@@ -2593,6 +2596,8 @@ async def handle_whop_webhook(request: Request):
         # Normalize to underscores so both formats work
         event_type = event.get("type", "").replace(".", "_")
         print(f"[Whop Webhook] Received event: {event_type}")
+        # Log full payload for debugging marketplace payments
+        print(f"[Whop Webhook] Full payload: {json.dumps(event)[:2000]}")
 
         if event_type == "payment_succeeded":
             result = whop_payment.process_payment_webhook(event)
