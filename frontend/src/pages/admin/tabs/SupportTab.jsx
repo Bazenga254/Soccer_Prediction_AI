@@ -3,6 +3,104 @@ import axios from 'axios'
 import { useAdmin } from '../context/AdminContext'
 import UserDetailPanel from '../components/UserDetailPanel'
 
+// Common misspellings → correct spelling (case-insensitive matching, preserves original casing)
+const COMMON_CORRECTIONS = {
+  // Common typos
+  teh: 'the', hte: 'the', adn: 'and', nad: 'and', adn: 'and', taht: 'that', htat: 'that',
+  wiht: 'with', iwth: 'with', whit: 'with', thier: 'their', theit: 'their',
+  waht: 'what', hwat: 'what', sicne: 'since', snce: 'since',
+  jsut: 'just', juts: 'just', becuase: 'because', becasue: 'because', beacuse: 'because',
+  thnk: 'think', thikn: 'think', knwo: 'know', konw: 'know',
+  coudl: 'could', woudl: 'would', shoudl: 'should', doesnt: "doesn't", dont: "don't",
+  cant: "can't", wont: "won't", isnt: "isn't", wasnt: "wasn't", didnt: "didn't",
+  havent: "haven't", hasnt: "hasn't", wouldnt: "wouldn't", couldnt: "couldn't",
+  shouldnt: "shouldn't", arent: "aren't", werent: "weren't", thats: "that's",
+  whats: "what's", heres: "here's", theres: "there's", youre: "you're",
+  theyre: "they're", weve: "we've", youve: "you've", ive: "I've", im: "I'm",
+  youll: "you'll", theyll: "they'll", well: "we'll", ill: "I'll", itll: "it'll",
+  youd: "you'd", theyd: "they'd", wed: "we'd", hed: "he'd", shed: "she'd",
+  // Double letters & common spelling errors
+  accomodate: 'accommodate', acommodate: 'accommodate', occured: 'occurred', occurence: 'occurrence',
+  occurrance: 'occurrence', recieve: 'receive', reciept: 'receipt', beleive: 'believe',
+  belive: 'believe', acheive: 'achieve', achive: 'achieve', sucessful: 'successful',
+  succesful: 'successful', successfull: 'successful', neccessary: 'necessary',
+  necesary: 'necessary', neccesary: 'necessary', begining: 'beginning', comming: 'coming',
+  ocurring: 'occurring', refered: 'referred', prefered: 'preferred', transfered: 'transferred',
+  commited: 'committed', submited: 'submitted', writting: 'writing', untill: 'until',
+  // ie/ei confusion
+  recieved: 'received', acheived: 'achieved', beleived: 'believed', concieve: 'conceive',
+  percieve: 'perceive', decieve: 'deceive', wierd: 'weird', seize: 'seize',
+  // Common confusions
+  definately: 'definitely', definatly: 'definitely', defintely: 'definitely', defiantly: 'definitely',
+  seperate: 'separate', seperately: 'separately', tommorow: 'tomorrow', tommorrow: 'tomorrow',
+  tomorro: 'tomorrow', calender: 'calendar', calandar: 'calendar',
+  goverment: 'government', govermnent: 'government', enviroment: 'environment',
+  managment: 'management', developement: 'development', arguement: 'argument',
+  judgement: 'judgment', knowlege: 'knowledge', knowlegde: 'knowledge',
+  langauge: 'language', maintainance: 'maintenance', maintenence: 'maintenance',
+  millenium: 'millennium', minumum: 'minimum', mispell: 'misspell',
+  noticable: 'noticeable', posession: 'possession', publically: 'publicly',
+  recomend: 'recommend', recommed: 'recommend', refrence: 'reference', referance: 'reference',
+  relevent: 'relevant', relavant: 'relevant', religous: 'religious',
+  rythm: 'rhythm', rythym: 'rhythm', similiar: 'similar', sincerly: 'sincerely',
+  speach: 'speech', strenth: 'strength', strenght: 'strength',
+  suprise: 'surprise', surprize: 'surprise', temperture: 'temperature',
+  tendancy: 'tendency', therefor: 'therefore', threshhold: 'threshold',
+  tounge: 'tongue', truely: 'truly', tyrany: 'tyranny',
+  usally: 'usually', vaccuum: 'vacuum', vegatable: 'vegetable',
+  visable: 'visible', wether: 'whether', wich: 'which',
+  // Tech/support context words
+  subcription: 'subscription', subsciption: 'subscription', subscripton: 'subscription',
+  subscribtion: 'subscription', accout: 'account', acount: 'account', acconut: 'account',
+  pasword: 'password', passowrd: 'password', passsword: 'password',
+  trasaction: 'transaction', transation: 'transaction', transacton: 'transaction',
+  paymnet: 'payment', payemnt: 'payment', pymnt: 'payment',
+  refud: 'refund', refudn: 'refund', cancellation: 'cancellation',
+  cancelation: 'cancellation', upgarde: 'upgrade', upgade: 'upgrade',
+  downgarde: 'downgrade', downlod: 'download', downloas: 'download',
+  notifcation: 'notification', notificaton: 'notification',
+  prediciton: 'prediction', predicton: 'prediction', predction: 'prediction',
+  anaylsis: 'analysis', anlysis: 'analysis', anlaysis: 'analysis',
+  featrue: 'feature', feautre: 'feature', verfiy: 'verify', verfication: 'verification',
+  // Greeting/closing typos
+  helo: 'hello', hlelo: 'hello', thnak: 'thank', thnaks: 'thanks', thankyou: 'thank you',
+  appologize: 'apologize', apoligize: 'apologize', aplogize: 'apologize',
+  inconveniance: 'inconvenience', inconveniece: 'inconvenience',
+  assitance: 'assistance', assistence: 'assistance', assistane: 'assistance',
+  reslove: 'resolve', reolve: 'resolve', resovle: 'resolve',
+  escalaet: 'escalate', esclate: 'escalate', foward: 'forward', fowrad: 'forward',
+  plese: 'please', plase: 'please', pls: 'please',
+  // Misc frequently misspelled
+  alot: 'a lot', alright: 'all right', apparantly: 'apparently', basicly: 'basically',
+  completly: 'completely', diffrent: 'different', expierence: 'experience',
+  experiance: 'experience', explaination: 'explanation', garauntee: 'guarantee',
+  garantee: 'guarantee', immediatly: 'immediately', independant: 'independent',
+  intresting: 'interesting', libary: 'library', lisence: 'license', licence: 'license',
+  manualy: 'manually', naturaly: 'naturally', orignal: 'original', orginal: 'original',
+  particulary: 'particularly', probaly: 'probably', probabaly: 'probably',
+  proffesional: 'professional', profesional: 'professional', reccomend: 'recommend',
+  remmeber: 'remember', remeber: 'remember', repsonse: 'response', reponse: 'response',
+  responisble: 'responsible', responsable: 'responsible', schedle: 'schedule',
+  schdule: 'schedule', specificly: 'specifically', techncial: 'technical',
+  technial: 'technical', unfortunatly: 'unfortunately', unfortunatley: 'unfortunately',
+}
+
+function autoCorrectText(text) {
+  let count = 0
+  // Split preserving whitespace and punctuation boundaries
+  const corrected = text.replace(/\b[a-zA-Z']+\b/g, (word) => {
+    const lower = word.toLowerCase()
+    const fix = COMMON_CORRECTIONS[lower]
+    if (!fix) return word
+    count++
+    // Preserve original casing pattern
+    if (word === word.toUpperCase() && word.length > 1) return fix.toUpperCase()
+    if (word[0] === word[0].toUpperCase()) return fix.charAt(0).toUpperCase() + fix.slice(1)
+    return fix
+  })
+  return { corrected, count }
+}
+
 const CATEGORY_LABELS = {
   payment: { label: 'Payment', color: '#e74c3c' },
   subscription: { label: 'Subscription', color: '#3498db' },
@@ -59,6 +157,7 @@ export default function SupportTab() {
   const [recentRatings, setRecentRatings] = useState([])
   const [uploading, setUploading] = useState(false)
   const [keepalivePrompts, setKeepalivePrompts] = useState([])
+  const [correctionInfo, setCorrectionInfo] = useState(null)
   const fileInputRef = useRef(null)
   const activeChatRef = useRef(null)
   const messagesEndRef = useCallback(node => {
@@ -132,11 +231,16 @@ export default function SupportTab() {
     e.preventDefault()
     if (!newMessage.trim() || !activeChat || sending) return
     setSending(true)
+    const { corrected, count } = autoCorrectText(newMessage.trim())
     try {
       await axios.post(`/api/admin/support/send/${activeChat.user_id}`, {
-        content: newMessage.trim()
+        content: corrected
       }, { headers: getAuthHeaders() })
       setNewMessage('')
+      if (count > 0) {
+        setCorrectionInfo(`Auto-corrected ${count} word${count > 1 ? 's' : ''}`)
+        setTimeout(() => setCorrectionInfo(null), 3000)
+      }
       const res = await axios.get(`/api/admin/support/messages/${activeChat.user_id}`, { headers: getAuthHeaders() })
       setMessages(res.data.messages || [])
       fetchConversations()
@@ -437,30 +541,36 @@ export default function SupportTab() {
                 <div ref={messagesEndRef} />
               </div>
               {isChatActive ? (
-                <form className="admin-support-chat-input" onSubmit={handleSend}>
-                  <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx" />
-                  <button type="button" className="support-attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Attach file">
-                    {uploading ? '...' : '📎'}
-                  </button>
-                  <textarea
-                    value={newMessage}
-                    onChange={(e) => {
-                      setNewMessage(e.target.value)
-                      e.target.style.height = 'auto'
-                      e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        if (newMessage.trim() && !sending) handleSend(e)
-                      }
-                    }}
-                    placeholder="Type a reply..."
-                    maxLength={2000}
-                    rows={1}
-                  />
-                  <button type="submit" disabled={!newMessage.trim() || sending}>Send</button>
-                </form>
+                <div className="admin-support-input-wrapper">
+                  {correctionInfo && (
+                    <div className="admin-support-autocorrect-notice">{correctionInfo}</div>
+                  )}
+                  <form className="admin-support-chat-input" onSubmit={handleSend}>
+                    <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx" />
+                    <button type="button" className="support-attach-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Attach file">
+                      {uploading ? '...' : '📎'}
+                    </button>
+                    <textarea
+                      value={newMessage}
+                      onChange={(e) => {
+                        setNewMessage(e.target.value)
+                        e.target.style.height = 'auto'
+                        e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          if (newMessage.trim() && !sending) handleSend(e)
+                        }
+                      }}
+                      placeholder="Type a reply..."
+                      maxLength={2000}
+                      rows={1}
+                      spellCheck={true}
+                    />
+                    <button type="submit" disabled={!newMessage.trim() || sending}>Send</button>
+                  </form>
+                </div>
               ) : (
                 <div className="admin-support-chat-closed-bar">
                   This conversation has been closed.
