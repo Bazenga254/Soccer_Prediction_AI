@@ -2598,6 +2598,8 @@ async def handle_whop_webhook(request: Request):
             result = whop_payment.process_payment_webhook(event)
         elif event_type == "payment_failed":
             result = whop_payment.process_payment_failed(event)
+        elif event_type in ("membership_went_active", "membership_activated"):
+            result = whop_payment.process_membership_activated(event)
         else:
             result = {"success": True, "message": f"Event {event_type} acknowledged"}
 

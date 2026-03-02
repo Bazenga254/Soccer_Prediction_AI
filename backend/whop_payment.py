@@ -512,6 +512,60 @@ def verify_webhook(body: bytes, headers: dict) -> bool:
         return False
 
 
+def _handle_marketplace_payment(payment_id: str, membership_id: str, whop_user_id: str,
+                                 amount_usd: float, payment_data: dict) -> Dict:
+    """Handle a payment_succeeded event from a Whop marketplace purchase (no Spark metadata).
+
+    Looks up the user by their whop_membership_id or whop_user_id and records the transaction.
+    """
+    try:
+        users_conn = _get_users_db()
+        user = None
+
+        # Try to find user by membership_id first
+        if membership_id:
+            user = users_conn.execute(
+                "SELECT id, email, display_name FROM users WHERE whop_membership_id = ?",
+                (membership_id,)
+            ).fetchone()
+
+        # Fallback: find by whop_user_id
+        if not user and whop_user_id:
+            user = users_conn.execute(
+                "SELECT id, email, display_name FROM users WHERE whop_user_id = ?",
+                (whop_user_id,)
+            ).fetchone()
+
+        users_conn.close()
+
+        if not user:
+            logger.warning(f"Marketplace payment: no user found for membership={membership_id}, whop_user={whop_user_id}. "
+                           "This may be a new user — membership.activated webhook should handle account creation.")
+            return {"success": True, "message": "No matching user found, awaiting membership.activated"}
+
+        user_id = user["id"]
+        if not amount_usd:
+            amount_usd = WHOP_MARKETPLACE_PRICE
+
+        _record_marketplace_transaction(
+            user_id=user_id,
+            membership_id=membership_id or payment_id,
+            amount_usd=amount_usd,
+            metadata={
+                "whop_payment_id": payment_id,
+                "whop_user_id": whop_user_id,
+                "source": "marketplace_payment_webhook",
+            },
+        )
+
+        logger.info(f"Marketplace payment recorded: user={user_id}, payment={payment_id}, amount=${amount_usd}")
+        return {"success": True, "user_id": user_id}
+
+    except Exception as e:
+        logger.error(f"Failed to handle marketplace payment: {e}")
+        return {"success": False, "error": str(e)}
+
+
 def process_payment_webhook(event_data: dict) -> Dict:
     """Process a payment.succeeded webhook event.
 
@@ -521,14 +575,24 @@ def process_payment_webhook(event_data: dict) -> Dict:
     try:
         payment = event_data.get("data", event_data)
         payment_id = payment.get("id", "")
-        metadata = payment.get("metadata", {})
+        metadata = payment.get("metadata") or {}
 
-        user_id_str = metadata.get("spark_user_id", "")
-        transaction_type = metadata.get("transaction_type", "")
-        reference_id = metadata.get("reference_id", "")
+        user_id_str = metadata.get("spark_user_id", "") if isinstance(metadata, dict) else ""
+        transaction_type = metadata.get("transaction_type", "") if isinstance(metadata, dict) else ""
+        reference_id = metadata.get("reference_id", "") if isinstance(metadata, dict) else ""
 
         if not user_id_str or not transaction_type:
-            logger.error(f"Webhook missing metadata: {metadata}")
+            # This might be a Whop marketplace payment (no Spark metadata).
+            # Try to handle it as a marketplace renewal/payment.
+            membership_id = payment.get("membership_id", "") or ""
+            whop_user_id = payment.get("user_id", "") or ""
+            total = payment.get("total") or payment.get("amount") or 0
+
+            if membership_id or whop_user_id:
+                logger.info(f"Marketplace payment detected: payment={payment_id}, membership={membership_id}, whop_user={whop_user_id}, total={total}")
+                return _handle_marketplace_payment(payment_id, membership_id, whop_user_id, float(total) if total else 0, payment)
+
+            logger.error(f"Webhook missing metadata and not a marketplace payment: {payment}")
             return {"success": False, "error": "Missing metadata in webhook"}
 
         user_id = int(user_id_str)
@@ -638,22 +702,24 @@ def _record_marketplace_transaction(user_id: int, membership_id: str,
     now = datetime.now().isoformat()
     conn = _get_db()
     try:
+        # Use whop_payment_id from metadata for uniqueness (supports renewals with same membership_id)
+        payment_id = (metadata or {}).get("whop_payment_id", "") or membership_id
         existing = conn.execute(
-            "SELECT id FROM whop_transactions WHERE reference_id = ? AND transaction_type = 'marketplace_subscription'",
-            (membership_id,)
+            "SELECT id FROM whop_transactions WHERE whop_payment_id = ? AND transaction_type = 'marketplace_subscription'",
+            (payment_id,)
         ).fetchone()
         if existing:
-            logger.info(f"Marketplace transaction already recorded for membership {membership_id}")
+            logger.info(f"Marketplace transaction already recorded for payment {payment_id}")
             return
         conn.execute("""
             INSERT INTO whop_transactions
             (user_id, transaction_type, reference_id, amount_usd,
              whop_payment_id, payment_status, metadata, created_at, updated_at, completed_at)
             VALUES (?, 'marketplace_subscription', ?, ?, ?, 'completed', ?, ?, ?, ?)
-        """, (user_id, membership_id, amount_usd, membership_id,
+        """, (user_id, membership_id, amount_usd, payment_id,
               json.dumps(metadata or {}), now, now, now))
         conn.commit()
-        logger.info(f"Recorded marketplace transaction: user={user_id}, membership={membership_id}, amount=${amount_usd}")
+        logger.info(f"Recorded marketplace transaction: user={user_id}, membership={membership_id}, payment={payment_id}, amount=${amount_usd}")
     except Exception as e:
         logger.error(f"Failed to record marketplace transaction: {e}")
     finally:
