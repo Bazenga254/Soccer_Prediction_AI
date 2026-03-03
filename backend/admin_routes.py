@@ -882,7 +882,8 @@ async def admin_list_users(x_admin_password: str = Header(None), authorization: 
         for u in users:
             t = tracking.get(u["id"], {})
             u["country_ip"] = t.get("country_ip", "")
-            u["ip_address"] = t.get("ip_address", "")
+            # Fall back to last_known_ip from users table when no tracking record exists
+            u["ip_address"] = t.get("ip_address", "") or u.get("last_known_ip", "")
             u["browser"] = t.get("browser", "")
             u["os"] = t.get("os", "")
             u["device_type"] = t.get("device_type", "")
@@ -3124,14 +3125,19 @@ async def social_delete_template(
 
 @admin_router.get("/social/stream")
 async def social_message_stream(
-    x_admin_password: str = Header(None),
-    authorization: str = Header(None),
+    # EventSource can't set custom headers — accept auth via query param too
+    authorization: str = Query(None),
+    x_admin_password: str = Query(None),
 ):
     import asyncio
     import json
     from fastapi.responses import StreamingResponse
 
-    auth = _check_admin_auth(x_admin_password, authorization,
+    # Normalise: query param may contain "Bearer <token>" or raw JWT
+    auth_header = authorization if authorization and (authorization.startswith("Bearer ") or authorization.startswith("bearer ")) else None
+    admin_pw = x_admin_password or (authorization if authorization and not auth_header else None)
+
+    auth = _check_admin_auth(admin_pw, auth_header,
                              required_module="social_media", required_action="read")
     if not auth:
         raise HTTPException(status_code=401, detail="Unauthorized")

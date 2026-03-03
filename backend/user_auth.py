@@ -3015,6 +3015,7 @@ def list_all_users() -> List[Dict]:
         "last_login": r["last_login"],
         "login_count": r["login_count"],
         "country": r["country"],
+        "last_known_ip": r["last_known_ip"] or "",
     } for r in rows]
 
 

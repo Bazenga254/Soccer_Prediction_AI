@@ -1361,6 +1361,28 @@ async def login(body: LoginRequest, request: Request):
                 }
             )
         raise HTTPException(status_code=401, detail=detail)
+
+    # On successful login, create a visitor_tracking record so IP/device/browser
+    # are always up-to-date in the admin Users table.
+    try:
+        ua_str = request.headers.get("user-agent", "")
+        ua_info = activity_logger._parse_user_agent(ua_str) if ua_str else {}
+        referrer = request.headers.get("referer", "") or request.headers.get("referrer", "")
+        user_auth.record_page_visit(
+            session_id=str(uuid.uuid4()),
+            ip_address=client_ip,
+            user_agent=ua_str,
+            device_type=ua_info.get("type", ""),
+            browser=ua_info.get("browser", ""),
+            os_name=ua_info.get("os", ""),
+            page="/login",
+            referrer=referrer,
+            session_start=datetime.now().isoformat(),
+            user_id=result["user"]["id"],
+        )
+    except Exception:
+        pass
+
     return result
 
 
