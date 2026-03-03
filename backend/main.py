@@ -878,6 +878,8 @@ class RegisterRequest(BaseModel):
     security_answer: str = ""
     terms_accepted: bool = False
     country: str = ""
+    utm_source: str = ""      # e.g. "facebook", "whatsapp", "tiktok"
+    referrer_url: str = ""    # HTTP referrer captured by the browser
 
 class LoginRequest(BaseModel):
     email: str
@@ -1256,7 +1258,7 @@ async def register(body: RegisterRequest, request: Request):
                 country=body.country or None,
             )
 
-    # Save terms acceptance timestamp
+    # Save terms acceptance timestamp + create initial tracking record
     if result.get("success"):
         conn = user_auth._get_db()
         user = conn.execute("SELECT id FROM users WHERE email = ?", (body.email.lower().strip(),)).fetchone()
@@ -1266,6 +1268,31 @@ async def register(body: RegisterRequest, request: Request):
                 (datetime.now().isoformat(), user["id"])
             )
             conn.commit()
+            # Record IP / device / source at the moment of registration so
+            # the admin Users table shows data even before the first login.
+            try:
+                ua_str = request.headers.get("user-agent", "")
+                ua_info = activity_logger._parse_user_agent(ua_str) if ua_str else {}
+                client_ip = _get_client_ip(request)
+                # UTM source takes priority; fall back to HTTP referrer
+                referrer_stored = (
+                    f"utm:{body.utm_source.strip()}" if body.utm_source.strip()
+                    else body.referrer_url.strip()
+                )
+                user_auth.record_page_visit(
+                    session_id=str(uuid.uuid4()),
+                    ip_address=client_ip,
+                    user_agent=ua_str,
+                    device_type=ua_info.get("type", ""),
+                    browser=ua_info.get("browser", ""),
+                    os_name=ua_info.get("os", ""),
+                    page="/register",
+                    referrer=referrer_stored,
+                    session_start=datetime.now().isoformat(),
+                    user_id=user["id"],
+                )
+            except Exception:
+                pass
         conn.close()
 
     return result
@@ -6178,6 +6205,55 @@ async def whatsapp_disconnect(x_admin_password: str = Header(None), authorizatio
     return data
 
 
+@app.post("/api/admin/social/whatsapp/sync")
+async def whatsapp_sync_chats(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Fetch all chats from connected WhatsApp and populate conversations in DB."""
+    from admin_routes import _check_admin_auth
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="social_media", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # Find WhatsApp account
+    wa_account = None
+    for acc in social_media_hub.get_accounts():
+        if acc["platform"] == "whatsapp_qr":
+            wa_account = acc
+            break
+    if not wa_account:
+        raise HTTPException(status_code=404, detail="WhatsApp not connected")
+
+    data, status_code = await _wa_get("/chats")
+    if not data.get("ok"):
+        raise HTTPException(status_code=502, detail=data.get("error", "Failed to fetch chats"))
+
+    chats = data.get("chats", [])
+    synced = 0
+    for chat in chats:
+        chat_id = chat.get("chat_id", "")
+        if not chat_id:
+            continue
+        name = chat.get("name") or chat_id.split("@")[0]
+        is_group = chat.get("is_group", False)
+        lm = chat.get("last_message") or {}
+        last_text = lm.get("body", "")
+
+        conv = social_media_hub.get_or_create_conversation(
+            account_id=wa_account["id"],
+            platform="whatsapp_qr",
+            contact_id=chat_id,
+            contact_name=name,
+            metadata={"is_group": is_group, "chat_name": name if is_group else ""},
+        )
+        # Update last message preview if we have one (no unread increment for sync)
+        if last_text and conv:
+            social_media_hub.update_conversation_last_message(
+                conv["id"], last_text, increment_unread=False
+            )
+        synced += 1
+
+    return {"ok": True, "synced": synced, "total": len(chats)}
+
+
 # ─── Internal endpoints called by Node.js WhatsApp service ───
 
 @app.post("/api/internal/whatsapp/connected")
@@ -6190,15 +6266,13 @@ async def whatsapp_internal_connected(request: Request):
     # Upsert account in social_accounts
     all_accounts = social_media_hub.get_accounts()
     existing = None
-    for acc in all_accounts.get("accounts", []):
+    for acc in all_accounts:
         if acc["platform"] == "whatsapp_qr":
             existing = acc
             break
 
     if existing:
-        social_media_hub.update_account_status(existing["id"], "connected", {
-            "phone": phone, "display_name": name
-        })
+        social_media_hub.update_account_status(existing["id"], "connected", "")
         print(f"[WhatsApp QR] Updated account: {name} (+{phone})")
     else:
         social_media_hub.create_account(
@@ -6286,24 +6360,47 @@ async def whatsapp_internal_message(request: Request):
         metadata={"is_group": is_group, "chat_name": body.get("chat_name", "")},
     )
 
-    parsed = {
-        "chat_id": chat_id,
-        "sender_name": body.get("from_name", ""),
-        "sender_username": body.get("from", "").split("@")[0],
-        "sender_identifier": body.get("from", ""),
-        "content_type": body.get("media_type", "text"),
-        "content_text": body.get("body", ""),
-        "media_url": body.get("media_url") or "",
-        "media_filename": body.get("media_filename") or "",
-        "media_mime_type": "",
-        "media_file_id": "",
-        "platform_message_id": body.get("message_id", ""),
-        "metadata": {"is_group": is_group},
-    }
+    from_me = body.get("from_me", False)
+    content_text = body.get("body", "")
+    content_type = body.get("media_type", "text")
+    media_url = body.get("media_url") or ""
+    media_filename = body.get("media_filename") or ""
+    platform_message_id = body.get("message_id", "")
 
-    msg = social_media_hub.store_inbound_message(conv["id"], "whatsapp_qr", parsed)
+    if from_me:
+        # Message sent from the phone — store as outbound so inbox shows "You: ..."
+        msg = social_media_hub.store_outbound_message(
+            conv_id=conv["id"],
+            platform="whatsapp_qr",
+            content_text=content_text,
+            content_type=content_type,
+            media_url=media_url,
+            media_filename=media_filename,
+            platform_message_id=platform_message_id,
+            sent_by_name=wa_account.get("account_name", "WhatsApp"),
+            delivery_status="sent",
+        )
+        direction = "outbound"
+    else:
+        parsed = {
+            "chat_id": chat_id,
+            "sender_name": body.get("from_name", ""),
+            "sender_username": body.get("from", "").split("@")[0],
+            "sender_identifier": body.get("from", ""),
+            "content_type": content_type,
+            "content_text": content_text,
+            "media_url": media_url,
+            "media_filename": media_filename,
+            "media_mime_type": "",
+            "media_file_id": "",
+            "platform_message_id": platform_message_id,
+            "metadata": {"is_group": is_group},
+        }
+        msg = social_media_hub.store_inbound_message(conv["id"], "whatsapp_qr", parsed)
+        direction = "inbound"
+
     social_media_hub.notify_social_inbox({
-        "type": "inbound",
+        "type": direction,
         "message": msg,
         "conversation_id": conv["id"],
         "platform": "whatsapp_qr",

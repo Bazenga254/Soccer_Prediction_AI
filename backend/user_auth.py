@@ -586,6 +586,37 @@ def _classify_referrer(referrer: str) -> str:
     """Classify a referrer URL into a traffic source name."""
     if not referrer:
         return "Direct"
+    # UTM source stored at registration as "utm:<value>" — takes priority over referrer URL
+    if referrer.startswith("utm:"):
+        raw = referrer[4:].strip().lower()
+        if not raw:
+            return "Direct"
+        if "facebook" in raw or raw in ("fb", "fbad", "facebook_ad"):
+            return "Facebook"
+        if "instagram" in raw or raw in ("ig", "insta"):
+            return "Instagram"
+        if "tiktok" in raw or raw == "tt":
+            return "TikTok"
+        if "youtube" in raw or raw in ("yt", "youtu"):
+            return "YouTube"
+        if "twitter" in raw or "x.com" in raw or raw in ("x", "tweet"):
+            return "X (Twitter)"
+        if "whatsapp" in raw or raw == "wa":
+            return "WhatsApp"
+        if "telegram" in raw or raw in ("tg", "tme"):
+            return "Telegram"
+        if "google" in raw:
+            return "Google"
+        if "bing" in raw:
+            return "Bing"
+        if "yahoo" in raw:
+            return "Yahoo"
+        if "reddit" in raw:
+            return "Reddit"
+        if "linkedin" in raw:
+            return "LinkedIn"
+        # Unknown UTM value — capitalise and show as-is
+        return referrer[4:].strip().title()
     r = referrer.lower()
     if "google" in r and "youtube" not in r:
         return "Google"

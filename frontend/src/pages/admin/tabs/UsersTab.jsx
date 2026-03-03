@@ -201,6 +201,11 @@ export default function UsersTab() {
           <option value="X (Twitter)">X (Twitter)</option>
           <option value="Facebook">Facebook</option>
           <option value="Instagram">Instagram</option>
+          <option value="WhatsApp">WhatsApp</option>
+          <option value="Telegram">Telegram</option>
+          <option value="Bing">Bing</option>
+          <option value="Reddit">Reddit</option>
+          <option value="LinkedIn">LinkedIn</option>
           <option value="other">Other</option>
         </select>
         <span className="admin-user-count">{filtered.length} users</span>

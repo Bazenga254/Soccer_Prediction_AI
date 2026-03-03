@@ -13,6 +13,23 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [pendingVerification, setPendingVerification] = useState(null)
 
+  // Capture UTM params + HTTP referrer once on first load.
+  // Stored in sessionStorage so they persist through the multi-step registration wizard
+  // but are cleared when the tab closes.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const utm = params.get('utm_source') || params.get('source') || params.get('ref') || ''
+      if (utm && !sessionStorage.getItem('spark_utm_source')) {
+        sessionStorage.setItem('spark_utm_source', utm)
+      }
+      const ref = document.referrer
+      if (ref && !sessionStorage.getItem('spark_referrer_url')) {
+        sessionStorage.setItem('spark_referrer_url', ref)
+      }
+    } catch {}
+  }, [])
+
   // Set up axios interceptor for auth token
   useEffect(() => {
     const token = localStorage.getItem('spark_token')
@@ -154,6 +171,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const register = useCallback(async (email, password, displayName = '', referralCode = '', captchaToken = '', personalInfo = {}) => {
+    const utmSource = sessionStorage.getItem('spark_utm_source') || ''
+    const referrerUrl = sessionStorage.getItem('spark_referrer_url') || ''
     try {
       const response = await axios.post('/api/user/register', {
         email,
@@ -167,6 +186,8 @@ export function AuthProvider({ children }) {
         security_answer: personalInfo.security_answer || '',
         country: personalInfo.country || '',
         terms_accepted: personalInfo.terms_accepted || false,
+        utm_source: utmSource,
+        referrer_url: referrerUrl,
       })
       if (response.data.success) {
         if (response.data.requires_verification) {
