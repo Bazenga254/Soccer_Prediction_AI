@@ -23,6 +23,7 @@ import ActivityLogsTab from '../admin/tabs/ActivityLogsTab'
 import SecurityTab from '../admin/tabs/SecurityTab'
 import StaffTab from '../admin/tabs/StaffTab'
 import SettingsTab from '../admin/tabs/SettingsTab'
+import SocialMediaTab from '../admin/tabs/SocialMediaTab'
 import './styles/employee.css'
 
 class EmployeeErrorBoundary extends Component {
@@ -97,6 +98,7 @@ const PAGE_COMPONENTS = {
   security: SecurityTab,
   employees: StaffTab,
   settings: SettingsTab,
+  social: SocialMediaTab,
 }
 
 function EmployeeShell() {

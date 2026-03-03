@@ -33,6 +33,7 @@ const EMPLOYEE_PAGES = [
   { id: 'security', icon: '\u{1F512}', label: 'Security', requiredModule: 'security' },
   { id: 'employees', icon: '\u{1F3E2}', label: 'Employees', requiredModule: 'employees' },
   { id: 'settings', icon: '\u{2699}', label: 'Settings', requiredModule: 'settings' },
+  { id: 'social', icon: '\u{1F4F1}', label: 'Social Media', requiredModule: 'social_media' },
   { id: 'manager', icon: '\u{1F454}', label: 'Management', requiredLevel: 1 },
   { id: 'docs', icon: '\u{1F4DA}', label: 'Documentation', requiredModule: null },
 ]

@@ -35,6 +35,7 @@ const ALL_TABS = [
   { id: 'analytics', icon: '📈', label: 'Creator Analytics', module: 'community' },
   { id: 'docs', icon: '📚', label: 'Documentation', module: 'dashboard' },
   { id: 'extension', icon: '🧩', label: 'Chrome Extension', module: 'dashboard' },
+  { id: 'social', icon: '📱', label: 'Social Media', module: 'social_media' },
 ]
 
 export default function AdminSidebar({ activeTab, setActiveTab, pendingSupport = 0 }) {

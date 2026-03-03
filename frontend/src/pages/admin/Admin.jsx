@@ -24,6 +24,7 @@ import CreatorAnalyticsTab from './tabs/CreatorAnalyticsTab'
 import PricingTab from './tabs/PricingTab'
 import ExtensionTab from './tabs/ExtensionTab'
 import TransactionsTab from './tabs/TransactionsTab'
+import SocialMediaTab from './tabs/SocialMediaTab'
 import './styles/admin.css'
 
 class AdminErrorBoundary extends Component {
@@ -79,6 +80,7 @@ const TAB_COMPONENTS = {
   analytics: CreatorAnalyticsTab,
   pricing: PricingTab,
   extension: ExtensionTab,
+  social: SocialMediaTab,
 }
 
 function AdminShell() {

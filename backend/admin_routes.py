@@ -24,6 +24,7 @@ import whop_payment
 import admin_rbac
 import activity_logger
 import pricing_config
+import social_media_hub
 
 admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -2446,3 +2447,682 @@ async def admin_delete_plan(plan_id: str, request: Request,
 
     _log_action(auth, "delete_plan", "settings", request, details={"plan_id": plan_id})
     return {"success": True}
+
+
+# ═══════════════════════════════════════════════════════════════
+#  SOCIAL MEDIA HUB ENDPOINTS
+# ═══════════════════════════════════════════════════════════════
+
+SOCIAL_MEDIA_UPLOAD_DIR = Path(__file__).parent / "uploads" / "social"
+MAX_SOCIAL_MEDIA_SIZE = 50 * 1024 * 1024  # 50 MB
+ALLOWED_SOCIAL_MEDIA_EXTENSIONS = {
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".avi",
+    ".pdf", ".doc", ".docx", ".txt", ".mp3", ".ogg", ".wav",
+}
+
+
+# ─── Account Management ───
+
+@admin_router.get("/social/accounts")
+async def social_list_accounts(
+    platform: str = Query(None),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"accounts": social_media_hub.get_accounts(platform)}
+
+
+@admin_router.post("/social/accounts/connect")
+async def social_connect_account(
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = await request.json()
+    platform = body.get("platform", "")
+    account_name = body.get("account_name", "")
+    credentials = body.get("credentials", {})
+
+    if not platform or not account_name:
+        raise HTTPException(status_code=400, detail="Platform and account name are required")
+
+    import secrets
+    webhook_secret = secrets.token_hex(32)
+    webhook_base = os.environ.get("WEBHOOK_BASE_URL", "https://www.spark-ai-prediction.com")
+    webhook_url = f"{webhook_base}/api/webhook/social/{platform}/{{}}"
+
+    # Verify credentials with the platform
+    if platform == "telegram":
+        from telegram_service import TelegramService
+        bot_token = credentials.get("bot_token", "")
+        if not bot_token:
+            raise HTTPException(status_code=400, detail="Bot token is required for Telegram")
+
+        service = TelegramService(bot_token, webhook_base)
+        me_result = await service.get_me()
+        if not me_result.get("ok"):
+            raise HTTPException(status_code=400,
+                                detail=f"Invalid bot token: {me_result.get('description', 'Unknown error')}")
+
+        bot_info = me_result["result"]
+        account_identifier = f"@{bot_info.get('username', '')}"
+        if not account_name:
+            account_name = bot_info.get("first_name", "Telegram Bot")
+
+        # Create account first to get ID
+        account = social_media_hub.create_account(
+            platform="telegram",
+            account_name=account_name,
+            account_identifier=account_identifier,
+            credentials=credentials,
+            webhook_url="",
+            webhook_secret=webhook_secret,
+            config={"bot_id": bot_info.get("id"), "bot_username": bot_info.get("username")},
+            connected_by=auth.get("user_id"),
+        )
+
+        # Register webhook with Telegram
+        wh_result = await service.set_webhook(account["id"], webhook_secret)
+        if wh_result.get("ok"):
+            real_webhook_url = f"{webhook_base}/api/webhook/social/telegram/{account['id']}"
+            conn = social_media_hub._get_db()
+            conn.execute("UPDATE social_accounts SET webhook_url = ? WHERE id = ?",
+                        (real_webhook_url, account["id"]))
+            conn.commit()
+            conn.close()
+        else:
+            social_media_hub.update_account_status(account["id"], "error",
+                                                    f"Webhook registration failed: {wh_result.get('description', '')}")
+
+        _log_action(auth, "connect_social_account", "social_media", request,
+                    details={"platform": "telegram", "account": account_identifier})
+        return {"success": True, "account": account, "bot_info": bot_info}
+
+    elif platform == "whatsapp":
+        account_sid = credentials.get("account_sid", "")
+        auth_token = credentials.get("auth_token", "")
+        from_number = credentials.get("from_number", "")
+
+        if not all([account_sid, auth_token, from_number]):
+            raise HTTPException(status_code=400,
+                                detail="Account SID, Auth Token, and From Number are required for WhatsApp")
+
+        account = social_media_hub.create_account(
+            platform="whatsapp",
+            account_name=account_name,
+            account_identifier=from_number,
+            credentials=credentials,
+            webhook_url="",
+            webhook_secret=webhook_secret,
+            connected_by=auth.get("user_id"),
+        )
+
+        real_webhook_url = f"{webhook_base}/api/webhook/social/whatsapp/{account['id']}"
+        conn = social_media_hub._get_db()
+        conn.execute("UPDATE social_accounts SET webhook_url = ? WHERE id = ?",
+                    (real_webhook_url, account["id"]))
+        conn.commit()
+        conn.close()
+
+        _log_action(auth, "connect_social_account", "social_media", request,
+                    details={"platform": "whatsapp", "account": from_number})
+        return {
+            "success": True,
+            "account": account,
+            "webhook_url": real_webhook_url,
+            "instructions": "Set this URL as the 'When a message comes in' webhook in your Twilio console."
+        }
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Platform '{platform}' is not yet supported. Coming soon!")
+
+
+@admin_router.post("/social/accounts/{account_id}/disconnect")
+async def social_disconnect_account(
+    account_id: int,
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="delete")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    account = social_media_hub.get_account(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Remove webhook from platform
+    if account["platform"] == "telegram":
+        try:
+            from telegram_service import TelegramService
+            creds = account.get("credentials", {})
+            service = TelegramService(creds.get("bot_token", ""), "")
+            await service.delete_webhook()
+        except Exception:
+            pass
+
+    social_media_hub.delete_account(account_id)
+    _log_action(auth, "disconnect_social_account", "social_media", request,
+                details={"platform": account["platform"], "account_id": account_id})
+    return {"success": True}
+
+
+@admin_router.get("/social/accounts/{account_id}/status")
+async def social_account_status(
+    account_id: int,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    account = social_media_hub.get_account(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    live_status = {"status": account["status"], "error": account.get("error_message", "")}
+
+    if account["platform"] == "telegram" and account["status"] == "connected":
+        try:
+            from telegram_service import TelegramService
+            creds = account.get("credentials", {})
+            service = TelegramService(creds.get("bot_token", ""), "")
+            me = await service.get_me()
+            live_status["live"] = me.get("ok", False)
+        except Exception:
+            live_status["live"] = False
+
+    return live_status
+
+
+# ─── Conversations ───
+
+@admin_router.get("/social/conversations")
+async def social_list_conversations(
+    platform: str = Query(None),
+    assigned_to: int = Query(None),
+    search: str = Query(None),
+    is_archived: bool = Query(False),
+    offset: int = Query(0),
+    limit: int = Query(50),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return social_media_hub.get_conversations(platform, assigned_to, is_archived, search, offset, limit)
+
+
+@admin_router.get("/social/conversations/{conv_id}/messages")
+async def social_get_messages(
+    conv_id: str,
+    before_id: int = Query(None),
+    limit: int = Query(50),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"messages": social_media_hub.get_messages(conv_id, before_id, limit)}
+
+
+@admin_router.post("/social/conversations/{conv_id}/send")
+async def social_send_message(
+    conv_id: str,
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    conv = social_media_hub.get_conversation(conv_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    body = await request.json()
+    content_text = body.get("content_text", "")
+    content_type = body.get("content_type", "text")
+    media_url = body.get("media_url", "")
+
+    if not content_text and not media_url:
+        raise HTTPException(status_code=400, detail="Message content is required")
+
+    account = social_media_hub.get_account(conv["account_id"])
+    if not account or account["status"] != "connected":
+        raise HTTPException(status_code=400, detail="Social media account is not connected")
+
+    platform_msg_id = ""
+    delivery_status = "pending"
+
+    try:
+        if conv["platform"] == "telegram":
+            from telegram_service import TelegramService
+            creds = account.get("credentials", {})
+            service = TelegramService(creds.get("bot_token", ""), "")
+
+            if media_url and content_type == "image":
+                result = await service.send_photo(conv["contact_identifier"], media_url, content_text)
+            elif media_url and content_type == "video":
+                result = await service.send_video(conv["contact_identifier"], media_url, content_text)
+            elif media_url:
+                result = await service.send_document(conv["contact_identifier"], media_url, content_text)
+            else:
+                result = await service.send_message(conv["contact_identifier"], content_text)
+
+            if result.get("ok"):
+                platform_msg_id = str(result.get("result", {}).get("message_id", ""))
+                delivery_status = "sent"
+            else:
+                delivery_status = "failed"
+
+        elif conv["platform"] == "whatsapp":
+            from whatsapp_social_service import WhatsAppSocialService
+            creds = account.get("credentials", {})
+            service = WhatsAppSocialService(
+                creds.get("account_sid", ""),
+                creds.get("auth_token", ""),
+                creds.get("from_number", ""),
+            )
+
+            if media_url:
+                result = await service.send_media(conv["contact_identifier"], media_url, content_text)
+            else:
+                result = await service.send_message(conv["contact_identifier"], content_text)
+
+            if result.get("ok"):
+                platform_msg_id = result.get("sid", "")
+                delivery_status = "sent"
+            else:
+                delivery_status = "failed"
+
+    except Exception as e:
+        delivery_status = "failed"
+
+    msg = social_media_hub.store_outbound_message(
+        conv_id=conv_id,
+        platform=conv["platform"],
+        content_text=content_text,
+        content_type=content_type,
+        media_url=media_url,
+        platform_message_id=platform_msg_id,
+        sent_by_user_id=auth.get("user_id"),
+        sent_by_name=auth.get("display_name", "Staff"),
+        delivery_status=delivery_status,
+    )
+
+    social_media_hub.notify_social_inbox({
+        "type": "outbound",
+        "message": msg,
+        "conversation_id": conv_id,
+    })
+
+    return {"success": True, "message": msg}
+
+
+@admin_router.post("/social/conversations/{conv_id}/assign")
+async def social_assign_conversation(
+    conv_id: str,
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = await request.json()
+    employee_id = body.get("employee_id")
+    employee_name = body.get("employee_name", "")
+    social_media_hub.assign_conversation(conv_id, employee_id, employee_name)
+    return {"success": True}
+
+
+@admin_router.post("/social/conversations/{conv_id}/read")
+async def social_mark_read(
+    conv_id: str,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    social_media_hub.mark_conversation_read(conv_id)
+    return {"success": True}
+
+
+@admin_router.post("/social/conversations/{conv_id}/archive")
+async def social_archive_conversation(
+    conv_id: str,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    social_media_hub.archive_conversation(conv_id)
+    return {"success": True}
+
+
+# ─── Message Search ───
+
+@admin_router.get("/social/messages/search")
+async def social_search_messages(
+    q: str = Query(...),
+    platform: str = Query(None),
+    limit: int = Query(50),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"messages": social_media_hub.search_messages(q, platform, limit)}
+
+
+# ─── Content Publishing ───
+
+@admin_router.get("/social/posts")
+async def social_list_posts(
+    status: str = Query(None),
+    offset: int = Query(0),
+    limit: int = Query(20),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return social_media_hub.get_posts(status, offset, limit)
+
+
+@admin_router.post("/social/posts")
+async def social_create_post(
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = await request.json()
+    post = social_media_hub.create_post(
+        title=body.get("title", ""),
+        content_text=body.get("content_text", ""),
+        media_urls=body.get("media_urls", []),
+        target_platforms=body.get("target_platforms", []),
+        scheduled_at=body.get("scheduled_at"),
+        created_by_user_id=auth.get("user_id"),
+        created_by_name=auth.get("display_name", "Staff"),
+    )
+    _log_action(auth, "create_social_post", "social_media", request, details={"post_id": post["id"]})
+    return {"success": True, "post": post}
+
+
+@admin_router.post("/social/posts/{post_id}/publish")
+async def social_publish_post(
+    post_id: int,
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    results = await social_media_hub._publish_post(post_id)
+    _log_action(auth, "publish_social_post", "social_media", request,
+                details={"post_id": post_id, "results": results})
+    return {"success": True, "results": results}
+
+
+@admin_router.put("/social/posts/{post_id}")
+async def social_update_post(
+    post_id: int,
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = await request.json()
+    social_media_hub.update_post(post_id, **body)
+    return {"success": True}
+
+
+@admin_router.delete("/social/posts/{post_id}")
+async def social_delete_post(
+    post_id: int,
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="delete")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    social_media_hub.delete_post(post_id)
+    return {"success": True}
+
+
+# ─── Media Upload ───
+
+@admin_router.post("/social/media/upload")
+async def social_upload_media(
+    file: UploadFile = File(...),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    ext = Path(file.filename).suffix.lower() if file.filename else ""
+    if ext not in ALLOWED_SOCIAL_MEDIA_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File type {ext} is not allowed")
+
+    content = await file.read()
+    if len(content) > MAX_SOCIAL_MEDIA_SIZE:
+        raise HTTPException(status_code=400, detail="File is too large (max 50MB)")
+
+    SOCIAL_MEDIA_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}{ext}"
+    file_path = SOCIAL_MEDIA_UPLOAD_DIR / filename
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    file_url = f"/uploads/social/{filename}"
+
+    # Determine media type
+    media_type = "document"
+    if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        media_type = "image"
+    elif ext in {".mp4", ".mov", ".avi"}:
+        media_type = "video"
+    elif ext in {".mp3", ".ogg", ".wav"}:
+        media_type = "audio"
+
+    record = social_media_hub.store_media(
+        filename=filename,
+        original_filename=file.filename or filename,
+        file_path=str(file_path),
+        file_url=file_url,
+        mime_type=file.content_type or "",
+        file_size=len(content),
+        media_type=media_type,
+        uploaded_by=auth.get("user_id"),
+    )
+
+    return {"success": True, "media": record}
+
+
+@admin_router.get("/social/media")
+async def social_list_media(
+    media_type: str = Query(None),
+    limit: int = Query(50),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"media": social_media_hub.get_media_library(media_type, limit)}
+
+
+# ─── Reply Templates ───
+
+@admin_router.get("/social/templates")
+async def social_list_templates(
+    category: str = Query(None),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"templates": social_media_hub.get_templates(category)}
+
+
+@admin_router.post("/social/templates")
+async def social_create_template(
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = await request.json()
+    template = social_media_hub.create_template(
+        title=body.get("title", ""),
+        content=body.get("content", ""),
+        category=body.get("category", "general"),
+        shortcut=body.get("shortcut", ""),
+        platforms=body.get("platforms"),
+        created_by=auth.get("user_id"),
+    )
+    return {"success": True, "template": template}
+
+
+@admin_router.put("/social/templates/{template_id}")
+async def social_update_template(
+    template_id: int,
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = await request.json()
+    social_media_hub.update_template(template_id, **body)
+    return {"success": True}
+
+
+@admin_router.delete("/social/templates/{template_id}")
+async def social_delete_template(
+    template_id: int,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="delete")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    social_media_hub.delete_template(template_id)
+    return {"success": True}
+
+
+# ─── SSE Stream ───
+
+@admin_router.get("/social/stream")
+async def social_message_stream(
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    import asyncio
+    import json
+    from fastapi.responses import StreamingResponse
+
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    async def event_generator():
+        event = social_media_hub.subscribe_social_inbox()
+        last_signal = social_media_hub.get_social_signal()
+        try:
+            yield f"data: {json.dumps({'type': 'connected'})}\\n\\n"
+            while True:
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=15)
+                    event.clear()
+                except asyncio.TimeoutError:
+                    pass
+
+                current_signal = social_media_hub.get_social_signal()
+                if current_signal and current_signal != last_signal:
+                    last_signal = current_signal
+                    yield f"data: {json.dumps({'type': 'new_message', 'data': current_signal})}\\n\\n"
+                else:
+                    yield f": heartbeat\\n\\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            social_media_hub.unsubscribe_social_inbox(event)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ─── Analytics ───
+
+@admin_router.get("/social/analytics")
+async def social_analytics(
+    period: str = Query("weekly"),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return social_media_hub.get_analytics(period)

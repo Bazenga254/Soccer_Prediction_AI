@@ -38,7 +38,7 @@ ALL_MODULES = [
     "dashboard", "users", "employees", "sales", "predictions",
     "support", "activity_logs", "security", "settings",
     "community", "referrals", "access_codes", "withdrawals", "subscriptions",
-    "online_users", "finance", "technical", "bots",
+    "online_users", "finance", "technical", "bots", "social_media",
 ]
 
 # Default permission matrix: role_name -> {module: {perms}}
@@ -64,6 +64,7 @@ DEFAULT_PERMISSIONS = {
         "finance":       {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 1, "approve": 1, "scope": "company"},
         "technical":     {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 1, "approve": 1, "scope": "company"},
         "bots":          {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 0, "approve": 0, "scope": "company"},
+        "social_media":  {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 1, "approve": 1, "scope": "company"},
     },
     "general_manager": {
         "dashboard":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 1, "approve": 0, "scope": "company"},
@@ -83,6 +84,7 @@ DEFAULT_PERMISSIONS = {
         "online_users":  {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
         "finance":       {"read": 0, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
         "technical":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
+        "social_media":  {"read": 1, "write": 1, "edit": 1, "delete": 0, "export": 1, "approve": 1, "scope": "company"},
     },
     "sales_hod": {
         "dashboard":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 1, "approve": 0, "scope": "department"},
@@ -109,6 +111,7 @@ DEFAULT_PERMISSIONS = {
         "referrals":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 1, "approve": 0, "scope": "company"},
         "community":     {"read": 1, "write": 1, "edit": 1, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
         "activity_logs": {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "department"},
+        "social_media":  {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 1, "approve": 1, "scope": "company"},
     },
     "predictions_hod": {
         "dashboard":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "department"},
@@ -131,6 +134,7 @@ DEFAULT_PERMISSIONS = {
         "community":     {"read": 1, "write": 1, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
         "online_users":  {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
         "activity_logs": {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
+        "social_media":  {"read": 1, "write": 1, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},
     },
     "prediction_analyst": {
         "dashboard":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "own"},

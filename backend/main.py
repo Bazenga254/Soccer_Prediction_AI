@@ -45,6 +45,9 @@ from admin_routes import admin_router
 from employee_routes import employee_router
 import employee_portal
 import bot_manager
+import social_media_hub
+from telegram_service import TelegramService
+from whatsapp_social_service import WhatsAppSocialService
 
 # Admin password for managing access codes
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "SoccerAI2026Admin")
@@ -208,6 +211,11 @@ async def startup():
     user_auth.init_employee_tables()
     print("[OK] Employee portal tables initialized")
 
+    # Initialize Social Media Hub
+    social_media_hub.init_social_media_db()
+    (Path(__file__).parent / "uploads" / "social").mkdir(parents=True, exist_ok=True)
+    print("[OK] Social Media Hub initialized")
+
     # Start background inactivity checker for support conversations
     asyncio.create_task(_inactivity_checker())
     asyncio.create_task(_payment_expiry_checker())
@@ -217,7 +225,9 @@ async def startup():
     asyncio.create_task(_weekly_disbursement_generator())
     asyncio.create_task(_daily_predictions_generator())
     asyncio.create_task(goal_monitor.goal_score_monitor())
+    asyncio.create_task(social_media_hub.check_scheduled_posts())
     print("[OK] Support keep-alive checker started (30-min idle, 3-min response)")
+    print("[OK] Social Media Hub scheduled post checker started")
     print("[OK] Payment expiry checker started (15-min timeout)")
     print("[OK] Active user tracking started")
     print("[OK] Bot heartbeat system started")
@@ -5995,6 +6005,108 @@ async def get_blog_article(slug: str):
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
     return article
+
+
+# ==================== SOCIAL MEDIA HUB WEBHOOKS ====================
+
+@app.post("/api/webhook/social/telegram/{account_id}")
+async def telegram_social_webhook(account_id: int, request: Request):
+    """Receive incoming Telegram messages via webhook. Public endpoint."""
+    try:
+        # Verify secret token
+        secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        account = social_media_hub.get_account(account_id)
+        if not account or account["status"] != "connected":
+            return {"ok": True}
+        if secret_header != account.get("webhook_secret", ""):
+            return {"ok": True}
+
+        update = await request.json()
+        parsed = TelegramService.parse_incoming_update(update)
+        if parsed:
+            # Download media if present
+            if parsed.get("media_file_id"):
+                try:
+                    creds = account.get("credentials", {})
+                    service = TelegramService(creds.get("bot_token", ""), "")
+                    file_result = await service.get_file(parsed["media_file_id"])
+                    if file_result.get("ok") and file_result.get("result", {}).get("download_url"):
+                        media_url = await social_media_hub.download_and_store_media(
+                            file_result["result"]["download_url"],
+                            parsed.get("media_filename") or f"tg_{parsed['media_file_id'][:8]}"
+                        )
+                        parsed["media_url"] = media_url
+                except Exception as e:
+                    print(f"[Telegram Webhook] Media download error: {e}")
+
+            conv = social_media_hub.get_or_create_conversation(
+                account_id=account_id,
+                platform="telegram",
+                contact_id=parsed["chat_id"],
+                contact_name=parsed.get("sender_name") or parsed.get("sender_username") or parsed["chat_id"],
+            )
+
+            msg = social_media_hub.store_inbound_message(conv["id"], "telegram", parsed)
+
+            social_media_hub.notify_social_inbox({
+                "type": "inbound",
+                "message": msg,
+                "conversation_id": conv["id"],
+                "platform": "telegram",
+            })
+
+    except Exception as e:
+        print(f"[Telegram Webhook] Error: {e}")
+    return {"ok": True}
+
+
+@app.post("/api/webhook/social/whatsapp/{account_id}")
+async def whatsapp_social_webhook(account_id: int, request: Request):
+    """Receive incoming WhatsApp messages via Twilio webhook. Public endpoint."""
+    try:
+        form_data = dict(await request.form())
+        account = social_media_hub.get_account(account_id)
+        if not account or account["status"] != "connected":
+            return "<Response></Response>"
+
+        parsed = WhatsAppSocialService.parse_incoming_webhook(form_data)
+        if parsed:
+            # Download media if URL present
+            if parsed.get("media_url"):
+                try:
+                    local_url = await social_media_hub.download_and_store_media(
+                        parsed["media_url"], parsed.get("media_filename", "media")
+                    )
+                    parsed["media_url"] = local_url
+                except Exception:
+                    pass
+
+            conv = social_media_hub.get_or_create_conversation(
+                account_id=account_id,
+                platform="whatsapp",
+                contact_id=parsed["chat_id"],
+                contact_name=parsed.get("sender_name", ""),
+            )
+
+            msg = social_media_hub.store_inbound_message(conv["id"], "whatsapp", parsed)
+
+            social_media_hub.notify_social_inbox({
+                "type": "inbound",
+                "message": msg,
+                "conversation_id": conv["id"],
+                "platform": "whatsapp",
+            })
+
+    except Exception as e:
+        print(f"[WhatsApp Webhook] Error: {e}")
+    return "<Response></Response>"
+
+
+# Serve uploaded social media files
+SOCIAL_UPLOADS_DIR = Path(__file__).parent / "uploads" / "social"
+if not SOCIAL_UPLOADS_DIR.exists():
+    SOCIAL_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads/social", StaticFiles(directory=str(SOCIAL_UPLOADS_DIR)), name="social_uploads")
 
 
 # ==================== SERVE FRONTEND IN PRODUCTION ====================
