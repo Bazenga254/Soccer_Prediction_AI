@@ -871,6 +871,60 @@
   justify-content: flex-end;
 }
 
+/* ─── Real / Bot user type tabs ─── */
+.users-type-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--admin-border);
+  padding-bottom: 0;
+}
+
+.users-type-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--admin-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+
+.users-type-tab:hover {
+  color: var(--admin-text);
+}
+
+.users-type-tab.active {
+  color: var(--admin-accent);
+  border-bottom-color: var(--admin-accent);
+  font-weight: 600;
+}
+
+.users-type-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  background: var(--admin-border);
+  color: var(--admin-text-muted);
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.users-type-tab.active .users-type-count {
+  background: rgba(108, 92, 231, 0.2);
+  color: var(--admin-accent);
+}
+
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
   .admin-sidebar {

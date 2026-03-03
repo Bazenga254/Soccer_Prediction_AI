@@ -22,6 +22,7 @@ export default function UsersTab() {
   const [filterTier, setFilterTier] = useState('all')
   const [filterDevice, setFilterDevice] = useState('all')
   const [filterSource, setFilterSource] = useState('all')
+  const [userType, setUserType] = useState('real')   // 'real' | 'bot'
   const [resetModal, setResetModal] = useState(null)
   const [newPassword, setNewPassword] = useState('')
   const [resetLoading, setResetLoading] = useState(false)
@@ -151,7 +152,13 @@ export default function UsersTab() {
     setResetLoading(false)
   }
 
+  const realCount = users.filter(u => !u.is_bot).length
+  const botCount  = users.filter(u => !!u.is_bot).length
+
   const filtered = users.filter(u => {
+    // Tab filter
+    if (userType === 'real' && u.is_bot) return false
+    if (userType === 'bot'  && !u.is_bot) return false
     const s = search.toLowerCase()
     const matchesSearch = !search ||
       (u.email || '').toLowerCase().includes(s) ||
@@ -173,6 +180,24 @@ export default function UsersTab() {
 
   return (
     <div className="admin-tab-content">
+      {/* Real / Bot tab toggle */}
+      <div className="users-type-tabs">
+        <button
+          className={`users-type-tab ${userType === 'real' ? 'active' : ''}`}
+          onClick={() => setUserType('real')}
+        >
+          Real Users
+          <span className="users-type-count">{realCount}</span>
+        </button>
+        <button
+          className={`users-type-tab ${userType === 'bot' ? 'active' : ''}`}
+          onClick={() => setUserType('bot')}
+        >
+          Bot Users
+          <span className="users-type-count">{botCount}</span>
+        </button>
+      </div>
+
       <div className="admin-users-toolbar">
         <input
           type="text"
