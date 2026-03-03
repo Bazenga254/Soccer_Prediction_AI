@@ -27,6 +27,7 @@ const MODULE_LABELS = {
   community: 'Community', referrals: 'Referrals', access_codes: 'Access Codes',
   withdrawals: 'Withdrawals', subscriptions: 'Subscriptions',
   online_users: 'Online Users', finance: 'Finance', technical: 'Technical', bots: 'Bots',
+  social_media: 'Social Media',
 }
 
 const ACTIONS = ['read', 'write', 'edit', 'delete', 'export', 'approve']
