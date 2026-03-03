@@ -3004,6 +3004,7 @@ def list_all_users() -> List[Dict]:
         "tier": r["tier"],
         "is_active": bool(r["is_active"]),
         "is_admin": bool(r["is_admin"]),
+        "is_bot": bool(r["is_bot"]) if r["is_bot"] is not None else False,
         "avatar_color": r["avatar_color"],
         "full_name": r["full_name"],
         "date_of_birth": r["date_of_birth"],
