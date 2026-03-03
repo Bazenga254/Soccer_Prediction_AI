@@ -50,7 +50,7 @@
     "searchResults": "Search Results"
   },
   "landing": {
-    "heroTitle": "AI-Powered Match Predictions and Analysis",
+    "heroTitle": "AI-Powered Match Insights and Analysis",
     "heroSubtitle": "Make smarter decisions with data-driven insights across 50+ football leagues worldwide",
     "getStartedFree": "Get Started Free",
     "seeHowItWorks": "See How It Works",
@@ -58,18 +58,18 @@
     "liveScores": "Live Scores",
     "poweredAnalysis": "Powered Analysis",
     "freeToStart": "Free to Start",
-    "featuresTitle": "Everything You Need for Smarter Predictions",
+    "featuresTitle": "Everything You Need for Smarter Match Analysis",
     "featuresSubtitle": "Our platform combines real football data with AI analysis to give you the edge",
     "howItWorksTitle": "How It Works",
     "howItWorksSubtitle": "Get started in three simple steps",
     "pricingTitle": "Simple, Transparent Pricing",
     "pricingSubtitle": "Start free, upgrade when you're ready",
-    "ctaTitle": "Ready to Make Smarter Predictions?",
+    "ctaTitle": "Ready for Smarter Match Insights?",
     "ctaSubtitle": "Join thousands of football fans using AI to gain an edge",
     "signUpFree": "Sign Up Free",
     "copyright": "2026 Spark AI Prediction. All rights reserved.",
-    "feature1Title": "AI-Powered Predictions",
-    "feature1Desc": "Advanced algorithm weighing H2H records, recent form, home/away stats, goals analysis, and league position for accurate match predictions.",
+    "feature1Title": "AI-Powered Analysis",
+    "feature1Desc": "Advanced algorithm weighing H2H records, recent form, home/away stats, goals analysis, and league position for accurate match analysis.",
     "feature2Title": "Live Scores",
     "feature2Desc": "Real-time match scores and updates across 50+ football leagues worldwide. Never miss a moment.",
     "feature3Title": "Community Marketplace",
@@ -90,8 +90,8 @@
     "step1Desc": "Sign up for free in seconds. No credit card required.",
     "step2Title": "Pick a Match",
     "step2Desc": "Browse fixtures across 50+ leagues. Select any upcoming match for analysis.",
-    "step3Title": "Get AI Predictions",
-    "step3Desc": "Receive detailed predictions with confidence levels, risk factors, and value insights.",
+    "step3Title": "Get AI Insights",
+    "step3Desc": "Receive detailed match analysis with confidence levels, key factors, and statistical insights.",
     "freePlan": "Free",
     "proWeekly": "Pro Weekly",
     "proMonthly": "Pro Monthly",
@@ -308,7 +308,7 @@
     "proActive": "PRO ACTIVE",
     "expiresOn": "Your subscription expires on {{date}} ({{days}} days remaining)",
     "fullAccess": "You have full access to all features",
-    "unlockFeatures": "Unlock advanced analytics, unlimited predictions, and ad-free experience",
+    "unlockFeatures": "Unlock advanced analytics, unlimited match insights, and ad-free experience",
     "loadingPlans": "Loading plans...",
     "freePlan": "Free",
     "proWeekly": "Pro Weekly",
@@ -702,7 +702,7 @@
   },
   "referral": {
     "title": "You've Been Invited!",
-    "subtitle": "Join Spark AI Prediction and get AI-powered football predictions",
+    "subtitle": "Join Spark AI Prediction and get AI-powered football analysis",
     "joinNow": "Join Now",
     "invitedBy": "Invited by",
     "invitedToJoin": "{{name}} invited you to join Spark AI Prediction!",
@@ -798,8 +798,8 @@
       "description": "Get accurate AI soccer analysis, live scores, and match insights for 50+ football leagues worldwide. Free daily analysis powered by machine learning."
     },
     "today": {
-      "title": "Soccer Predictions Today - Free AI Picks & Tips",
-      "description": "Today's AI-powered soccer predictions across Premier League, La Liga, Serie A, Bundesliga, and 50+ leagues. Free daily picks with match analysis."
+      "title": "Soccer Match Analysis Today - Free AI Insights",
+      "description": "Today's AI-powered soccer analysis across Premier League, La Liga, Serie A, Bundesliga, and 50+ leagues. Free daily insights with statistical match analysis."
     },
     "blog": {
       "title": "Soccer Match Insights & Analysis Blog",
