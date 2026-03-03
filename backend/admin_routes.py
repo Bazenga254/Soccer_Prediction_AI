@@ -2648,6 +2648,22 @@ async def social_account_status(
     return live_status
 
 
+# ─── Account Channels/Groups ───
+
+@admin_router.get("/social/accounts/{account_id}/channels")
+async def social_account_channels(
+    account_id: int,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    channels = social_media_hub.get_account_channels(account_id)
+    return {"channels": channels}
+
+
 # ─── Conversations ───
 
 @admin_router.get("/social/conversations")

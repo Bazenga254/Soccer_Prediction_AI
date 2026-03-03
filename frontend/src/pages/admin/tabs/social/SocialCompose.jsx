@@ -24,6 +24,9 @@ export default function SocialCompose({ accounts }) {
   const [postsLoading, setPostsLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
+  // Channels/groups per account
+  const [accountChannels, setAccountChannels] = useState({})
+  const [selectedChannels, setSelectedChannels] = useState({})
 
   const connectedAccounts = accounts.filter(a => a.status === 'connected')
 
@@ -43,12 +46,40 @@ export default function SocialCompose({ accounts }) {
     fetchPosts()
   }, [fetchPosts])
 
+  // Fetch channels for an account when selected
+  const fetchChannels = useCallback(async (accountId) => {
+    if (accountChannels[accountId]) return
+    try {
+      const res = await fetch(`/api/admin/social/accounts/${accountId}/channels`, {
+        headers: getAuthHeaders()
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAccountChannels(prev => ({ ...prev, [accountId]: data.channels || [] }))
+      }
+    } catch {}
+  }, [getAuthHeaders, accountChannels])
+
   const togglePlatform = (accountId, platform) => {
     setSelectedPlatforms(prev => {
       const exists = prev.find(p => p.account_id === accountId)
-      if (exists) return prev.filter(p => p.account_id !== accountId)
+      if (exists) {
+        // Deselecting — also clear channel selection
+        setSelectedChannels(prev => {
+          const next = { ...prev }
+          delete next[accountId]
+          return next
+        })
+        return prev.filter(p => p.account_id !== accountId)
+      }
+      // Selecting — fetch channels
+      fetchChannels(accountId)
       return [...prev, { platform, account_id: accountId }]
     })
+  }
+
+  const selectChannel = (accountId, chatId) => {
+    setSelectedChannels(prev => ({ ...prev, [accountId]: chatId }))
   }
 
   const handleMediaUpload = async (e) => {
@@ -58,16 +89,23 @@ export default function SocialCompose({ accounts }) {
     try {
       const formData = new FormData()
       formData.append('file', file)
+      const hdrs = getAuthHeaders()
+      delete hdrs['Content-Type']
       const res = await fetch('/api/admin/social/media/upload', {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: hdrs,
         body: formData,
       })
       if (res.ok) {
         const data = await res.json()
         setMediaUrls(prev => [...prev, data.media.file_url])
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setResult({ success: false, error: err.detail || 'Upload failed' })
       }
-    } catch {}
+    } catch (e) {
+      setResult({ success: false, error: `Upload error: ${e.message}` })
+    }
     setUploading(false)
     e.target.value = ''
   }
@@ -78,10 +116,26 @@ export default function SocialCompose({ accounts }) {
 
   const handlePublish = async () => {
     if (!contentText.trim() || selectedPlatforms.length === 0) return
+
+    // Build target_platforms with channel_id
+    const targets = selectedPlatforms.map(p => {
+      const target = { platform: p.platform, account_id: p.account_id }
+      if (p.platform === 'telegram') {
+        target.channel_id = selectedChannels[p.account_id] || ''
+      }
+      return target
+    })
+
+    // Validate Telegram targets have a channel selected
+    const missingChannel = targets.find(t => t.platform === 'telegram' && !t.channel_id)
+    if (missingChannel) {
+      setResult({ success: false, error: 'Please select a group/channel for Telegram. If none appear, send a message in the group first so the bot detects it.' })
+      return
+    }
+
     setPublishing(true)
     setResult(null)
     try {
-      // Create the post
       const createRes = await fetch('/api/admin/social/posts', {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
@@ -89,38 +143,54 @@ export default function SocialCompose({ accounts }) {
           title,
           content_text: contentText,
           media_urls: mediaUrls,
-          target_platforms: selectedPlatforms,
+          target_platforms: targets,
           scheduled_at: scheduleType === 'later' ? scheduledAt : null,
         })
       })
 
-      if (createRes.ok) {
-        const createData = await createRes.json()
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}))
+        setResult({ success: false, error: err.detail || `Create failed (${createRes.status})` })
+        setPublishing(false)
+        return
+      }
 
-        if (scheduleType === 'now') {
-          // Publish immediately
-          const pubRes = await fetch(`/api/admin/social/posts/${createData.post.id}/publish`, {
-            method: 'POST',
-            headers: getAuthHeaders(),
-          })
-          if (pubRes.ok) {
-            const pubData = await pubRes.json()
+      const createData = await createRes.json()
+
+      if (scheduleType === 'now') {
+        const pubRes = await fetch(`/api/admin/social/posts/${createData.post.id}/publish`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+        })
+        const pubData = await pubRes.json().catch(() => ({}))
+        if (pubRes.ok) {
+          const allSuccess = pubData.results?.every(r => r.success)
+          const anyFail = pubData.results?.some(r => !r.success)
+          if (allSuccess) {
             setResult({ success: true, results: pubData.results })
+          } else {
+            const errors = pubData.results?.filter(r => !r.success).map(r => r.error).join(', ')
+            setResult({ success: !anyFail, partial: anyFail, error: errors, results: pubData.results })
           }
         } else {
-          setResult({ success: true, scheduled: true })
+          setResult({ success: false, error: pubData.detail || 'Publish failed' })
         }
-
-        // Reset form
-        setTitle('')
-        setContentText('')
-        setMediaUrls([])
-        setSelectedPlatforms([])
-        setScheduleType('now')
-        setScheduledAt('')
-        fetchPosts()
+      } else {
+        setResult({ success: true, scheduled: true })
       }
-    } catch {}
+
+      // Reset form
+      setTitle('')
+      setContentText('')
+      setMediaUrls([])
+      setSelectedPlatforms([])
+      setSelectedChannels({})
+      setScheduleType('now')
+      setScheduledAt('')
+      fetchPosts()
+    } catch (e) {
+      setResult({ success: false, error: `Network error: ${e.message}` })
+    }
     setPublishing(false)
   }
 
@@ -128,7 +198,7 @@ export default function SocialCompose({ accounts }) {
     if (!contentText.trim()) return
     setSaving(true)
     try {
-      await fetch('/api/admin/social/posts', {
+      const res = await fetch('/api/admin/social/posts', {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -138,12 +208,21 @@ export default function SocialCompose({ accounts }) {
           target_platforms: selectedPlatforms,
         })
       })
-      setTitle('')
-      setContentText('')
-      setMediaUrls([])
-      setSelectedPlatforms([])
-      fetchPosts()
-    } catch {}
+      if (res.ok) {
+        setTitle('')
+        setContentText('')
+        setMediaUrls([])
+        setSelectedPlatforms([])
+        setSelectedChannels({})
+        setResult({ success: true, draft: true })
+        fetchPosts()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setResult({ success: false, error: err.detail || 'Save failed' })
+      }
+    } catch (e) {
+      setResult({ success: false, error: `Network error: ${e.message}` })
+    }
     setSaving(false)
   }
 
@@ -255,18 +334,48 @@ export default function SocialCompose({ accounts }) {
               <div className="social-platform-checkboxes">
                 {connectedAccounts.map(acc => {
                   const selected = selectedPlatforms.find(p => p.account_id === acc.id)
+                  const channels = accountChannels[acc.id] || []
                   return (
-                    <button
-                      key={acc.id}
-                      className={`social-platform-check ${selected ? 'selected' : ''}`}
-                      onClick={() => togglePlatform(acc.id, acc.platform)}
-                    >
-                      <span>{PLATFORM_ICONS[acc.platform]}</span>
-                      <span>{acc.account_name}</span>
-                      <span style={{ fontSize: 11, color: 'var(--admin-text-muted)' }}>
-                        {acc.account_identifier}
-                      </span>
-                    </button>
+                    <div key={acc.id}>
+                      <button
+                        className={`social-platform-check ${selected ? 'selected' : ''}`}
+                        onClick={() => togglePlatform(acc.id, acc.platform)}
+                      >
+                        <span>{PLATFORM_ICONS[acc.platform]}</span>
+                        <span>{acc.account_name}</span>
+                        <span style={{ fontSize: 11, color: 'var(--admin-text-muted)' }}>
+                          {acc.account_identifier}
+                        </span>
+                      </button>
+
+                      {/* Channel/Group selector for Telegram */}
+                      {selected && acc.platform === 'telegram' && (
+                        <div style={{ marginTop: 6, marginLeft: 12, marginBottom: 8 }}>
+                          <label style={{ fontSize: 12, color: 'var(--admin-text-muted)', display: 'block', marginBottom: 4 }}>
+                            Select group/channel:
+                          </label>
+                          {channels.length === 0 ? (
+                            <p style={{ fontSize: 12, color: '#f59e0b', margin: '4px 0' }}>
+                              No groups detected yet. Send a message in the Telegram group first so the bot picks it up.
+                            </p>
+                          ) : (
+                            <select
+                              className="social-setup-input"
+                              style={{ marginTop: 0, maxWidth: 320, fontSize: 13 }}
+                              value={selectedChannels[acc.id] || ''}
+                              onChange={e => selectChannel(acc.id, e.target.value)}
+                            >
+                              <option value="">-- Select group/channel --</option>
+                              {channels.map(ch => (
+                                <option key={ch.chat_id} value={ch.chat_id}>
+                                  {ch.name} ({ch.chat_type === 'private' ? 'DM' : ch.chat_type})
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>
@@ -310,8 +419,19 @@ export default function SocialCompose({ accounts }) {
               color: result.success ? '#86efac' : '#fca5a5', fontSize: 13,
             }}>
               {result.success
-                ? (result.scheduled ? 'Post scheduled successfully!' : 'Post published successfully!')
-                : 'Failed to publish post.'}
+                ? (result.scheduled ? 'Post scheduled successfully!'
+                  : result.draft ? 'Draft saved successfully!'
+                  : 'Post published successfully!')
+                : `Error: ${result.error || 'Failed to publish post.'}`}
+              {result.results && (
+                <div style={{ marginTop: 8, fontSize: 12 }}>
+                  {result.results.map((r, i) => (
+                    <div key={i} style={{ color: r.success ? '#86efac' : '#fca5a5' }}>
+                      {r.platform}: {r.success ? 'Sent' : r.error}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -384,7 +504,7 @@ export default function SocialCompose({ accounts }) {
                         className="social-send-btn"
                         style={{ padding: '6px 12px', fontSize: 12 }}
                         onClick={async () => {
-                          await fetch(`/api/admin/social/posts/${post.id}/publish`, {
+                          const res = await fetch(`/api/admin/social/posts/${post.id}/publish`, {
                             method: 'POST', headers: getAuthHeaders()
                           })
                           fetchPosts()

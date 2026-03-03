@@ -6039,11 +6039,20 @@ async def telegram_social_webhook(account_id: int, request: Request):
                 except Exception as e:
                     print(f"[Telegram Webhook] Media download error: {e}")
 
+            # For groups/supergroups, use chat title as contact name
+            meta = parsed.get("metadata", {})
+            chat_type = meta.get("chat_type", "private")
+            if chat_type in ("group", "supergroup", "channel"):
+                contact_name = meta.get("chat_title") or parsed["chat_id"]
+            else:
+                contact_name = parsed.get("sender_name") or parsed.get("sender_username") or parsed["chat_id"]
+
             conv = social_media_hub.get_or_create_conversation(
                 account_id=account_id,
                 platform="telegram",
                 contact_id=parsed["chat_id"],
-                contact_name=parsed.get("sender_name") or parsed.get("sender_username") or parsed["chat_id"],
+                contact_name=contact_name,
+                metadata={"chat_type": chat_type, "chat_title": meta.get("chat_title", "")},
             )
 
             msg = social_media_hub.store_inbound_message(conv["id"], "telegram", parsed)

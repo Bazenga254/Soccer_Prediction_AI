@@ -267,18 +267,31 @@ def delete_account(account_id: int):
 
 def get_or_create_conversation(account_id: int, platform: str,
                                 contact_id: str, contact_name: str = "",
-                                contact_avatar: str = "") -> dict:
+                                contact_avatar: str = "",
+                                metadata: dict = None) -> dict:
     conn = _get_db()
     row = conn.execute(
         "SELECT * FROM social_conversations WHERE account_id = ? AND contact_identifier = ?",
         (account_id, str(contact_id))
     ).fetchone()
+    meta_json = json.dumps(metadata) if metadata else "{}"
     if row:
-        # Update contact name if changed
+        # Update contact name if changed, and update metadata
+        updates = []
+        params = []
         if contact_name and contact_name != row["contact_name"]:
+            updates.append("contact_name = ?")
+            params.append(contact_name)
+        if metadata:
+            updates.append("metadata_json = ?")
+            params.append(meta_json)
+        if updates:
+            updates.append("updated_at = ?")
+            params.append(datetime.now().isoformat())
+            params.append(row["id"])
             conn.execute(
-                "UPDATE social_conversations SET contact_name = ?, updated_at = ? WHERE id = ?",
-                (contact_name, datetime.now().isoformat(), row["id"])
+                f"UPDATE social_conversations SET {', '.join(updates)} WHERE id = ?",
+                params
             )
             conn.commit()
         conn.close()
@@ -289,9 +302,10 @@ def get_or_create_conversation(account_id: int, platform: str,
     conn.execute(
         """INSERT INTO social_conversations
         (id, account_id, platform, contact_identifier, contact_name, contact_avatar_url,
-         created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (conv_id, account_id, platform, str(contact_id), contact_name, contact_avatar, now, now)
+         metadata_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (conv_id, account_id, platform, str(contact_id), contact_name, contact_avatar,
+         meta_json, now, now)
     )
     conn.commit()
     result = dict(conn.execute(
@@ -299,6 +313,33 @@ def get_or_create_conversation(account_id: int, platform: str,
     ).fetchone())
     conn.close()
     return result
+
+
+def get_account_channels(account_id: int) -> list:
+    """Get known groups/channels/chats for a specific account (for Compose targeting)."""
+    conn = _get_db()
+    rows = conn.execute(
+        """SELECT id, contact_identifier, contact_name, metadata_json
+        FROM social_conversations WHERE account_id = ? AND is_archived = 0
+        ORDER BY last_message_at DESC""",
+        (account_id,)
+    ).fetchall()
+    conn.close()
+    results = []
+    for r in rows:
+        meta = {}
+        try:
+            meta = json.loads(r["metadata_json"] or "{}")
+        except:
+            pass
+        chat_type = meta.get("chat_type", "private")
+        results.append({
+            "id": r["id"],
+            "chat_id": r["contact_identifier"],
+            "name": r["contact_name"] or r["contact_identifier"],
+            "chat_type": chat_type,
+        })
+    return results
 
 
 def get_conversations(platform: str = None, assigned_to: int = None,
