@@ -5159,11 +5159,12 @@
   flex-shrink: 0;
 }
 
-.social-conv-avatar.telegram { background: rgba(0, 136, 204, 0.2); color: #0088cc; }
-.social-conv-avatar.whatsapp { background: rgba(37, 211, 102, 0.2); color: #25d366; }
-.social-conv-avatar.facebook { background: rgba(24, 119, 242, 0.2); color: #1877f2; }
-.social-conv-avatar.instagram { background: rgba(225, 48, 108, 0.2); color: #e1306c; }
-.social-conv-avatar.x { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.social-conv-avatar.telegram { background: #0088cc; }
+.social-conv-avatar.whatsapp, .social-conv-avatar.whatsapp_qr { background: #25d366; }
+.social-conv-avatar.facebook { background: #1877f2; }
+.social-conv-avatar.instagram { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); }
+.social-conv-avatar.x { background: #000; }
+.social-conv-avatar svg { display: block; }
 
 .social-conv-info {
   flex: 1;
@@ -5204,7 +5205,7 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  background: var(--admin-accent);
+  background: #25d366;
   color: #fff;
   border-radius: 9px;
   font-size: 11px;
@@ -5212,6 +5213,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Unread conversation — WhatsApp-style highlight */
+.social-conv-item.unread {
+  background: rgba(37, 211, 102, 0.05);
+}
+.social-conv-item.unread:hover {
+  background: rgba(37, 211, 102, 0.09);
+}
+.social-conv-item.unread .social-conv-name {
+  font-weight: 700;
+  color: var(--admin-text);
+}
+.social-conv-item.unread .social-conv-preview {
+  color: var(--admin-text);
+  font-weight: 500;
+}
+.social-conv-item.unread .social-conv-time {
+  color: #25d366;
+  font-weight: 600;
 }
 
 /* Chat panel */
