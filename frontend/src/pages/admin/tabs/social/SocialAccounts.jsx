@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAdmin } from '../../context/AdminContext'
 
 const PLATFORMS = [
@@ -11,12 +11,12 @@ const PLATFORMS = [
     description: 'Connect a Telegram Bot to receive and send messages.',
   },
   {
-    key: 'whatsapp',
+    key: 'whatsapp_qr',
     name: 'WhatsApp',
     icon: '\u{1F4F1}',
     color: '#25d366',
     available: true,
-    description: 'Connect WhatsApp via Twilio for business messaging.',
+    description: 'Connect WhatsApp by scanning a QR code — just like WhatsApp Web.',
   },
   {
     key: 'facebook',
@@ -44,6 +44,128 @@ const PLATFORMS = [
   },
 ]
 
+// ─── WhatsApp QR Modal ───────────────────────────────────
+function WhatsAppQRModal({ onClose, onConnected, getAuthHeaders }) {
+  const [status, setStatus] = useState('loading') // loading | qr | connected | error
+  const [qrImage, setQrImage] = useState(null)
+  const [phone, setPhone] = useState('')
+  const [name, setName] = useState('')
+  const [message, setMessage] = useState('Starting WhatsApp service...')
+  const pollRef = useRef(null)
+
+  const poll = async () => {
+    try {
+      const res = await fetch('/api/admin/social/whatsapp/qr', { headers: getAuthHeaders() })
+      const data = await res.json()
+
+      if (data.status === 'connected') {
+        setStatus('connected')
+        setPhone(data.phone || '')
+        setName(data.name || '')
+        setMessage('')
+        clearInterval(pollRef.current)
+        onConnected()
+      } else if (data.status === 'qr') {
+        setStatus('qr')
+        setQrImage(data.qr)
+        setMessage('')
+      } else if (data.status === 'loading') {
+        setStatus('loading')
+        setMessage(data.message || 'Generating QR code...')
+      } else if (data.error) {
+        setStatus('error')
+        setMessage(data.error)
+        clearInterval(pollRef.current)
+      }
+    } catch (e) {
+      setStatus('error')
+      setMessage('WhatsApp service not available. Please try again.')
+      clearInterval(pollRef.current)
+    }
+  }
+
+  useEffect(() => {
+    poll()
+    pollRef.current = setInterval(poll, 3000)
+    return () => clearInterval(pollRef.current)
+  }, [])
+
+  return (
+    <div className="social-setup-modal" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="social-setup-content" style={{ maxWidth: 420 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ margin: 0, color: 'var(--admin-text)' }}>Connect WhatsApp</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', fontSize: 20, cursor: 'pointer' }}>
+            {'\u00D7'}
+          </button>
+        </div>
+
+        {status === 'connected' ? (
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontSize: 56, marginBottom: 12 }}>{'\u2705'}</div>
+            <h4 style={{ color: '#22c55e', margin: '0 0 8px' }}>WhatsApp Connected!</h4>
+            <p style={{ color: 'var(--admin-text-muted)', fontSize: 13, margin: '0 0 4px' }}>
+              {name && <><strong>{name}</strong><br /></>}
+              {phone && <span>+{phone}</span>}
+            </p>
+            <p style={{ color: 'var(--admin-text-muted)', fontSize: 12, marginTop: 12, lineHeight: 1.6 }}>
+              Messages sent to your WhatsApp will now appear in the Inbox tab in real-time.
+            </p>
+            <button className="social-send-btn" style={{ marginTop: 16, padding: '10px 32px' }} onClick={onClose}>
+              Done
+            </button>
+          </div>
+        ) : status === 'error' ? (
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>{'\u26A0\uFE0F'}</div>
+            <p style={{ color: '#ef4444', fontSize: 13 }}>{message}</p>
+            <p style={{ color: 'var(--admin-text-muted)', fontSize: 12, lineHeight: 1.6 }}>
+              Make sure the WhatsApp service is running on the server.
+            </p>
+            <button className="social-send-btn" style={{ marginTop: 16 }} onClick={onClose}>
+              Close
+            </button>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center' }}>
+            {status === 'loading' || !qrImage ? (
+              <div style={{ padding: '40px 0' }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>{'\u23F3'}</div>
+                <p style={{ color: 'var(--admin-text-muted)', fontSize: 13 }}>{message}</p>
+                <p style={{ color: 'var(--admin-text-muted)', fontSize: 11, marginTop: 8 }}>
+                  This may take up to 30 seconds...
+                </p>
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  background: '#fff',
+                  display: 'inline-block',
+                  padding: 12,
+                  borderRadius: 12,
+                  marginBottom: 16,
+                }}>
+                  <img src={qrImage} alt="WhatsApp QR Code" style={{ width: 260, height: 260, display: 'block' }} />
+                </div>
+                <h4 style={{ color: 'var(--admin-text)', margin: '0 0 8px' }}>Scan with WhatsApp</h4>
+                <p style={{ color: 'var(--admin-text-muted)', fontSize: 13, lineHeight: 1.7, margin: 0 }}>
+                  1. Open <strong>WhatsApp</strong> on your phone<br />
+                  2. Tap <strong>Settings</strong> {'>'} <strong>Linked Devices</strong><br />
+                  3. Tap <strong>Link a Device</strong> and scan this QR code
+                </p>
+                <div style={{ marginTop: 12, fontSize: 12, color: 'var(--admin-text-muted)' }}>
+                  {'\u{1F504}'} QR code refreshes automatically
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Component ───────────────────────────────────────
 export default function SocialAccounts({ accounts, onRefresh }) {
   const { getAuthHeaders } = useAdmin()
   const [setupPlatform, setSetupPlatform] = useState(null)
@@ -52,15 +174,11 @@ export default function SocialAccounts({ accounts, onRefresh }) {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [webhookUrl, setWebhookUrl] = useState('')
+  const [showWAModal, setShowWAModal] = useState(false)
 
   // Telegram fields
   const [botToken, setBotToken] = useState('')
   const [accountName, setAccountName] = useState('')
-
-  // WhatsApp fields
-  const [accountSid, setAccountSid] = useState('')
-  const [authToken, setAuthToken] = useState('')
-  const [fromNumber, setFromNumber] = useState('')
 
   const resetSetup = () => {
     setSetupPlatform(null)
@@ -70,89 +188,67 @@ export default function SocialAccounts({ accounts, onRefresh }) {
     setWebhookUrl('')
     setBotToken('')
     setAccountName('')
-    setAccountSid('')
-    setAuthToken('')
-    setFromNumber('')
   }
 
   const handleConnect = async () => {
     setConnecting(true)
     setError('')
-
     try {
       let credentials = {}
       let name = accountName
-
       if (setupPlatform === 'telegram') {
         if (!botToken.trim()) { setError('Bot token is required'); setConnecting(false); return }
         credentials = { bot_token: botToken.trim() }
         name = name || 'Telegram Bot'
-      } else if (setupPlatform === 'whatsapp') {
-        if (!accountSid || !authToken || !fromNumber) {
-          setError('All fields are required')
-          setConnecting(false)
-          return
-        }
-        credentials = {
-          account_sid: accountSid.trim(),
-          auth_token: authToken.trim(),
-          from_number: fromNumber.trim(),
-        }
-        name = name || 'WhatsApp Business'
       }
 
       const res = await fetch('/api/admin/social/accounts/connect', {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          platform: setupPlatform,
-          account_name: name,
-          credentials,
-        })
+        body: JSON.stringify({ platform: setupPlatform, account_name: name, credentials })
       })
-
       const data = await res.json()
-
       if (res.ok && data.success) {
-        setSuccess('Connected successfully!')
+        setSuccess(data.bot_info ? `Connected! Bot: @${data.bot_info.username}` : 'Connected successfully!')
         if (data.webhook_url) setWebhookUrl(data.webhook_url)
-        if (data.bot_info) {
-          setSuccess(`Connected! Bot: @${data.bot_info.username}`)
-        }
-        setSetupStep(3) // success step
+        setSetupStep(3)
         onRefresh()
       } else {
         setError(data.detail || data.error || 'Connection failed')
       }
-    } catch (e) {
+    } catch {
       setError('Connection failed. Please check your credentials.')
     }
     setConnecting(false)
   }
 
-  const handleDisconnect = async (accountId) => {
+  const handleDisconnect = async (acc) => {
     if (!confirm('Are you sure you want to disconnect this account?')) return
     try {
-      await fetch(`/api/admin/social/accounts/${accountId}/disconnect`, {
-        method: 'POST', headers: getAuthHeaders()
-      })
+      if (acc.platform === 'whatsapp_qr') {
+        await fetch('/api/admin/social/whatsapp/disconnect', { method: 'POST', headers: getAuthHeaders() })
+      } else {
+        await fetch(`/api/admin/social/accounts/${acc.id}/disconnect`, { method: 'POST', headers: getAuthHeaders() })
+      }
       onRefresh()
     } catch {}
   }
 
-  const handleTestConnection = async (accountId) => {
+  const handleTestConnection = async (acc) => {
     try {
-      const res = await fetch(`/api/admin/social/accounts/${accountId}/status`, {
-        headers: getAuthHeaders()
-      })
-      if (res.ok) {
+      if (acc.platform === 'whatsapp_qr') {
+        const res = await fetch('/api/admin/social/whatsapp/status', { headers: getAuthHeaders() })
         const data = await res.json()
-        alert(data.live ? 'Connection is live and working!' : 'Connection may have issues. Check your credentials.')
+        alert(data.connected ? `Connected as ${data.name} (+${data.phone})` : 'WhatsApp is not connected.')
+      } else {
+        const res = await fetch(`/api/admin/social/accounts/${acc.id}/status`, { headers: getAuthHeaders() })
+        const data = await res.json()
+        alert(data.live ? 'Connection is live and working!' : 'Connection may have issues.')
       }
-    } catch {
-      alert('Failed to test connection.')
-    }
+    } catch { alert('Failed to test connection.') }
   }
+
+  const getPlatformIcon = (platform) => PLATFORMS.find(p => p.key === platform)?.icon || '\u{1F517}'
 
   return (
     <div>
@@ -172,15 +268,21 @@ export default function SocialAccounts({ accounts, onRefresh }) {
               </div>
               {connected.length > 0 && (
                 <div style={{ marginBottom: 8, fontSize: 12, color: '#22c55e' }}>
-                  <span className="social-status-dot connected" />
-                  {connected.length} connected
+                  <span className="social-status-dot connected" /> {connected.length} connected
                 </div>
               )}
               {p.available ? (
                 <button
                   className="social-send-btn"
                   style={{ width: '100%', padding: '8px 0' }}
-                  onClick={() => { resetSetup(); setSetupPlatform(p.key) }}
+                  onClick={() => {
+                    resetSetup()
+                    if (p.key === 'whatsapp_qr') {
+                      setShowWAModal(true)
+                    } else {
+                      setSetupPlatform(p.key)
+                    }
+                  }}
                 >
                   {connected.length > 0 ? 'Add Another' : 'Connect'}
                 </button>
@@ -203,40 +305,28 @@ export default function SocialAccounts({ accounts, onRefresh }) {
               <div key={acc.id} className="social-account-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div className={`social-platform-icon ${acc.platform}`} style={{ width: 40, height: 40, fontSize: 20, marginBottom: 0 }}>
-                      {PLATFORMS.find(p => p.key === acc.platform)?.icon || '\u{1F517}'}
+                    <div className={`social-platform-icon ${acc.platform}`}
+                      style={{ width: 40, height: 40, fontSize: 20, marginBottom: 0 }}>
+                      {getPlatformIcon(acc.platform)}
                     </div>
                     <div>
                       <div style={{ fontWeight: 600, color: 'var(--admin-text)' }}>{acc.account_name}</div>
                       <div style={{ fontSize: 12, color: 'var(--admin-text-muted)' }}>
-                        {acc.account_identifier}
-                        {' \u2022 '}
+                        {acc.account_identifier} {' \u2022 '}
                         <span className={`social-status-dot ${acc.status}`} />
                         {acc.status}
                       </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      className="social-action-btn"
-                      style={{ padding: '6px 12px', fontSize: 12 }}
-                      onClick={() => handleTestConnection(acc.id)}
-                    >
-                      Test
-                    </button>
-                    <button
-                      className="social-action-btn"
-                      style={{ padding: '6px 12px', fontSize: 12, color: '#ef4444' }}
-                      onClick={() => handleDisconnect(acc.id)}
-                    >
-                      Disconnect
-                    </button>
+                    <button className="social-action-btn" style={{ padding: '6px 12px', fontSize: 12 }}
+                      onClick={() => handleTestConnection(acc)}>Test</button>
+                    <button className="social-action-btn" style={{ padding: '6px 12px', fontSize: 12, color: '#ef4444' }}
+                      onClick={() => handleDisconnect(acc)}>Disconnect</button>
                   </div>
                 </div>
                 {acc.error_message && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>
-                    Error: {acc.error_message}
-                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>Error: {acc.error_message}</div>
                 )}
               </div>
             ))}
@@ -244,169 +334,71 @@ export default function SocialAccounts({ accounts, onRefresh }) {
         </>
       )}
 
-      {/* Setup Wizard Modal */}
-      {setupPlatform && (
+      {/* WhatsApp QR Modal */}
+      {showWAModal && (
+        <WhatsAppQRModal
+          getAuthHeaders={getAuthHeaders}
+          onClose={() => { setShowWAModal(false); onRefresh() }}
+          onConnected={() => { onRefresh() }}
+        />
+      )}
+
+      {/* Telegram Setup Modal */}
+      {setupPlatform === 'telegram' && (
         <div className="social-setup-modal" onClick={(e) => { if (e.target === e.currentTarget) resetSetup() }}>
           <div className="social-setup-content">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, color: 'var(--admin-text)' }}>
-                Connect {PLATFORMS.find(p => p.key === setupPlatform)?.name}
-              </h3>
+              <h3 style={{ margin: 0, color: 'var(--admin-text)' }}>Connect Telegram</h3>
               <button onClick={resetSetup} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', fontSize: 20, cursor: 'pointer' }}>
                 {'\u00D7'}
               </button>
             </div>
-
-            {setupPlatform === 'telegram' && (
-              <>
-                {setupStep === 1 && (
-                  <div className="social-setup-step">
-                    <h4>Step 1: Create a Telegram Bot</h4>
-                    <div style={{ color: 'var(--admin-text-muted)', fontSize: 13, lineHeight: 1.8 }}>
-                      <p><strong>1.</strong> Open Telegram and search for <strong>@BotFather</strong></p>
-                      <p><strong>2.</strong> Send <code style={{ background: 'var(--admin-bg)', padding: '2px 6px', borderRadius: 4 }}>/newbot</code></p>
-                      <p><strong>3.</strong> Choose a name (e.g., "Spark AI Support")</p>
-                      <p><strong>4.</strong> Choose a username (must end in <code style={{ background: 'var(--admin-bg)', padding: '2px 6px', borderRadius: 4 }}>bot</code>)</p>
-                      <p><strong>5.</strong> Copy the <strong>bot token</strong> that BotFather gives you</p>
-                    </div>
-                    <button className="social-send-btn" style={{ width: '100%', marginTop: 16 }} onClick={() => setSetupStep(2)}>
-                      I have my bot token
-                    </button>
-                  </div>
-                )}
-                {setupStep === 2 && (
-                  <div className="social-setup-step">
-                    <h4>Step 2: Enter Bot Details</h4>
-                    <div className="social-compose-field">
-                      <label>Bot Token</label>
-                      <input
-                        type="text"
-                        value={botToken}
-                        onChange={e => setBotToken(e.target.value)}
-                        placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-                        className="social-setup-input"
-                      />
-                    </div>
-                    <div className="social-compose-field">
-                      <label>Account Name (optional)</label>
-                      <input
-                        type="text"
-                        value={accountName}
-                        onChange={e => setAccountName(e.target.value)}
-                        placeholder="My Telegram Bot"
-                        className="social-setup-input"
-                      />
-                    </div>
-                    {error && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>{error}</div>}
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="social-action-btn" style={{ padding: '10px 20px' }} onClick={() => setSetupStep(1)}>
-                        Back
-                      </button>
-                      <button className="social-send-btn" style={{ flex: 1 }} onClick={handleConnect} disabled={connecting}>
-                        {connecting ? 'Connecting...' : 'Connect & Verify'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {setupStep === 3 && (
-                  <div className="social-setup-step" style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 48, marginBottom: 16 }}>{'\u2705'}</div>
-                    <h4 style={{ color: '#22c55e' }}>{success}</h4>
-                    <p style={{ color: 'var(--admin-text-muted)', fontSize: 13, lineHeight: 1.6 }}>
-                      Your Telegram bot is now connected. Webhook has been registered automatically.
-                      Messages sent to your bot will appear in the Inbox tab.
-                    </p>
-                    <button className="social-send-btn" style={{ marginTop: 16 }} onClick={resetSetup}>
-                      Done
-                    </button>
-                  </div>
-                )}
-              </>
+            {setupStep === 1 && (
+              <div className="social-setup-step">
+                <h4>Step 1: Create a Telegram Bot</h4>
+                <div style={{ color: 'var(--admin-text-muted)', fontSize: 13, lineHeight: 1.8 }}>
+                  <p><strong>1.</strong> Open Telegram and search for <strong>@BotFather</strong></p>
+                  <p><strong>2.</strong> Send <code style={{ background: 'var(--admin-bg)', padding: '2px 6px', borderRadius: 4 }}>/newbot</code></p>
+                  <p><strong>3.</strong> Choose a name (e.g., "Spark AI Support")</p>
+                  <p><strong>4.</strong> Choose a username (must end in <code style={{ background: 'var(--admin-bg)', padding: '2px 6px', borderRadius: 4 }}>bot</code>)</p>
+                  <p><strong>5.</strong> Copy the <strong>bot token</strong> that BotFather gives you</p>
+                </div>
+                <button className="social-send-btn" style={{ width: '100%', marginTop: 16 }} onClick={() => setSetupStep(2)}>
+                  I have my bot token
+                </button>
+              </div>
             )}
-
-            {setupPlatform === 'whatsapp' && (
-              <>
-                {setupStep === 1 && (
-                  <div className="social-setup-step">
-                    <h4>Step 1: Get Twilio Credentials</h4>
-                    <div style={{ color: 'var(--admin-text-muted)', fontSize: 13, lineHeight: 1.8 }}>
-                      <p><strong>1.</strong> Go to <a href="https://console.twilio.com" target="_blank" rel="noreferrer" style={{ color: '#60a5fa' }}>Twilio Console</a></p>
-                      <p><strong>2.</strong> Find your <strong>Account SID</strong> and <strong>Auth Token</strong> on the dashboard</p>
-                      <p><strong>3.</strong> Go to <strong>Messaging {'>'} Senders {'>'} WhatsApp Senders</strong></p>
-                      <p><strong>4.</strong> Note your <strong>WhatsApp phone number</strong> (e.g., +14155238886)</p>
-                    </div>
-                    <button className="social-send-btn" style={{ width: '100%', marginTop: 16 }} onClick={() => setSetupStep(2)}>
-                      I have my Twilio credentials
-                    </button>
-                  </div>
-                )}
-                {setupStep === 2 && (
-                  <div className="social-setup-step">
-                    <h4>Step 2: Enter Twilio Details</h4>
-                    <div className="social-compose-field">
-                      <label>Account SID</label>
-                      <input type="text" value={accountSid} onChange={e => setAccountSid(e.target.value)}
-                             placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" className="social-setup-input" />
-                    </div>
-                    <div className="social-compose-field">
-                      <label>Auth Token</label>
-                      <input type="password" value={authToken} onChange={e => setAuthToken(e.target.value)}
-                             placeholder="Your Twilio auth token" className="social-setup-input" />
-                    </div>
-                    <div className="social-compose-field">
-                      <label>WhatsApp Phone Number</label>
-                      <input type="text" value={fromNumber} onChange={e => setFromNumber(e.target.value)}
-                             placeholder="+14155238886" className="social-setup-input" />
-                    </div>
-                    <div className="social-compose-field">
-                      <label>Account Name (optional)</label>
-                      <input type="text" value={accountName} onChange={e => setAccountName(e.target.value)}
-                             placeholder="WhatsApp Business" className="social-setup-input" />
-                    </div>
-                    {error && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>{error}</div>}
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="social-action-btn" style={{ padding: '10px 20px' }} onClick={() => setSetupStep(1)}>Back</button>
-                      <button className="social-send-btn" style={{ flex: 1 }} onClick={handleConnect} disabled={connecting}>
-                        {connecting ? 'Connecting...' : 'Connect'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {setupStep === 3 && (
-                  <div className="social-setup-step">
-                    <div style={{ textAlign: 'center', fontSize: 48, marginBottom: 16 }}>{'\u2705'}</div>
-                    <h4 style={{ color: '#22c55e', textAlign: 'center' }}>{success}</h4>
-                    {webhookUrl && (
-                      <div style={{ marginTop: 16 }}>
-                        <p style={{ color: 'var(--admin-text)', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-                          Important: Set this webhook URL in your Twilio Console
-                        </p>
-                        <div style={{
-                          background: 'var(--admin-bg)', padding: '10px 14px', borderRadius: 8,
-                          border: '1px solid var(--admin-border)', fontSize: 12, wordBreak: 'break-all',
-                          color: '#60a5fa', fontFamily: 'monospace',
-                        }}>
-                          {webhookUrl}
-                        </div>
-                        <p style={{ color: 'var(--admin-text-muted)', fontSize: 12, marginTop: 8, lineHeight: 1.6 }}>
-                          Go to Twilio Console {'>'} Messaging {'>'} WhatsApp Senders {'>'} Your Number {'>'}
-                          Set this URL as the "When a message comes in" webhook (HTTP POST).
-                        </p>
-                        <button
-                          className="social-action-btn"
-                          style={{ marginTop: 8, padding: '6px 12px', fontSize: 12 }}
-                          onClick={() => { navigator.clipboard.writeText(webhookUrl); alert('Copied!') }}
-                        >
-                          Copy URL
-                        </button>
-                      </div>
-                    )}
-                    <button className="social-send-btn" style={{ width: '100%', marginTop: 16 }} onClick={resetSetup}>
-                      Done
-                    </button>
-                  </div>
-                )}
-              </>
+            {setupStep === 2 && (
+              <div className="social-setup-step">
+                <h4>Step 2: Enter Bot Details</h4>
+                <div className="social-compose-field">
+                  <label>Bot Token</label>
+                  <input type="text" value={botToken} onChange={e => setBotToken(e.target.value)}
+                    placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" className="social-setup-input" />
+                </div>
+                <div className="social-compose-field">
+                  <label>Account Name (optional)</label>
+                  <input type="text" value={accountName} onChange={e => setAccountName(e.target.value)}
+                    placeholder="My Telegram Bot" className="social-setup-input" />
+                </div>
+                {error && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="social-action-btn" style={{ padding: '10px 20px' }} onClick={() => setSetupStep(1)}>Back</button>
+                  <button className="social-send-btn" style={{ flex: 1 }} onClick={handleConnect} disabled={connecting}>
+                    {connecting ? 'Connecting...' : 'Connect & Verify'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {setupStep === 3 && (
+              <div className="social-setup-step" style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>{'\u2705'}</div>
+                <h4 style={{ color: '#22c55e' }}>{success}</h4>
+                <p style={{ color: 'var(--admin-text-muted)', fontSize: 13, lineHeight: 1.6 }}>
+                  Your Telegram bot is connected. Messages will appear in the Inbox.
+                </p>
+                <button className="social-send-btn" style={{ marginTop: 16 }} onClick={resetSetup}>Done</button>
+              </div>
             )}
           </div>
         </div>

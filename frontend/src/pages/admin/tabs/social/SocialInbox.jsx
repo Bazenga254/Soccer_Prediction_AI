@@ -4,6 +4,7 @@ import { useAdmin } from '../../context/AdminContext'
 const PLATFORM_ICONS = {
   telegram: '\u{1F4AC}',
   whatsapp: '\u{1F4F1}',
+  whatsapp_qr: '\u{1F4F1}',
   facebook: '\u{1F30D}',
   instagram: '\u{1F4F7}',
   x: '\u{1D54F}',
@@ -236,7 +237,7 @@ function GifPicker({ onSelect, onClose }) {
             <button
               key={gif.id}
               className="social-gif-btn"
-              onClick={() => onSelect(getGifUrl(gif, 'full'), getGifUrl(gif, 'preview'))}
+              onClick={() => onSelect(getGifUrl(gif, 'full'))}
             >
               <img src={getGifUrl(gif, 'preview')} alt={gif.title || 'GIF'} loading="lazy" />
             </button>
@@ -398,7 +399,7 @@ export default function SocialInbox({ accounts }) {
   }
 
   // ─── GIF send ───
-  const sendGif = async (gifUrl, previewUrl) => {
+  const sendGif = async (gifUrl) => {
     if (!activeConvId || sending) return
     setShowGifPicker(false)
     setSending(true)

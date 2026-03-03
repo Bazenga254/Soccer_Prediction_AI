@@ -2781,6 +2781,30 @@ async def social_send_message(
             else:
                 delivery_status = "failed"
 
+        elif conv["platform"] == "whatsapp_qr":
+            import aiohttp
+            wa_url = "http://127.0.0.1:3002"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    if full_media_url:
+                        payload = {"to": conv["contact_identifier"], "url": full_media_url,
+                                   "caption": content_text}
+                        async with session.post(f"{wa_url}/send-media", json=payload,
+                                                timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                            result = await resp.json()
+                    else:
+                        payload = {"to": conv["contact_identifier"], "text": content_text}
+                        async with session.post(f"{wa_url}/send", json=payload,
+                                                timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                            result = await resp.json()
+                if result.get("ok"):
+                    platform_msg_id = result.get("message_id", "")
+                    delivery_status = "sent"
+                else:
+                    delivery_status = "failed"
+            except Exception as e:
+                delivery_status = "failed"
+
     except Exception as e:
         delivery_status = "failed"
 

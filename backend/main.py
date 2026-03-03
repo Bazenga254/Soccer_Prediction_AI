@@ -6111,6 +6111,206 @@ async def whatsapp_social_webhook(account_id: int, request: Request):
     return "<Response></Response>"
 
 
+# ─── WhatsApp QR Service (proxy to Node.js on port 3002) ───────────────────
+
+WA_SERVICE_URL = "http://127.0.0.1:3002"
+
+async def _wa_get(path: str):
+    import aiohttp
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{WA_SERVICE_URL}{path}", timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                return await resp.json(), resp.status
+    except Exception as e:
+        return {"error": str(e)}, 503
+
+async def _wa_post(path: str, data: dict = None):
+    import aiohttp
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{WA_SERVICE_URL}{path}", json=data or {}, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                return await resp.json(), resp.status
+    except Exception as e:
+        return {"error": str(e)}, 503
+
+
+@app.get("/api/admin/social/whatsapp/qr")
+async def whatsapp_get_qr(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get WhatsApp QR code or connection status."""
+    from admin_routes import _check_admin_auth
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="social_media", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    data, status = await _wa_get("/qr")
+    return data
+
+
+@app.get("/api/admin/social/whatsapp/status")
+async def whatsapp_status(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Get WhatsApp connection status."""
+    from admin_routes import _check_admin_auth
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="social_media", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    data, status = await _wa_get("/status")
+    return data
+
+
+@app.post("/api/admin/social/whatsapp/disconnect")
+async def whatsapp_disconnect(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Disconnect WhatsApp and clear session."""
+    from admin_routes import _check_admin_auth
+    auth = _check_admin_auth(x_admin_password, authorization, required_module="social_media", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # Remove from social_accounts DB
+    wa_account = None
+    all_accounts = social_media_hub.get_accounts()
+    for acc in all_accounts:
+        if acc["platform"] == "whatsapp_qr":
+            wa_account = acc
+            break
+    if wa_account:
+        social_media_hub.disconnect_account(wa_account["id"])
+
+    data, status = await _wa_post("/disconnect")
+    return data
+
+
+# ─── Internal endpoints called by Node.js WhatsApp service ───
+
+@app.post("/api/internal/whatsapp/connected")
+async def whatsapp_internal_connected(request: Request):
+    """Called by Node.js when WhatsApp connects successfully."""
+    body = await request.json()
+    phone = body.get("phone", "")
+    name = body.get("name", "WhatsApp")
+
+    # Upsert account in social_accounts
+    all_accounts = social_media_hub.get_accounts()
+    existing = None
+    for acc in all_accounts.get("accounts", []):
+        if acc["platform"] == "whatsapp_qr":
+            existing = acc
+            break
+
+    if existing:
+        social_media_hub.update_account_status(existing["id"], "connected", {
+            "phone": phone, "display_name": name
+        })
+        print(f"[WhatsApp QR] Updated account: {name} (+{phone})")
+    else:
+        social_media_hub.create_account(
+            platform="whatsapp_qr",
+            account_name=name or f"WhatsApp +{phone}",
+            account_identifier=f"+{phone}",
+            credentials={"phone": phone, "display_name": name},
+            webhook_url="",
+            webhook_secret="",
+        )
+        print(f"[WhatsApp QR] Created new account: {name} (+{phone})")
+    return {"ok": True}
+
+
+@app.post("/api/internal/whatsapp/disconnected")
+async def whatsapp_internal_disconnected(request: Request):
+    """Called by Node.js when WhatsApp disconnects."""
+    all_accounts = social_media_hub.get_accounts()
+    for acc in all_accounts:
+        if acc["platform"] == "whatsapp_qr":
+            social_media_hub.update_account_status(acc["id"], "disconnected", {})
+            break
+    return {"ok": True}
+
+
+@app.post("/api/internal/whatsapp/store-media")
+async def whatsapp_store_media(request: Request):
+    """Store base64 media from Node.js and return a local URL."""
+    import base64
+    body = await request.json()
+    data_b64 = body.get("data", "")
+    mimetype = body.get("mimetype", "application/octet-stream")
+    filename = body.get("filename", f"wa_{uuid.uuid4().hex[:8]}")
+
+    # Determine extension from mimetype
+    ext_map = {
+        "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp",
+        "video/mp4": ".mp4", "video/3gpp": ".3gp", "audio/ogg": ".ogg", "audio/mpeg": ".mp3",
+        "application/pdf": ".pdf",
+    }
+    ext = ext_map.get(mimetype, "")
+    if not ext and "." in filename:
+        ext = "." + filename.rsplit(".", 1)[-1]
+
+    safe_name = f"wa_{uuid.uuid4().hex[:12]}{ext}"
+    upload_dir = Path(__file__).parent / "uploads" / "social"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / safe_name
+
+    try:
+        raw = base64.b64decode(data_b64)
+        with open(file_path, "wb") as f:
+            f.write(raw)
+        return {"ok": True, "url": f"/uploads/social/{safe_name}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/internal/whatsapp/message")
+async def whatsapp_internal_message(request: Request):
+    """Receive incoming WhatsApp message from Node.js service."""
+    body = await request.json()
+
+    # Find the whatsapp_qr account
+    wa_account = None
+    all_accounts = social_media_hub.get_accounts()
+    for acc in all_accounts:
+        if acc["platform"] == "whatsapp_qr":
+            wa_account = acc
+            break
+
+    if not wa_account:
+        return {"ok": False, "error": "No WhatsApp account registered"}
+
+    account_id = wa_account["id"]
+    chat_id = body.get("chat_id", body.get("from", ""))
+    is_group = body.get("is_group", False)
+    contact_name = body.get("chat_name") if is_group else body.get("from_name", chat_id)
+
+    conv = social_media_hub.get_or_create_conversation(
+        account_id=account_id,
+        platform="whatsapp_qr",
+        contact_id=chat_id,
+        contact_name=contact_name or chat_id,
+        metadata={"is_group": is_group, "chat_name": body.get("chat_name", "")},
+    )
+
+    parsed = {
+        "chat_id": chat_id,
+        "sender_name": body.get("from_name", ""),
+        "sender_username": body.get("from", "").split("@")[0],
+        "sender_identifier": body.get("from", ""),
+        "content_type": body.get("media_type", "text"),
+        "content_text": body.get("body", ""),
+        "media_url": body.get("media_url") or "",
+        "media_filename": body.get("media_filename") or "",
+        "media_mime_type": "",
+        "media_file_id": "",
+        "platform_message_id": body.get("message_id", ""),
+        "metadata": {"is_group": is_group},
+    }
+
+    msg = social_media_hub.store_inbound_message(conv["id"], "whatsapp_qr", parsed)
+    social_media_hub.notify_social_inbox({
+        "type": "inbound",
+        "message": msg,
+        "conversation_id": conv["id"],
+        "platform": "whatsapp_qr",
+    })
+    return {"ok": True}
+
+
 # Serve uploaded social media files
 SOCIAL_UPLOADS_DIR = Path(__file__).parent / "uploads" / "social"
 if not SOCIAL_UPLOADS_DIR.exists():

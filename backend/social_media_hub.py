@@ -254,6 +254,11 @@ def update_account_status(account_id: int, status: str, error_message: str = "")
     conn.close()
 
 
+def disconnect_account(account_id: int):
+    """Mark account as disconnected (alias for status update)."""
+    update_account_status(account_id, "disconnected")
+
+
 def delete_account(account_id: int):
     conn = _get_db()
     conn.execute("DELETE FROM social_accounts WHERE id = ?", (account_id,))
