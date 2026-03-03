@@ -32,6 +32,15 @@ function formatTime(dateStr) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+function getMediaType(file) {
+  if (!file) return 'document'
+  const mime = file.type || ''
+  if (mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('video/')) return 'video'
+  if (mime.startsWith('audio/')) return 'audio'
+  return 'document'
+}
+
 export default function SocialInbox({ accounts }) {
   const { getAuthHeaders } = useAdmin()
   const [conversations, setConversations] = useState([])
@@ -45,8 +54,11 @@ export default function SocialInbox({ accounts }) {
   const [loadingMsgs, setLoadingMsgs] = useState(false)
   const [templates, setTemplates] = useState([])
   const [showTemplates, setShowTemplates] = useState(false)
+  // Attachment state
+  const [attachment, setAttachment] = useState(null) // { file, preview, mediaType, uploading, uploadedUrl }
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
+  const fileInputRef = useRef(null)
   const sseRef = useRef(null)
 
   // Fetch conversations
@@ -151,18 +163,74 @@ export default function SocialInbox({ accounts }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Send message
+  // Handle file selection for attachment
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+
+    const mediaType = getMediaType(file)
+    let preview = null
+    if (mediaType === 'image') {
+      preview = URL.createObjectURL(file)
+    } else if (mediaType === 'video') {
+      preview = URL.createObjectURL(file)
+    }
+
+    setAttachment({ file, preview, mediaType, uploading: true, uploadedUrl: null, error: null })
+
+    // Upload immediately
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const hdrs = { ...getAuthHeaders() }
+      delete hdrs['Content-Type']
+      const res = await fetch('/api/admin/social/media/upload', {
+        method: 'POST',
+        headers: hdrs,
+        body: formData,
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAttachment(prev => prev ? { ...prev, uploading: false, uploadedUrl: data.media.file_url } : null)
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setAttachment(prev => prev ? { ...prev, uploading: false, error: err.detail || 'Upload failed' } : null)
+      }
+    } catch (err) {
+      setAttachment(prev => prev ? { ...prev, uploading: false, error: err.message } : null)
+    }
+  }
+
+  const removeAttachment = () => {
+    if (attachment?.preview) URL.revokeObjectURL(attachment.preview)
+    setAttachment(null)
+  }
+
+  // Send message (text and/or attachment)
   const handleSend = async () => {
-    if (!messageText.trim() || !activeConvId || sending) return
+    const hasText = messageText.trim().length > 0
+    const hasAttachment = attachment?.uploadedUrl
+    if ((!hasText && !hasAttachment) || !activeConvId || sending) return
+
     setSending(true)
     try {
+      const body = {
+        content_text: messageText.trim(),
+        content_type: hasAttachment ? attachment.mediaType : 'text',
+      }
+      if (hasAttachment) {
+        body.media_url = attachment.uploadedUrl
+      }
+
       const res = await fetch(`/api/admin/social/conversations/${activeConvId}/send`, {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content_text: messageText.trim(), content_type: 'text' })
+        body: JSON.stringify(body)
       })
       if (res.ok) {
         setMessageText('')
+        removeAttachment()
         fetchMessages(activeConvId)
         fetchConversations()
         textareaRef.current?.focus()
@@ -309,16 +377,22 @@ export default function SocialInbox({ accounts }) {
               ) : (
                 messages.map(msg => (
                   <div key={msg.id} className={`social-msg ${msg.direction}`}>
+                    {msg.direction === 'inbound' && msg.sender_name && (
+                      <div className="social-msg-sender">{msg.sender_name}</div>
+                    )}
                     {msg.media_url && (
                       <div className="social-msg-media">
                         {msg.content_type === 'image' ? (
                           <img src={msg.media_url} alt="" onClick={() => window.open(msg.media_url, '_blank')} />
                         ) : msg.content_type === 'video' ? (
                           <video src={msg.media_url} controls style={{ maxWidth: 300, borderRadius: 8 }} />
+                        ) : msg.content_type === 'audio' ? (
+                          <audio src={msg.media_url} controls style={{ maxWidth: 280 }} />
                         ) : (
                           <a href={msg.media_url} target="_blank" rel="noreferrer"
-                             style={{ color: '#60a5fa', fontSize: 12 }}>
-                            {'\u{1F4CE}'} {msg.media_filename || 'Download file'}
+                             className="social-msg-file-link">
+                            <span>{'\u{1F4CE}'}</span>
+                            <span>{msg.media_filename || 'Download file'}</span>
                           </a>
                         )}
                       </div>
@@ -343,7 +417,53 @@ export default function SocialInbox({ accounts }) {
               <div ref={messagesEndRef} />
             </div>
 
+            {/* Attachment Preview */}
+            {attachment && (
+              <div className="social-attachment-preview">
+                <div className="social-attachment-content">
+                  {attachment.mediaType === 'image' && attachment.preview ? (
+                    <img src={attachment.preview} alt="" className="social-attachment-thumb" />
+                  ) : attachment.mediaType === 'video' && attachment.preview ? (
+                    <video src={attachment.preview} className="social-attachment-thumb" />
+                  ) : (
+                    <div className="social-attachment-file-icon">
+                      {attachment.mediaType === 'audio' ? '\u{1F3B5}' : '\u{1F4C4}'}
+                    </div>
+                  )}
+                  <div className="social-attachment-info">
+                    <span className="social-attachment-name">{attachment.file.name}</span>
+                    <span className="social-attachment-size">
+                      {(attachment.file.size / 1024).toFixed(0)} KB
+                      {attachment.uploading && ' \u2022 Uploading...'}
+                      {attachment.error && ` \u2022 ${attachment.error}`}
+                      {attachment.uploadedUrl && !attachment.uploading && ' \u2022 Ready'}
+                    </span>
+                  </div>
+                </div>
+                <button className="social-attachment-remove" onClick={removeAttachment}>{'\u00D7'}</button>
+              </div>
+            )}
+
             <div className="social-chat-input">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                hidden
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
+                onChange={handleFileSelect}
+              />
+
+              {/* Attach button */}
+              <button
+                className="social-action-btn"
+                onClick={() => fileInputRef.current?.click()}
+                title="Attach file"
+                disabled={!!attachment?.uploading}
+              >
+                {'\u{1F4CE}'}
+              </button>
+
               <div style={{ position: 'relative', flex: 1 }}>
                 <textarea
                   ref={textareaRef}
@@ -375,7 +495,7 @@ export default function SocialInbox({ accounts }) {
               <button
                 className="social-send-btn"
                 onClick={handleSend}
-                disabled={!messageText.trim() || sending}
+                disabled={(!messageText.trim() && !attachment?.uploadedUrl) || sending || attachment?.uploading}
               >
                 {sending ? '\u23F3' : 'Send'}
               </button>

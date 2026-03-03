@@ -2727,6 +2727,12 @@ async def social_send_message(
     if not account or account["status"] != "connected":
         raise HTTPException(status_code=400, detail="Social media account is not connected")
 
+    # Convert relative media URLs to absolute for platform APIs
+    full_media_url = media_url
+    if media_url and media_url.startswith("/"):
+        base = os.environ.get("WEBHOOK_BASE_URL", "https://spark-ai-prediction.com")
+        full_media_url = f"{base}{media_url}"
+
     platform_msg_id = ""
     delivery_status = "pending"
 
@@ -2736,12 +2742,14 @@ async def social_send_message(
             creds = account.get("credentials", {})
             service = TelegramService(creds.get("bot_token", ""), "")
 
-            if media_url and content_type == "image":
-                result = await service.send_photo(conv["contact_identifier"], media_url, content_text)
-            elif media_url and content_type == "video":
-                result = await service.send_video(conv["contact_identifier"], media_url, content_text)
-            elif media_url:
-                result = await service.send_document(conv["contact_identifier"], media_url, content_text)
+            if full_media_url and content_type == "image":
+                result = await service.send_photo(conv["contact_identifier"], full_media_url, content_text)
+            elif full_media_url and content_type == "video":
+                result = await service.send_video(conv["contact_identifier"], full_media_url, content_text)
+            elif full_media_url and content_type == "audio":
+                result = await service.send_document(conv["contact_identifier"], full_media_url, content_text)
+            elif full_media_url:
+                result = await service.send_document(conv["contact_identifier"], full_media_url, content_text)
             else:
                 result = await service.send_message(conv["contact_identifier"], content_text)
 
@@ -2760,8 +2768,8 @@ async def social_send_message(
                 creds.get("from_number", ""),
             )
 
-            if media_url:
-                result = await service.send_media(conv["contact_identifier"], media_url, content_text)
+            if full_media_url:
+                result = await service.send_media(conv["contact_identifier"], full_media_url, content_text)
             else:
                 result = await service.send_message(conv["contact_identifier"], content_text)
 

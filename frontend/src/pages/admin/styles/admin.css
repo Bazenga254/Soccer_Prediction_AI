@@ -5346,6 +5346,112 @@
   cursor: not-allowed;
 }
 
+/* Attachment preview bar */
+.social-attachment-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--admin-surface);
+  border-top: 1px solid var(--admin-border);
+  gap: 10px;
+}
+
+.social-attachment-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.social-attachment-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--admin-border);
+}
+
+.social-attachment-file-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: var(--admin-bg);
+  border-radius: 6px;
+  border: 1px solid var(--admin-border);
+}
+
+.social-attachment-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.social-attachment-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--admin-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.social-attachment-size {
+  font-size: 11px;
+  color: var(--admin-text-muted);
+}
+
+.social-attachment-remove {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-bg);
+  color: var(--admin-text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.social-attachment-remove:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+/* Message sender name (group chats) */
+.social-msg-sender {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--admin-accent);
+  margin-bottom: 2px;
+}
+
+/* File attachment link in messages */
+.social-msg-file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  color: #60a5fa;
+  font-size: 12px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.social-msg-file-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 /* Templates dropdown */
 .social-templates-dropdown {
   position: absolute;
