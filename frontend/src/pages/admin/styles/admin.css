@@ -5059,7 +5059,8 @@
 /* Inbox layout */
 .social-inbox {
   display: flex;
-  height: calc(100vh - 280px);
+  height: calc(100vh - 170px);
+  min-height: 600px;
   border: 1px solid var(--admin-border);
   border-radius: 12px;
   overflow: hidden;
@@ -5240,10 +5241,10 @@
 }
 
 .social-msg {
-  max-width: 70%;
-  padding: 8px 12px;
+  max-width: 75%;
+  padding: 10px 14px;
   border-radius: 12px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   word-break: break-word;
 }
@@ -5263,11 +5264,21 @@
 }
 
 .social-msg-media img {
-  max-width: 300px;
-  max-height: 250px;
-  border-radius: 8px;
+  max-width: 420px;
+  max-height: 380px;
+  width: 100%;
+  border-radius: 10px;
   cursor: pointer;
   margin-bottom: 4px;
+  display: block;
+  object-fit: contain;
+}
+
+.social-msg-media video {
+  max-width: 420px;
+  max-height: 360px;
+  border-radius: 10px;
+  display: block;
 }
 
 .social-msg-meta {
