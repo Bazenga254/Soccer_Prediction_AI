@@ -5294,17 +5294,19 @@
 
 .social-chat-textarea {
   flex: 1;
-  padding: 8px 12px;
+  width: 100%;
+  padding: 10px 14px;
   background: var(--admin-bg);
   border: 1px solid var(--admin-border);
   border-radius: 8px;
   color: var(--admin-text);
-  font-size: 13px;
+  font-size: 14px;
   font-family: inherit;
   resize: none;
-  max-height: 120px;
-  min-height: 40px;
+  max-height: 180px;
+  min-height: 80px;
   box-sizing: border-box;
+  line-height: 1.5;
 }
 
 .social-chat-textarea::placeholder { color: var(--admin-text-muted); }

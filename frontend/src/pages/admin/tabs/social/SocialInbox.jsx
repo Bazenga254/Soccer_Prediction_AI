@@ -650,7 +650,7 @@ export default function SocialInbox({ accounts }) {
                   value={messageText}
                   onChange={e => setMessageText(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  rows={1}
+                  rows={3}
                 />
                 {showTemplates && templates.length > 0 && (
                   <div className="social-templates-dropdown">
