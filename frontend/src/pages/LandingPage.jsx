@@ -139,13 +139,13 @@ export default function LandingPage() {
   const FREE_FEATURES = [
     'Live match scores & updates',
     'Match tracking & goal alerts',
-    'Community predictions feed',
+    'Community analysis feed',
     '40+ leagues worldwide',
     'Account activation: KES 35',
   ]
 
   const PRO_FEATURES = pricing?.plans?.[weeklyKey]?.features || [
-    '20 AI match predictions per day',
+    '20 AI match analyses per day',
     '5 multi-match analyses per day',
     '10 AI chat prompts per day',
     'Statistical comparison across leagues',
@@ -153,14 +153,14 @@ export default function LandingPage() {
     'Live score tracking & goal alerts',
     '40+ leagues worldwide',
     'Chrome extension access',
-    'Community & paid predictions',
+    'Community & premium insights',
     'Ad-free experience',
     'Priority support',
   ]
 
   const MONTHLY_FEATURES = pricing?.plans?.[monthlyKey]?.features || [
     ...PRO_FEATURES,
-    'Sell your predictions & earn money',
+    'Share your analysis & earn money',
     'Save 20% vs weekly',
   ]
 
@@ -178,7 +178,7 @@ export default function LandingPage() {
             "name": "Spark AI Prediction",
             "url": "https://spark-ai-prediction.com",
             "logo": "https://spark-ai-prediction.com/pwa-512x512.png",
-            "description": "AI-powered soccer predictions and analysis platform covering 50+ leagues worldwide"
+            "description": "AI-powered soccer analysis and match insights platform covering 50+ leagues worldwide"
           },
           {
             "@context": "https://schema.org",
@@ -316,7 +316,7 @@ Get Started
                 </li>
                 <li className="landing-feature-item">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  AI predictions from {costPrediction} cr
+                  AI analyses from {costPrediction} cr
                 </li>
                 <li className="landing-feature-item">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -417,7 +417,7 @@ Get Started
                       <div className="landing-paygo-breakdown-item">
                         <span className="landing-paygo-breakdown-icon">⚽</span>
                         <span className="landing-paygo-breakdown-value">{Math.floor(calculatedCredits / costPrediction)}</span>
-                        <span className="landing-paygo-breakdown-name">Predictions</span>
+                        <span className="landing-paygo-breakdown-name">Match Analyses</span>
                         <span className="landing-paygo-breakdown-cost">{costPrediction} cr each</span>
                       </div>
                       <div className="landing-paygo-breakdown-item">
@@ -465,7 +465,7 @@ Get Started
                     <span>{costPrediction} credits <span className="landing-paygo-cost-money">({currencySymbol}{isKenyan ? (costPrediction / creditRate).toFixed(0) : (costPrediction / creditRate).toFixed(2)})</span></span>
                   </div>
                   <div className="landing-paygo-cost-row">
-                    <span>📋 Jackpot match</span>
+                    <span>📋 Multi-match analysis</span>
                     <span>{costJackpotMatch} credits <span className="landing-paygo-cost-money">({currencySymbol}{isKenyan ? (costJackpotMatch / creditRate).toFixed(0) : (costJackpotMatch / creditRate).toFixed(2)})</span></span>
                   </div>
                   <div className="landing-paygo-cost-row">
