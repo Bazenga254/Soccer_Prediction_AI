@@ -36,7 +36,7 @@
     "getStarted": "Get Started",
     "liveScores": "Live Scores",
     "predictions": "Predictions",
-    "jackpot": "Jackpot Analyzer",
+    "jackpot": "Multi-Match Analyzer",
     "myAnalysis": "My Analysis",
     "searchLeagues": "Search leagues...",
     "noLeaguesFound": "No leagues found",
@@ -74,8 +74,8 @@
     "feature2Desc": "Real-time match scores and updates across 50+ football leagues worldwide. Never miss a moment.",
     "feature3Title": "Community Marketplace",
     "feature3Desc": "Share your predictions, discover top analysts, rate and comment on community picks. Build your reputation.",
-    "feature4Title": "Odds Comparison",
-    "feature4Desc": "Compare odds from multiple bookmakers side by side. Find the best value across markets instantly.",
+    "feature4Title": "Statistical Comparison",
+    "feature4Desc": "Compare statistical insights across leagues side by side. Find the best value and trends instantly.",
     "feature5Title": "Player Impact Analysis",
     "feature5Desc": "See how key player injuries, suspensions, and form affect match outcomes with detailed player stats.",
     "feature6Title": "Risk Assessment",
@@ -84,8 +84,8 @@
     "feature7Desc": "Full prediction history with accuracy metrics. Track your performance and improve over time.",
     "feature8Title": "Advanced Analytics",
     "feature8Desc": "Deep statistical models, trend analysis, and comprehensive data visualizations for informed decisions.",
-    "feature9Title": "Value Betting Insights",
-    "feature9Desc": "Find bets where the odds exceed the true probability. Maximize your edge with data-driven value picks.",
+    "feature9Title": "Value Analysis Insights",
+    "feature9Desc": "Identify matches where statistical patterns suggest higher probability outcomes. Maximize your insight with data-driven analysis.",
     "step1Title": "Create Your Account",
     "step1Desc": "Sign up for free in seconds. No credit card required.",
     "step2Title": "Pick a Match",
@@ -103,18 +103,18 @@
     "getProWeekly": "Get Pro Weekly",
     "getProMonthly": "Get Pro Monthly",
     "freeFeature1": "3 match analyses per 24h",
-    "freeFeature2": "2 jackpot analyses, then 1 per 72h",
+    "freeFeature2": "2 multi-match analyses, then 1 per 72h",
     "freeFeature3": "10 AI chat prompts",
     "freeFeature4": "Basic H2H statistics",
     "freeFeature5": "1 community share per day",
     "proFeature1": "Unlimited match analyses",
-    "proFeature2": "Unlimited jackpot analyses",
+    "proFeature2": "Unlimited multi-match analyses",
     "proFeature3": "10 AI chat prompts per day",
-    "proFeature4": "Advanced analytics & value betting",
+    "proFeature4": "Advanced analytics & value insights",
     "proFeature5": "Ad-free experience",
     "proFeature6": "Priority support",
     "advancedAnalytics": "Advanced analytics",
-    "valueBettingInsights": "Value betting insights",
+    "valueBettingInsights": "Value analysis insights",
     "goToSlide": "Go to slide {{number}}",
     "termsOfService": "Terms of Service"
   },
@@ -327,14 +327,14 @@
     "fromDeposit": "From $1",
     "deposit": "deposit",
     "matchAnalysis": "Match Analysis",
-    "jackpotAnalysis": "Jackpot Analysis",
+    "jackpotAnalysis": "Multi-Match Analysis",
     "freeFeature1": "3 match analyses per 24h",
-    "freeFeature2": "2 jackpot analyses, then 1 per 72h",
+    "freeFeature2": "2 multi-match analyses, then 1 per 72h",
     "freeFeature3": "10 AI chat prompts",
     "freeFeature4": "Basic H2H statistics",
     "freeFeature5": "1 community share per day",
     "advancedAnalytics": "Advanced analytics",
-    "valueBetting": "Value betting insights",
+    "valueBetting": "Value analysis insights",
     "adFree": "Ad-free experience",
     "unlockAnalysis": "Unlock any analysis instantly",
     "payWhenNeeded": "Pay only when you need it",
@@ -406,7 +406,7 @@
   "community": {
     "title": "Predictions",
     "subtitle": "See what other predictors are picking",
-    "disclaimer": "These predictions can be risky. Bet at your own risk. Company will not be liable for any damages.",
+    "disclaimer": "Predictions are for informational and entertainment purposes only. Always do your own research before making decisions.",
     "free": "Free",
     "paid": "Paid",
     "myPosts": "My Posts",
@@ -416,7 +416,7 @@
     "topRated": "Top Rated",
     "allPredictions": "All Predictions",
     "premiumPicks": "Premium Picks",
-    "liveBets": "Live Bets",
+    "liveBets": "Live Picks",
     "upcomingMatches": "Upcoming Matches",
     "sharePrediction": "Share Prediction",
     "searchPredictions": "Search predictions...",
@@ -536,7 +536,7 @@
     "recentForm": "Recent Form",
     "standings": "Standings",
     "injuries": "Injuries",
-    "odds": "Odds",
+    "odds": "Statistics",
     "homeWin": "Home Win",
     "draw": "Draw",
     "awayWin": "Away Win",
@@ -561,23 +561,23 @@
     "chatWithAI": "Chat with AI about this match",
     "typeQuestion": "Ask about this match...",
     "aiThinking": "AI is thinking...",
-    "addToBetSlip": "Add to Bet Slip",
+    "addToBetSlip": "Add to Pick Slip",
     "sharePrediction": "Share Prediction"
   },
   "betSlip": {
-    "title": "Bet Slip",
-    "empty": "Your bet slip is empty",
-    "addMatches": "Click on any probability to add it to your bet slip",
+    "title": "Pick Slip",
+    "empty": "Your pick slip is empty",
+    "addMatches": "Click on any probability to add it to your pick slip",
     "remove": "Remove",
     "clearAll": "Clear All",
-    "totalOdds": "Total Odds",
+    "totalOdds": "Combined Probability",
     "stake": "Stake",
     "potentialReturn": "Potential Return",
     "selections": "selections",
     "single": "Single",
     "accumulator": "Accumulator",
     "copyToClipboard": "Copy to Clipboard",
-    "slipCopied": "Bet slip copied!"
+    "slipCopied": "Pick slip copied!"
   },
   "creator": {
     "dashboard": "Creator Dashboard",
@@ -644,14 +644,14 @@
     "deletePrediction": "Delete"
   },
   "jackpot": {
-    "title": "Jackpot Analyzer",
-    "analyze": "Analyze Jackpot",
+    "title": "Multi-Match Analyzer",
+    "analyze": "Analyze Matches",
     "analyzing": "Analyzing...",
-    "pasteGames": "Paste your jackpot games below",
+    "pasteGames": "Paste your match selections below",
     "placeholder": "Enter matches (one per line):\nTeam A vs Team B\nTeam C vs Team D",
     "results": "Results",
     "overallConfidence": "Overall Confidence",
-    "noGames": "Enter your jackpot matches to get AI-powered analysis"
+    "noGames": "Enter your match selections to get AI-powered analysis"
   },
   "myAnalysis": {
     "title": "My Analysis",
@@ -794,16 +794,16 @@
   },
   "seo": {
     "landing": {
-      "title": "AI Soccer Predictions, Live Scores & Betting Analysis",
-      "description": "Get accurate AI soccer predictions, live scores, and betting analysis for 50+ football leagues worldwide. Free daily predictions powered by machine learning."
+      "title": "AI Soccer Analysis, Live Scores & Match Insights",
+      "description": "Get accurate AI soccer analysis, live scores, and match insights for 50+ football leagues worldwide. Free daily analysis powered by machine learning."
     },
     "today": {
       "title": "Soccer Predictions Today - Free AI Picks & Tips",
       "description": "Today's AI-powered soccer predictions across Premier League, La Liga, Serie A, Bundesliga, and 50+ leagues. Free daily picks with match analysis."
     },
     "blog": {
-      "title": "Soccer Betting Tips & Match Analysis Blog",
-      "description": "Expert soccer betting tips, prediction strategies, and match analysis articles. Improve your predictions with data-driven insights and AI analysis."
+      "title": "Soccer Match Insights & Analysis Blog",
+      "description": "Expert soccer analysis, match strategies, and in-depth articles. Improve your insights with data-driven analysis and AI-powered tools."
     },
     "docs": {
       "title": "Documentation & Help Guide",
@@ -815,7 +815,7 @@
     },
     "league": {
       "titleTemplate": "{{leagueName}} Predictions Today - AI Tips & Analysis",
-      "descriptionTemplate": "AI-powered predictions for today's {{leagueName}} matches. Accurate forecasts, odds analysis, and betting tips for upcoming {{leagueName}} fixtures."
+      "descriptionTemplate": "AI-powered predictions for today's {{leagueName}} matches. Accurate forecasts, statistical analysis, and match insights for upcoming {{leagueName}} fixtures."
     },
     "blogArticle": {
       "titleSuffix": "Spark AI Blog"

@@ -146,10 +146,10 @@ export default function LandingPage() {
 
   const PRO_FEATURES = pricing?.plans?.[weeklyKey]?.features || [
     '20 AI match predictions per day',
-    '5 jackpot analyses per day',
+    '5 multi-match analyses per day',
     '10 AI chat prompts per day',
-    'Odds comparison across bookmakers',
-    'Advanced analytics & value betting',
+    'Statistical comparison across leagues',
+    'Advanced analytics & value insights',
     'Live score tracking & goal alerts',
     '40+ leagues worldwide',
     'Chrome extension access',
@@ -320,7 +320,7 @@ Get Started
                 </li>
                 <li className="landing-feature-item">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  Jackpot analysis from {costJackpotMatch} cr
+                  Multi-match analysis from {costJackpotMatch} cr
                 </li>
                 <li className="landing-feature-item">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -421,9 +421,9 @@ Get Started
                         <span className="landing-paygo-breakdown-cost">{costPrediction} cr each</span>
                       </div>
                       <div className="landing-paygo-breakdown-item">
-                        <span className="landing-paygo-breakdown-icon">🎰</span>
+                        <span className="landing-paygo-breakdown-icon">📋</span>
                         <span className="landing-paygo-breakdown-value">{Math.floor(calculatedCredits / costJackpotMatch)}</span>
-                        <span className="landing-paygo-breakdown-name">Jackpot Matches</span>
+                        <span className="landing-paygo-breakdown-name">Multi-Match Analyses</span>
                         <span className="landing-paygo-breakdown-cost">{costJackpotMatch} cr each</span>
                       </div>
                       <div className="landing-paygo-breakdown-item">
@@ -465,7 +465,7 @@ Get Started
                     <span>{costPrediction} credits <span className="landing-paygo-cost-money">({currencySymbol}{isKenyan ? (costPrediction / creditRate).toFixed(0) : (costPrediction / creditRate).toFixed(2)})</span></span>
                   </div>
                   <div className="landing-paygo-cost-row">
-                    <span>🎰 Jackpot match</span>
+                    <span>📋 Jackpot match</span>
                     <span>{costJackpotMatch} credits <span className="landing-paygo-cost-money">({currencySymbol}{isKenyan ? (costJackpotMatch / creditRate).toFixed(0) : (costJackpotMatch / creditRate).toFixed(2)})</span></span>
                   </div>
                   <div className="landing-paygo-cost-row">
@@ -505,6 +505,12 @@ Get Started
             <button className="landing-footer-link" onClick={openSignIn}>{t('nav.signIn')}</button>
             <a href="/terms" className="landing-footer-link">{t('landing.termsOfService')}</a>
           </div>
+          <p className="landing-footer-disclaimer">
+            Spark AI Prediction is a sports analytics and statistical analysis platform.
+            All insights and analysis are for informational and educational purposes only.
+            We do not encourage, promote, or facilitate gambling of any kind.
+            Always exercise your own judgement when making decisions.
+          </p>
           <p className="landing-footer-copy">&copy; {t('landing.copyright')}</p>
         </div>
       </footer>
