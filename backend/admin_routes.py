@@ -2497,7 +2497,7 @@ async def social_connect_account(
 
     import secrets
     webhook_secret = secrets.token_hex(32)
-    webhook_base = os.environ.get("WEBHOOK_BASE_URL", "https://www.spark-ai-prediction.com")
+    webhook_base = os.environ.get("WEBHOOK_BASE_URL", "https://spark-ai-prediction.com")
     webhook_url = f"{webhook_base}/api/webhook/social/{platform}/{{}}"
 
     # Verify credentials with the platform
