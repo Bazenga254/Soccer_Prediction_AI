@@ -9,14 +9,6 @@ const PLATFORM_ICONS = {
   x: '\u{1D54F}',
 }
 
-const PLATFORM_COLORS = {
-  telegram: '#0088cc',
-  whatsapp: '#25d366',
-  facebook: '#1877f2',
-  instagram: '#e1306c',
-  x: '#fff',
-}
-
 function formatTime(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
@@ -41,6 +33,224 @@ function getMediaType(file) {
   return 'document'
 }
 
+// ─── Emoji Data ───
+const EMOJI_CATEGORIES = [
+  { id: 'smileys', icon: '\u{1F600}', label: 'Smileys', emojis: [
+    '\u{1F600}','\u{1F603}','\u{1F604}','\u{1F601}','\u{1F606}','\u{1F605}','\u{1F602}','\u{1F923}','\u{1F60A}','\u{1F607}',
+    '\u{1F609}','\u{1F60D}','\u{1F929}','\u{1F618}','\u{1F617}','\u{1F61A}','\u{1F619}','\u{1F60B}','\u{1F61C}','\u{1F61D}',
+    '\u{1F61B}','\u{1F911}','\u{1F917}','\u{1F914}','\u{1F910}','\u{1F928}','\u{1F610}','\u{1F611}','\u{1F636}','\u{1F60F}',
+    '\u{1F612}','\u{1F644}','\u{1F62C}','\u{1F925}','\u{1F60C}','\u{1F614}','\u{1F62A}','\u{1F924}','\u{1F634}','\u{1F637}',
+    '\u{1F912}','\u{1F915}','\u{1F922}','\u{1F92E}','\u{1F927}','\u{1F975}','\u{1F976}','\u{1F974}','\u{1F635}','\u{1F92F}',
+    '\u{1F920}','\u{1F973}','\u{1F978}','\u{1F60E}','\u{1F913}','\u{1F9D0}','\u{1F615}','\u{1F61F}','\u{1F641}','\u{2639}',
+    '\u{1F62E}','\u{1F62F}','\u{1F632}','\u{1F633}','\u{1F97A}','\u{1F626}','\u{1F627}','\u{1F628}','\u{1F630}','\u{1F625}',
+    '\u{1F622}','\u{1F62D}','\u{1F631}','\u{1F616}','\u{1F623}','\u{1F61E}','\u{1F613}','\u{1F629}','\u{1F62B}','\u{1F971}',
+  ]},
+  { id: 'gestures', icon: '\u{1F44D}', label: 'Gestures', emojis: [
+    '\u{1F44D}','\u{1F44E}','\u{1F44A}','\u270A','\u{1F91B}','\u{1F91C}','\u{1F44F}','\u{1F64C}','\u{1F450}','\u{1F932}',
+    '\u{1F91D}','\u{1F64F}','\u270D','\u{1F485}','\u{1F933}','\u{1F4AA}','\u{1F9BE}','\u{1F9BF}','\u{1F448}','\u{1F449}',
+    '\u{1F446}','\u{1F447}','\u261D','\u270B','\u{1F91A}','\u{1F590}','\u{1F596}','\u{1F44B}','\u{1F919}','\u{1F918}',
+    '\u{1F91F}','\u270C','\u{1F91E}','\u{1F91C}','\u{1F44C}','\u{1F90F}','\u{1F90C}','\u{1F448}','\u{1F449}','\u{1F446}',
+  ]},
+  { id: 'hearts', icon: '\u2764', label: 'Hearts', emojis: [
+    '\u2764','\u{1F9E1}','\u{1F49B}','\u{1F49A}','\u{1F499}','\u{1F49C}','\u{1F5A4}','\u{1FA76}','\u{1F90D}','\u{1F90E}',
+    '\u{1F495}','\u{1F49E}','\u{1F493}','\u{1F497}','\u{1F496}','\u{1F498}','\u{1F49D}','\u{1F49F}','\u{1F48C}','\u{1F48B}',
+  ]},
+  { id: 'animals', icon: '\u{1F436}', label: 'Animals', emojis: [
+    '\u{1F436}','\u{1F431}','\u{1F42D}','\u{1F439}','\u{1F430}','\u{1F98A}','\u{1F43B}','\u{1F43C}','\u{1F428}','\u{1F42F}',
+    '\u{1F981}','\u{1F42E}','\u{1F437}','\u{1F438}','\u{1F435}','\u{1F648}','\u{1F649}','\u{1F64A}','\u{1F412}','\u{1F414}',
+    '\u{1F427}','\u{1F426}','\u{1F985}','\u{1F989}','\u{1F987}','\u{1F43A}','\u{1F417}','\u{1F434}','\u{1F984}','\u{1F41D}',
+  ]},
+  { id: 'food', icon: '\u{1F354}', label: 'Food', emojis: [
+    '\u{1F34E}','\u{1F34F}','\u{1F34A}','\u{1F34B}','\u{1F34C}','\u{1F349}','\u{1F347}','\u{1F353}','\u{1F348}','\u{1F352}',
+    '\u{1F351}','\u{1F34D}','\u{1F965}','\u{1F951}','\u{1F346}','\u{1F954}','\u{1F955}','\u{1F33D}','\u{1F336}','\u{1F952}',
+    '\u{1F354}','\u{1F355}','\u{1F32D}','\u{1F32E}','\u{1F32F}','\u{1F37F}','\u{1F9C1}','\u{1F370}','\u{1F382}','\u{1F36B}',
+  ]},
+  { id: 'activities', icon: '\u26BD', label: 'Sports', emojis: [
+    '\u26BD','\u{1F3C0}','\u{1F3C8}','\u26BE','\u{1F94E}','\u{1F3BE}','\u{1F3D0}','\u{1F3C9}','\u{1F3B1}','\u{1F3D3}',
+    '\u{1F3F8}','\u{1F3D2}','\u{1F3D1}','\u{1F94D}','\u{1F3CF}','\u26F3','\u{1F94F}','\u{1F3AF}','\u{1F3C6}','\u{1F3C5}',
+    '\u{1F947}','\u{1F948}','\u{1F949}','\u{1F396}','\u{1F3F5}','\u{1F3AB}','\u{1F39F}','\u{1F3AA}','\u{1F938}','\u{1F93C}',
+  ]},
+  { id: 'travel', icon: '\u{1F30E}', label: 'Travel', emojis: [
+    '\u{1F697}','\u{1F695}','\u{1F699}','\u{1F68C}','\u{1F3CE}','\u{1F693}','\u{1F691}','\u{1F692}','\u{1F6F5}','\u{1F3CD}',
+    '\u2708','\u{1F680}','\u{1F6F8}','\u{1F6A2}','\u26F5','\u{1F3D6}','\u{1F3DD}','\u{1F3DE}','\u{1F3D4}','\u{1F30B}',
+  ]},
+  { id: 'objects', icon: '\u{1F4A1}', label: 'Objects', emojis: [
+    '\u{1F4A1}','\u{1F526}','\u{1F4B0}','\u{1F4B5}','\u{1F4B3}','\u{1F48E}','\u{1F4E7}','\u{1F4F1}','\u{1F4BB}','\u{1F5A5}',
+    '\u{1F3B5}','\u{1F3B6}','\u{1F399}','\u{1F3A4}','\u{1F3A7}','\u{1F4F7}','\u{1F3AC}','\u{1F4FA}','\u{1F4F0}','\u{1F4DA}',
+  ]},
+  { id: 'symbols', icon: '\u2705', label: 'Symbols', emojis: [
+    '\u2705','\u274C','\u2757','\u2753','\u{1F4AF}','\u{1F525}','\u2B50','\u{1F31F}','\u{1F4A5}','\u{1F4AB}',
+    '\u{1F389}','\u{1F38A}','\u{1F388}','\u{1F381}','\u{1F3C6}','\u{1F4CC}','\u{1F4A4}','\u{1F4AC}','\u{1F4AD}','\u{1F440}',
+  ]},
+]
+
+// ─── Emoji Picker Component ───
+function EmojiPicker({ onSelect, onClose }) {
+  const [activeCategory, setActiveCategory] = useState('smileys')
+  const [search, setSearch] = useState('')
+  const pickerRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) onClose()
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [onClose])
+
+  const category = EMOJI_CATEGORIES.find(c => c.id === activeCategory)
+  const filteredEmojis = search
+    ? EMOJI_CATEGORIES.flatMap(c => c.emojis)
+    : (category?.emojis || [])
+
+  return (
+    <div className="social-emoji-picker" ref={pickerRef}>
+      <div className="social-emoji-search">
+        <input
+          type="text"
+          placeholder="Search emoji..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          autoFocus
+        />
+      </div>
+      {!search && (
+        <div className="social-emoji-categories">
+          {EMOJI_CATEGORIES.map(cat => (
+            <button
+              key={cat.id}
+              className={`social-emoji-cat-btn ${activeCategory === cat.id ? 'active' : ''}`}
+              onClick={() => setActiveCategory(cat.id)}
+              title={cat.label}
+            >
+              {cat.icon}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="social-emoji-grid">
+        {filteredEmojis.map((emoji, i) => (
+          <button
+            key={`${emoji}-${i}`}
+            className="social-emoji-btn"
+            onClick={() => onSelect(emoji)}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── GIF Picker Component (Tenor) ───
+const TENOR_API_KEY = 'AIzaSyAyimkuYQYF_FXVALexPuGQctUWRURdCYQ' // Free Tenor/Google API key
+
+function GifPicker({ onSelect, onClose }) {
+  const [search, setSearch] = useState('')
+  const [gifs, setGifs] = useState([])
+  const [trending, setTrending] = useState([])
+  const [loading, setLoading] = useState(false)
+  const pickerRef = useRef(null)
+  const searchTimer = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) onClose()
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [onClose])
+
+  // Fetch trending on mount
+  useEffect(() => {
+    const fetchTrending = async () => {
+      setLoading(true)
+      try {
+        const res = await fetch(
+          `https://tenor.googleapis.com/v2/featured?key=${TENOR_API_KEY}&limit=20&media_filter=tinygif,gif`
+        )
+        if (res.ok) {
+          const data = await res.json()
+          setTrending(data.results || [])
+        }
+      } catch {}
+      setLoading(false)
+    }
+    fetchTrending()
+  }, [])
+
+  // Search GIFs with debounce
+  useEffect(() => {
+    if (!search.trim()) {
+      setGifs([])
+      return
+    }
+    clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(async () => {
+      setLoading(true)
+      try {
+        const res = await fetch(
+          `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(search)}&key=${TENOR_API_KEY}&limit=20&media_filter=tinygif,gif`
+        )
+        if (res.ok) {
+          const data = await res.json()
+          setGifs(data.results || [])
+        }
+      } catch {}
+      setLoading(false)
+    }, 400)
+    return () => clearTimeout(searchTimer.current)
+  }, [search])
+
+  const displayGifs = search.trim() ? gifs : trending
+
+  const getGifUrl = (result, size) => {
+    const formats = result.media_formats || {}
+    if (size === 'preview') return formats.tinygif?.url || formats.gif?.url || ''
+    return formats.gif?.url || formats.tinygif?.url || ''
+  }
+
+  return (
+    <div className="social-gif-picker" ref={pickerRef}>
+      <div className="social-emoji-search">
+        <input
+          type="text"
+          placeholder="Search GIFs..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          autoFocus
+        />
+      </div>
+      <div className="social-gif-grid">
+        {loading ? (
+          <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: 'var(--admin-text-muted)', padding: 20 }}>
+            Loading...
+          </div>
+        ) : displayGifs.length === 0 ? (
+          <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: 'var(--admin-text-muted)', padding: 20 }}>
+            {search ? 'No GIFs found' : 'Loading trending GIFs...'}
+          </div>
+        ) : (
+          displayGifs.map(gif => (
+            <button
+              key={gif.id}
+              className="social-gif-btn"
+              onClick={() => onSelect(getGifUrl(gif, 'full'), getGifUrl(gif, 'preview'))}
+            >
+              <img src={getGifUrl(gif, 'preview')} alt={gif.title || 'GIF'} loading="lazy" />
+            </button>
+          ))
+        )}
+      </div>
+      <div className="social-gif-powered">
+        Powered by Tenor
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Inbox Component ───
 export default function SocialInbox({ accounts }) {
   const { getAuthHeaders } = useAdmin()
   const [conversations, setConversations] = useState([])
@@ -54,14 +264,15 @@ export default function SocialInbox({ accounts }) {
   const [loadingMsgs, setLoadingMsgs] = useState(false)
   const [templates, setTemplates] = useState([])
   const [showTemplates, setShowTemplates] = useState(false)
-  // Attachment state
-  const [attachment, setAttachment] = useState(null) // { file, preview, mediaType, uploading, uploadedUrl }
+  const [attachment, setAttachment] = useState(null)
+  // Emoji & GIF pickers
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [showGifPicker, setShowGifPicker] = useState(false)
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
   const sseRef = useRef(null)
 
-  // Fetch conversations
   const fetchConversations = useCallback(async () => {
     try {
       const params = new URLSearchParams()
@@ -76,7 +287,6 @@ export default function SocialInbox({ accounts }) {
     setLoadingConvs(false)
   }, [getAuthHeaders, platformFilter, searchQuery])
 
-  // Fetch messages for active conversation
   const fetchMessages = useCallback(async (convId) => {
     if (!convId) return
     setLoadingMsgs(true)
@@ -90,7 +300,6 @@ export default function SocialInbox({ accounts }) {
     setLoadingMsgs(false)
   }, [getAuthHeaders])
 
-  // Fetch templates
   const fetchTemplates = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/social/templates', { headers: getAuthHeaders() })
@@ -101,95 +310,62 @@ export default function SocialInbox({ accounts }) {
     } catch {}
   }, [getAuthHeaders])
 
-  useEffect(() => {
-    fetchConversations()
-    fetchTemplates()
-  }, [fetchConversations, fetchTemplates])
+  useEffect(() => { fetchConversations(); fetchTemplates() }, [fetchConversations, fetchTemplates])
 
   useEffect(() => {
     if (activeConvId) {
       fetchMessages(activeConvId)
-      // Mark as read
       fetch(`/api/admin/social/conversations/${activeConvId}/read`, {
         method: 'POST', headers: getAuthHeaders()
       }).catch(() => {})
     }
   }, [activeConvId, fetchMessages, getAuthHeaders])
 
-  // SSE for real-time messages
+  // SSE
   useEffect(() => {
     const headers = getAuthHeaders()
     const authParam = headers['Authorization'] || headers['x-admin-password'] || ''
     const url = `/api/admin/social/stream?authorization=${encodeURIComponent(authParam)}`
-
     let es
     try {
       es = new EventSource(url)
       sseRef.current = es
-
       es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
           if (data.type === 'new_message' && data.data) {
-            const msgData = data.data
-            // Refresh conversation list
             fetchConversations()
-            // If this message is for the active conversation, refresh messages
-            if (msgData.conversation_id === activeConvId) {
-              fetchMessages(activeConvId)
-            }
+            if (data.data.conversation_id === activeConvId) fetchMessages(activeConvId)
           }
         } catch {}
       }
-
       es.onerror = () => {
         es.close()
-        // Reconnect after 5 seconds
-        setTimeout(() => {
-          if (sseRef.current === es) {
-            sseRef.current = null
-          }
-        }, 5000)
+        setTimeout(() => { if (sseRef.current === es) sseRef.current = null }, 5000)
       }
     } catch {}
-
-    return () => {
-      if (es) es.close()
-    }
+    return () => { if (es) es.close() }
   }, [getAuthHeaders, activeConvId, fetchConversations, fetchMessages])
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Handle file selection for attachment
+  // ─── Attachment ───
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     e.target.value = ''
-
     const mediaType = getMediaType(file)
     let preview = null
-    if (mediaType === 'image') {
-      preview = URL.createObjectURL(file)
-    } else if (mediaType === 'video') {
-      preview = URL.createObjectURL(file)
-    }
-
+    if (mediaType === 'image' || mediaType === 'video') preview = URL.createObjectURL(file)
     setAttachment({ file, preview, mediaType, uploading: true, uploadedUrl: null, error: null })
-
-    // Upload immediately
     try {
       const formData = new FormData()
       formData.append('file', file)
       const hdrs = { ...getAuthHeaders() }
       delete hdrs['Content-Type']
-      const res = await fetch('/api/admin/social/media/upload', {
-        method: 'POST',
-        headers: hdrs,
-        body: formData,
-      })
+      const res = await fetch('/api/admin/social/media/upload', { method: 'POST', headers: hdrs, body: formData })
       if (res.ok) {
         const data = await res.json()
         setAttachment(prev => prev ? { ...prev, uploading: false, uploadedUrl: data.media.file_url } : null)
@@ -207,22 +383,48 @@ export default function SocialInbox({ accounts }) {
     setAttachment(null)
   }
 
-  // Send message (text and/or attachment)
+  // ─── Emoji insert ───
+  const insertEmoji = (emoji) => {
+    const ta = textareaRef.current
+    if (ta) {
+      const start = ta.selectionStart
+      const end = ta.selectionEnd
+      const newText = messageText.substring(0, start) + emoji + messageText.substring(end)
+      setMessageText(newText)
+      setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + emoji.length; ta.focus() }, 0)
+    } else {
+      setMessageText(prev => prev + emoji)
+    }
+  }
+
+  // ─── GIF send ───
+  const sendGif = async (gifUrl, previewUrl) => {
+    if (!activeConvId || sending) return
+    setShowGifPicker(false)
+    setSending(true)
+    try {
+      const res = await fetch(`/api/admin/social/conversations/${activeConvId}/send`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content_text: '', content_type: 'gif', media_url: gifUrl })
+      })
+      if (res.ok) {
+        fetchMessages(activeConvId)
+        fetchConversations()
+      }
+    } catch {}
+    setSending(false)
+  }
+
+  // ─── Send message ───
   const handleSend = async () => {
     const hasText = messageText.trim().length > 0
     const hasAttachment = attachment?.uploadedUrl
     if ((!hasText && !hasAttachment) || !activeConvId || sending) return
-
     setSending(true)
     try {
-      const body = {
-        content_text: messageText.trim(),
-        content_type: hasAttachment ? attachment.mediaType : 'text',
-      }
-      if (hasAttachment) {
-        body.media_url = attachment.uploadedUrl
-      }
-
+      const body = { content_text: messageText.trim(), content_type: hasAttachment ? attachment.mediaType : 'text' }
+      if (hasAttachment) body.media_url = attachment.uploadedUrl
       const res = await fetch(`/api/admin/social/conversations/${activeConvId}/send`, {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
@@ -240,10 +442,7 @@ export default function SocialInbox({ accounts }) {
   }
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
   const selectTemplate = (template) => {
@@ -253,9 +452,10 @@ export default function SocialInbox({ accounts }) {
   }
 
   const activeConv = conversations.find(c => c.id === activeConvId)
-
-  // Get unique platforms from accounts
   const availablePlatforms = [...new Set(accounts.filter(a => a.status === 'connected').map(a => a.platform))]
+
+  // Close pickers when switching conversations
+  useEffect(() => { setShowEmojiPicker(false); setShowGifPicker(false) }, [activeConvId])
 
   return (
     <div className="social-inbox">
@@ -270,46 +470,30 @@ export default function SocialInbox({ accounts }) {
             className="social-conv-search"
           />
         </div>
-
         <div className="social-conv-filters">
-          <button
-            className={`social-filter-btn ${platformFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setPlatformFilter('all')}
-          >
-            All
-          </button>
+          <button className={`social-filter-btn ${platformFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setPlatformFilter('all')}>All</button>
           {availablePlatforms.map(p => (
-            <button
-              key={p}
-              className={`social-filter-btn ${platformFilter === p ? 'active' : ''}`}
-              onClick={() => setPlatformFilter(p)}
-            >
+            <button key={p} className={`social-filter-btn ${platformFilter === p ? 'active' : ''}`}
+              onClick={() => setPlatformFilter(p)}>
               {PLATFORM_ICONS[p] || p} {p.charAt(0).toUpperCase() + p.slice(1)}
             </button>
           ))}
         </div>
-
         <div className="social-conv-items">
           {loadingConvs ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--admin-text-muted)' }}>
-              Loading...
-            </div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--admin-text-muted)' }}>Loading...</div>
           ) : conversations.length === 0 ? (
             <div className="social-empty-state" style={{ padding: 40 }}>
               <div className="social-empty-icon">{'\u{1F4ED}'}</div>
               <p style={{ color: 'var(--admin-text-muted)', fontSize: 13 }}>
-                {accounts.length === 0
-                  ? 'Connect a platform to start receiving messages'
-                  : 'No conversations yet'}
+                {accounts.length === 0 ? 'Connect a platform to start receiving messages' : 'No conversations yet'}
               </p>
             </div>
           ) : (
             conversations.map(conv => (
-              <div
-                key={conv.id}
-                className={`social-conv-item ${activeConvId === conv.id ? 'active' : ''}`}
-                onClick={() => setActiveConvId(conv.id)}
-              >
+              <div key={conv.id} className={`social-conv-item ${activeConvId === conv.id ? 'active' : ''}`}
+                onClick={() => setActiveConvId(conv.id)}>
                 <div className={`social-conv-avatar ${conv.platform}`}>
                   {PLATFORM_ICONS[conv.platform] || '\u{1F464}'}
                 </div>
@@ -319,9 +503,7 @@ export default function SocialInbox({ accounts }) {
                 </div>
                 <div className="social-conv-meta">
                   <span className="social-conv-time">{formatTime(conv.last_message_at)}</span>
-                  {conv.unread_count > 0 && (
-                    <span className="social-unread-badge">{conv.unread_count}</span>
-                  )}
+                  {conv.unread_count > 0 && <span className="social-unread-badge">{conv.unread_count}</span>}
                 </div>
               </div>
             ))
@@ -349,27 +531,16 @@ export default function SocialInbox({ accounts }) {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  className="social-action-btn"
-                  onClick={async () => {
-                    await fetch(`/api/admin/social/conversations/${activeConvId}/archive`, {
-                      method: 'POST', headers: getAuthHeaders()
-                    })
-                    setActiveConvId(null)
-                    fetchConversations()
-                  }}
-                  title="Archive"
-                >
-                  {'\u{1F4E6}'}
-                </button>
+                <button className="social-action-btn" onClick={async () => {
+                  await fetch(`/api/admin/social/conversations/${activeConvId}/archive`, { method: 'POST', headers: getAuthHeaders() })
+                  setActiveConvId(null); fetchConversations()
+                }} title="Archive">{'\u{1F4E6}'}</button>
               </div>
             </div>
 
             <div className="social-chat-messages">
               {loadingMsgs ? (
-                <div style={{ textAlign: 'center', color: 'var(--admin-text-muted)', padding: 40 }}>
-                  Loading messages...
-                </div>
+                <div style={{ textAlign: 'center', color: 'var(--admin-text-muted)', padding: 40 }}>Loading messages...</div>
               ) : messages.length === 0 ? (
                 <div style={{ textAlign: 'center', color: 'var(--admin-text-muted)', padding: 40 }}>
                   No messages yet. Send a message to start the conversation.
@@ -382,15 +553,14 @@ export default function SocialInbox({ accounts }) {
                     )}
                     {msg.media_url && (
                       <div className="social-msg-media">
-                        {msg.content_type === 'image' ? (
+                        {(msg.content_type === 'image' || msg.content_type === 'gif') ? (
                           <img src={msg.media_url} alt="" onClick={() => window.open(msg.media_url, '_blank')} />
                         ) : msg.content_type === 'video' ? (
                           <video src={msg.media_url} controls style={{ maxWidth: 300, borderRadius: 8 }} />
                         ) : msg.content_type === 'audio' ? (
                           <audio src={msg.media_url} controls style={{ maxWidth: 280 }} />
                         ) : (
-                          <a href={msg.media_url} target="_blank" rel="noreferrer"
-                             className="social-msg-file-link">
+                          <a href={msg.media_url} target="_blank" rel="noreferrer" className="social-msg-file-link">
                             <span>{'\u{1F4CE}'}</span>
                             <span>{msg.media_filename || 'Download file'}</span>
                           </a>
@@ -407,9 +577,7 @@ export default function SocialInbox({ accounts }) {
                            msg.delivery_status === 'failed' ? '\u2717' : '\u23F3'}
                         </span>
                       )}
-                      {msg.sent_by_name && (
-                        <span style={{ marginLeft: 4 }}>{msg.sent_by_name}</span>
-                      )}
+                      {msg.sent_by_name && <span style={{ marginLeft: 4 }}>{msg.sent_by_name}</span>}
                     </div>
                   </div>
                 ))
@@ -444,25 +612,35 @@ export default function SocialInbox({ accounts }) {
               </div>
             )}
 
+            {/* Input Area */}
             <div className="social-chat-input">
-              {/* Hidden file input */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                hidden
+              <input ref={fileInputRef} type="file" hidden
                 accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
-                onChange={handleFileSelect}
-              />
+                onChange={handleFileSelect} />
 
-              {/* Attach button */}
-              <button
-                className="social-action-btn"
-                onClick={() => fileInputRef.current?.click()}
-                title="Attach file"
-                disabled={!!attachment?.uploading}
-              >
-                {'\u{1F4CE}'}
-              </button>
+              {/* Attach */}
+              <button className="social-action-btn" onClick={() => fileInputRef.current?.click()}
+                title="Attach file" disabled={!!attachment?.uploading}>{'\u{1F4CE}'}</button>
+
+              {/* Emoji */}
+              <div style={{ position: 'relative' }}>
+                <button className={`social-action-btn ${showEmojiPicker ? 'active-picker' : ''}`}
+                  onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowGifPicker(false) }}
+                  title="Emoji">{'\u{1F600}'}</button>
+                {showEmojiPicker && (
+                  <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmojiPicker(false)} />
+                )}
+              </div>
+
+              {/* GIF */}
+              <div style={{ position: 'relative' }}>
+                <button className={`social-action-btn ${showGifPicker ? 'active-picker' : ''}`}
+                  onClick={() => { setShowGifPicker(!showGifPicker); setShowEmojiPicker(false) }}
+                  title="GIF">GIF</button>
+                {showGifPicker && (
+                  <GifPicker onSelect={sendGif} onClose={() => setShowGifPicker(false)} />
+                )}
+              </div>
 
               <div style={{ position: 'relative', flex: 1 }}>
                 <textarea
@@ -485,18 +663,14 @@ export default function SocialInbox({ accounts }) {
                   </div>
                 )}
               </div>
-              <button
-                className="social-action-btn"
-                onClick={() => setShowTemplates(!showTemplates)}
-                title="Quick replies"
-              >
-                {'\u{1F4DD}'}
-              </button>
-              <button
-                className="social-send-btn"
-                onClick={handleSend}
-                disabled={(!messageText.trim() && !attachment?.uploadedUrl) || sending || attachment?.uploading}
-              >
+
+              {/* Templates */}
+              <button className="social-action-btn" onClick={() => setShowTemplates(!showTemplates)}
+                title="Quick replies">{'\u{1F4DD}'}</button>
+
+              {/* Send */}
+              <button className="social-send-btn" onClick={handleSend}
+                disabled={(!messageText.trim() && !attachment?.uploadedUrl) || sending || attachment?.uploading}>
                 {sending ? '\u23F3' : 'Send'}
               </button>
             </div>

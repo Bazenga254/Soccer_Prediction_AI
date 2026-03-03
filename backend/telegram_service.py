@@ -85,6 +85,12 @@ class TelegramService:
             data["caption"] = caption
         return await self._api_call("sendDocument", data)
 
+    async def send_animation(self, chat_id: str, animation: str, caption: str = "") -> Dict:
+        data = {"chat_id": chat_id, "animation": animation}
+        if caption:
+            data["caption"] = caption
+        return await self._api_call("sendAnimation", data)
+
     async def send_sticker(self, chat_id: str, sticker: str) -> Dict:
         return await self._api_call("sendSticker", {"chat_id": chat_id, "sticker": sticker})
 

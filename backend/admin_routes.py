@@ -2742,7 +2742,9 @@ async def social_send_message(
             creds = account.get("credentials", {})
             service = TelegramService(creds.get("bot_token", ""), "")
 
-            if full_media_url and content_type == "image":
+            if full_media_url and content_type == "gif":
+                result = await service.send_animation(conv["contact_identifier"], full_media_url, content_text)
+            elif full_media_url and content_type == "image":
                 result = await service.send_photo(conv["contact_identifier"], full_media_url, content_text)
             elif full_media_url and content_type == "video":
                 result = await service.send_video(conv["contact_identifier"], full_media_url, content_text)
