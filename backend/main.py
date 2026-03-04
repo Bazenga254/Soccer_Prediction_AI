@@ -226,6 +226,7 @@ async def startup():
     asyncio.create_task(_daily_predictions_generator())
     asyncio.create_task(goal_monitor.goal_score_monitor())
     asyncio.create_task(social_media_hub.check_scheduled_posts())
+    asyncio.create_task(_reengagement_task())
     print("[OK] Support keep-alive checker started (30-min idle, 3-min response)")
     print("[OK] Social Media Hub scheduled post checker started")
     print("[OK] Payment expiry checker started (15-min timeout)")
@@ -235,6 +236,7 @@ async def startup():
     print("[OK] Weekly disbursement generator started (Fridays 10:00 EAT)")
     print("[OK] Daily free predictions generator started (30-min check interval)")
     print("[OK] Goal score monitor started (45-sec interval)")
+    print("[OK] Re-engagement email generator started (daily 9:00 AM EAT)")
     print("=" * 50)
 
 
@@ -2090,6 +2092,27 @@ async def _daily_predictions_generator():
         except Exception as e:
             print(f"[DAILY PICKS] Error: {e}")
         await asyncio.sleep(1800)  # Check every 30 minutes
+
+
+async def _reengagement_task():
+    """Background task: generate re-engagement broadcast for inactive users daily at ~9:00 AM EAT."""
+    await asyncio.sleep(120)  # Wait for services to initialize
+    while True:
+        try:
+            now = datetime.now()
+            eat_hour = (now.hour + 3) % 24  # Server is UTC, EAT = UTC+3
+            # Run at 9:00 AM EAT (6:00 UTC), check every 5 minutes
+            if eat_hour == 9 and now.minute < 5:
+                print("[RE-ENGAGEMENT] Running daily re-engagement check...")
+                import reengagement
+                result = await reengagement.generate_reengagement_broadcast()
+                if result:
+                    print(f"[RE-ENGAGEMENT] Broadcast created: ID {result.get('broadcast_id')}")
+                else:
+                    print("[RE-ENGAGEMENT] No broadcast needed today")
+        except Exception as e:
+            print(f"[RE-ENGAGEMENT] Error: {e}")
+        await asyncio.sleep(300)  # Check every 5 minutes
 
 
 async def _prediction_result_checker():

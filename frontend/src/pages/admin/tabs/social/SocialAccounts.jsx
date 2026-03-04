@@ -175,6 +175,8 @@ export default function SocialAccounts({ accounts, onRefresh }) {
   const [success, setSuccess] = useState('')
   const [webhookUrl, setWebhookUrl] = useState('')
   const [showWAModal, setShowWAModal] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState('')
 
   // Telegram fields
   const [botToken, setBotToken] = useState('')
@@ -232,6 +234,25 @@ export default function SocialAccounts({ accounts, onRefresh }) {
       }
       onRefresh()
     } catch {}
+  }
+
+  const handleSyncChats = async () => {
+    setSyncing(true)
+    setSyncResult('')
+    try {
+      const res = await fetch('/api/admin/social/whatsapp/sync', { method: 'POST', headers: getAuthHeaders() })
+      const data = await res.json()
+      if (data.ok) {
+        setSyncResult(`Synced ${data.synced} chats`)
+        onRefresh()
+        setTimeout(() => setSyncResult(''), 4000)
+      } else {
+        setSyncResult(data.detail || 'Sync failed')
+      }
+    } catch {
+      setSyncResult('Sync failed')
+    }
+    setSyncing(false)
   }
 
   const handleTestConnection = async (acc) => {
@@ -318,7 +339,16 @@ export default function SocialAccounts({ accounts, onRefresh }) {
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {acc.platform === 'whatsapp_qr' && (
+                      <>
+                        <button className="social-action-btn" style={{ padding: '6px 12px', fontSize: 12 }}
+                          onClick={handleSyncChats} disabled={syncing}>
+                          {syncing ? 'Syncing…' : 'Sync Chats'}
+                        </button>
+                        {syncResult && <span style={{ fontSize: 11, color: '#22c55e' }}>{syncResult}</span>}
+                      </>
+                    )}
                     <button className="social-action-btn" style={{ padding: '6px 12px', fontSize: 12 }}
                       onClick={() => handleTestConnection(acc)}>Test</button>
                     <button className="social-action-btn" style={{ padding: '6px 12px', fontSize: 12, color: '#ef4444' }}

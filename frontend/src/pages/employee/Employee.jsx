@@ -25,6 +25,7 @@ import StaffTab from '../admin/tabs/StaffTab'
 import SettingsTab from '../admin/tabs/SettingsTab'
 import SocialMediaTab from '../admin/tabs/SocialMediaTab'
 import './styles/employee.css'
+import '../admin/styles/admin.css'
 
 class EmployeeErrorBoundary extends Component {
   constructor(props) {

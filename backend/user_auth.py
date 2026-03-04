@@ -1137,6 +1137,76 @@ def _send_welcome_email(to_email: str, display_name: str = "") -> bool:
     return _send_zoho_email(to_email, "Welcome to Spark AI Prediction!", html_body)
 
 
+def send_registration_reminder_email(to_email: str, full_name: str = "", display_name: str = "") -> bool:
+    """Send a registration reminder to users who haven't verified their email."""
+    # Use real name (first name) for greeting, fall back to display_name
+    first_name = full_name.split()[0].capitalize() if full_name and full_name.strip() else ""
+    greeting = first_name or display_name or "there"
+
+    html_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
+                background: #0f172a; color: #f1f5f9; padding: 40px; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <span style="font-size: 48px;">&#9917;</span>
+            <h1 style="color: #f1f5f9; margin: 8px 0;">You're Almost There!</h1>
+        </div>
+        <p style="color: #94a3b8; font-size: 16px;">Hey {greeting},</p>
+        <p style="color: #94a3b8;">
+            We noticed you started creating your Spark AI account but haven't completed
+            your email verification yet. You're just one step away from unlocking
+            powerful match prediction tools!
+        </p>
+        <p style="color: #f1f5f9; font-weight: bold;">Here's what's waiting for you:</p>
+        <ul style="color: #94a3b8; line-height: 2.0;">
+            <li><span style="color: #22c55e;">&#10003;</span> AI-powered match predictions with high accuracy</li>
+            <li><span style="color: #22c55e;">&#10003;</span> Live match tracking &amp; real-time odds comparison</li>
+            <li><span style="color: #22c55e;">&#10003;</span> Community tips from top prediction analysts</li>
+            <li><span style="color: #22c55e;">&#10003;</span> Personalized match analysis &amp; insights</li>
+            <li><span style="color: #22c55e;">&#10003;</span> Free daily predictions to get you started</li>
+        </ul>
+        <div style="text-align: center; margin: 32px 0;">
+            <a href="https://www.spark-ai-prediction.com/login"
+               style="display: inline-block; background: #f59e0b; color: #0f172a;
+                      text-decoration: none; padding: 16px 40px; border-radius: 8px;
+                      font-weight: bold; font-size: 16px;">
+                Complete Registration
+            </a>
+        </div>
+        <p style="color: #94a3b8; font-size: 13px; text-align: center;">
+            Simply log in and verify your email to activate your account.
+        </p>
+        <hr style="border: none; border-top: 1px solid #1e293b; margin: 24px 0;" />
+        <p style="color: #64748b; font-size: 12px; text-align: center;">
+            If you didn't create an account with Spark AI, you can safely ignore this email.
+        </p>
+    </div>
+    """
+
+    return _send_zoho_email(to_email, "Complete Your Registration - Spark AI", html_body)
+
+
+def send_reengagement_email(to_email: str, subject: str, html_body: str) -> bool:
+    """Send a pre-built re-engagement email with match data."""
+    return _send_zoho_email(to_email, subject, html_body)
+
+
+def get_inactive_users(days: int = 2) -> list:
+    """Get active, verified, non-bot users who haven't logged in for X days."""
+    conn = _get_db()
+    rows = conn.execute("""
+        SELECT id, email, display_name, full_name, last_login
+        FROM users
+        WHERE is_active = 1
+        AND email_verified = 1
+        AND is_bot = 0
+        AND last_login IS NOT NULL
+        AND datetime(last_login) < datetime('now', ?)
+    """, (f"-{days} days",)).fetchall()
+    conn.close()
+    return [{"id": r["id"], "email": r["email"], "display_name": r["display_name"],
+             "full_name": r["full_name"] or "", "last_login": r["last_login"]} for r in rows]
+
+
 def _send_reset_email(to_email: str, reset_url: str, display_name: str = "") -> bool:
     """Send a password reset link via Zoho Mail API."""
     greeting = display_name or "there"
@@ -1613,14 +1683,14 @@ def send_suspension_email(to_email: str, display_name: str, reason_key: str, cus
 
 
 def get_user_email_by_id(user_id: int) -> dict:
-    """Get a user's email and display_name by their ID. Returns dict or None."""
+    """Get a user's email, display_name, and full_name by their ID. Returns dict or None."""
     conn = _get_db()
     row = conn.execute(
-        "SELECT id, email, display_name FROM users WHERE id = ?", (user_id,)
+        "SELECT id, email, display_name, full_name FROM users WHERE id = ?", (user_id,)
     ).fetchone()
     conn.close()
     if row:
-        return {"id": row["id"], "email": row["email"], "display_name": row["display_name"]}
+        return {"id": row["id"], "email": row["email"], "display_name": row["display_name"], "full_name": row["full_name"] or ""}
     return None
 
 
@@ -2933,6 +3003,8 @@ def list_all_users() -> List[Dict]:
         "last_login": r["last_login"],
         "login_count": r["login_count"],
         "country": r["country"],
+        "is_bot": bool(r["is_bot"]) if r["is_bot"] else False,
+        "email_verified": bool(r["email_verified"]),
     } for r in rows]
 
 

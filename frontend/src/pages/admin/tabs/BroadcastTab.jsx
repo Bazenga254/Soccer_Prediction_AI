@@ -14,6 +14,20 @@ export default function BroadcastTab() {
   const [rejectingId, setRejectingId] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
   const [channel, setChannel] = useState('email')
+  const [editingBroadcast, setEditingBroadcast] = useState(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editMessage, setEditMessage] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+
+  // Re-engagement templates state
+  const [reTemplates, setReTemplates] = useState([])
+  const [reInactiveCount, setReInactiveCount] = useState(0)
+  const [reLoading, setReLoading] = useState(false)
+  const [reSectionOpen, setReSectionOpen] = useState(false)
+  const [rePreviewData, setRePreviewData] = useState(null)
+  const [rePreviewLoading, setRePreviewLoading] = useState(false)
+  const [reGenerating, setReGenerating] = useState(false)
+  const [reStatusMsg, setReStatusMsg] = useState('')
 
   // Target user state
   const [targetType, setTargetType] = useState('all')
@@ -90,7 +104,11 @@ export default function BroadcastTab() {
 
   const handleSend = async (e) => {
     e.preventDefault()
-    if (!title.trim() || !message.trim() || sending) return
+    if (targetType === 'unverified') {
+      // No title/message needed for template
+    } else if (!title.trim() || !message.trim() || sending) {
+      return
+    }
     if (targetType === 'specific' && selectedUsers.length === 0) {
       setStatusMsg('Please select at least one user.')
       return
@@ -99,9 +117,9 @@ export default function BroadcastTab() {
     setStatusMsg('')
     try {
       const payload = {
-        title: title.trim(),
-        message: message.trim(),
-        channel,
+        title: targetType === 'unverified' ? 'Registration Reminder' : title.trim(),
+        message: targetType === 'unverified' ? 'Complete your registration reminder email' : message.trim(),
+        channel: targetType === 'unverified' ? 'email' : channel,
         target_type: targetType,
       }
       if (targetType === 'specific') {
@@ -151,6 +169,79 @@ export default function BroadcastTab() {
     }
   }
 
+  const handleEditOpen = (b) => {
+    setEditingBroadcast(b)
+    setEditTitle(b.title || '')
+    setEditMessage(b.message || '')
+  }
+
+  const handleEditSave = async () => {
+    if (!editingBroadcast) return
+    setEditSaving(true)
+    try {
+      const res = await axios.put(`/api/admin/broadcast/${editingBroadcast.id}`, {
+        title: editTitle.trim(),
+        message: editMessage.trim(),
+      }, { headers: getAuthHeaders() })
+      if (res.data.success) {
+        setStatusMsg('Broadcast updated successfully.')
+        setEditingBroadcast(null)
+        fetchBroadcasts()
+      }
+    } catch (err) {
+      setStatusMsg(err.response?.data?.detail || 'Failed to update broadcast')
+    }
+    setEditSaving(false)
+  }
+
+  // Re-engagement template functions
+  const fetchReTemplates = useCallback(async () => {
+    if (reTemplates.length > 0) return
+    setReLoading(true)
+    try {
+      const res = await axios.get('/api/admin/reengagement/templates', { headers: getAuthHeaders() })
+      setReTemplates(res.data.templates || [])
+      setReInactiveCount(res.data.inactive_user_count || 0)
+    } catch { /* ignore */ }
+    setReLoading(false)
+  }, [getAuthHeaders, reTemplates.length])
+
+  const fetchRePreview = async (index) => {
+    setRePreviewData(null)
+    setRePreviewLoading(true)
+    try {
+      const res = await axios.get(`/api/admin/reengagement/preview/${index}`, { headers: getAuthHeaders() })
+      setRePreviewData(res.data)
+    } catch {
+      setRePreviewData({ error: 'Failed to load preview. Make sure there are upcoming matches.' })
+    }
+    setRePreviewLoading(false)
+  }
+
+  const toggleReSection = () => {
+    const next = !reSectionOpen
+    setReSectionOpen(next)
+    if (next) fetchReTemplates()
+  }
+
+  const handleReGenerate = async (templateIndex = null) => {
+    setReGenerating(true)
+    setReStatusMsg('')
+    try {
+      const payload = templateIndex !== null ? { template_index: templateIndex } : {}
+      const res = await axios.post('/api/admin/reengagement/generate', payload, { headers: getAuthHeaders() })
+      if (res.data.success) {
+        setReStatusMsg(`Broadcast created using "${res.data.template_name}" for ${res.data.inactive_user_count} inactive users. Check Broadcast History to approve.`)
+        fetchBroadcasts()
+      } else {
+        setReStatusMsg(res.data.error || 'Failed to generate')
+      }
+    } catch (err) {
+      setReStatusMsg(err.response?.data?.detail || 'Failed to generate re-engagement broadcast')
+    }
+    setReGenerating(false)
+  }
+
   const timeAgo = (dateStr) => {
     if (!dateStr) return ''
     const utcStr = dateStr && !dateStr.endsWith('Z') && !dateStr.includes('+') ? dateStr + 'Z' : dateStr
@@ -173,6 +264,9 @@ export default function BroadcastTab() {
 
   const getSendButtonText = () => {
     if (sending) return 'Sending...'
+    if (targetType === 'unverified') {
+      return isSuperAdmin ? 'Send to Unverified Users' : 'Submit for Approval'
+    }
     if (targetType === 'specific' && selectedUsers.length > 0) {
       return isSuperAdmin
         ? `Send to ${selectedUsers.length} User${selectedUsers.length !== 1 ? 's' : ''}`
@@ -211,6 +305,13 @@ export default function BroadcastTab() {
               onClick={() => setTargetType('specific')}
             >
               Specific User(s)
+            </button>
+            <button
+              type="button"
+              className={`bc-target-btn ${targetType === 'unverified' ? 'active' : ''}`}
+              onClick={() => { setTargetType('unverified'); setSelectedUsers([]) }}
+            >
+              Unverified Users
             </button>
           </div>
 
@@ -268,36 +369,64 @@ export default function BroadcastTab() {
             </div>
           )}
 
-          <input
-            type="text"
-            placeholder="Broadcast title..."
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            className="broadcast-title-input"
-            maxLength={100}
-          />
-          <textarea
-            placeholder={targetType === 'specific' ? 'Write your message to selected users...' : 'Write your message to all users...'}
-            value={message}
-            onChange={e => setMessage(e.target.value)}
-            className="broadcast-message-input"
-            maxLength={1000}
-            rows={4}
-          />
-          <div className="broadcast-channel-selector">
-            <label>Send via:</label>
-            <select value={channel} onChange={e => setChannel(e.target.value)} className="broadcast-channel-select">
-              <option value="email">Email Only</option>
-              <option value="whatsapp">WhatsApp Only</option>
-              <option value="both">Email + WhatsApp</option>
-            </select>
-          </div>
+          {targetType === 'unverified' ? (
+            <div className="bc-template-preview">
+              <div className="bc-template-label">Registration Reminder Template</div>
+              <div className="bc-template-card">
+                <div className="bc-template-subject"><strong>Subject:</strong> Complete Your Registration - Spark AI</div>
+                <div className="bc-template-email-preview">
+                  <div className="bc-template-icon">&#9917;</div>
+                  <div className="bc-template-heading">You're Almost There!</div>
+                  <p>Hey <em>[User's First Name]</em>,</p>
+                  <p>We noticed you started creating your Spark AI account but haven't completed your email verification yet. You're just one step away from unlocking powerful match prediction tools!</p>
+                  <p><strong>Here's what's waiting for you:</strong></p>
+                  <ul>
+                    <li>AI-powered match predictions with high accuracy</li>
+                    <li>Live match tracking &amp; real-time odds comparison</li>
+                    <li>Community tips from top prediction analysts</li>
+                    <li>Personalized match analysis &amp; insights</li>
+                    <li>Free daily predictions to get you started</li>
+                  </ul>
+                  <div className="bc-template-cta">Complete Registration</div>
+                  <p className="bc-template-small">Simply log in and verify your email to activate your account.</p>
+                </div>
+              </div>
+              <p className="bc-template-note">This will send this email to all users who haven't verified their email address. Each user will be greeted by their real first name.</p>
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                placeholder="Broadcast title..."
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                className="broadcast-title-input"
+                maxLength={100}
+              />
+              <textarea
+                placeholder={targetType === 'specific' ? 'Write your message to selected users...' : 'Write your message to all users...'}
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+                className="broadcast-message-input"
+                maxLength={1000}
+                rows={4}
+              />
+              <div className="broadcast-channel-selector">
+                <label>Send via:</label>
+                <select value={channel} onChange={e => setChannel(e.target.value)} className="broadcast-channel-select">
+                  <option value="email">Email Only</option>
+                  <option value="whatsapp">WhatsApp Only</option>
+                  <option value="both">Email + WhatsApp</option>
+                </select>
+              </div>
+            </>
+          )}
           <div className="broadcast-form-footer">
-            <span className="broadcast-char-count">{message.length}/1000</span>
+            {targetType !== 'unverified' && <span className="broadcast-char-count">{message.length}/1000</span>}
             <button
               type="submit"
               className="broadcast-send-btn"
-              disabled={!title.trim() || !message.trim() || sending || (targetType === 'specific' && selectedUsers.length === 0)}
+              disabled={targetType === 'unverified' ? sending : (!title.trim() || !message.trim() || sending || (targetType === 'specific' && selectedUsers.length === 0))}
             >
               {getSendButtonText()}
             </button>
@@ -305,6 +434,130 @@ export default function BroadcastTab() {
         </form>
         {statusMsg && <p className="broadcast-status-msg">{statusMsg}</p>}
       </div>
+
+      {/* Re-engagement Templates Section */}
+      <div className="bc-re-section">
+        <div className="bc-re-header" onClick={toggleReSection}>
+          <div className="bc-re-header-left">
+            <span className={`bc-re-chevron ${reSectionOpen ? 'open' : ''}`}>&#9656;</span>
+            <h3 className="broadcast-section-title" style={{ margin: 0 }}>Re-engagement Templates</h3>
+            {reInactiveCount > 0 && (
+              <span className="bc-re-inactive-badge">{reInactiveCount} inactive user{reInactiveCount !== 1 ? 's' : ''}</span>
+            )}
+          </div>
+          {isSuperAdmin && reSectionOpen && (
+            <button
+              className="bc-re-generate-btn"
+              onClick={(e) => { e.stopPropagation(); handleReGenerate() }}
+              disabled={reGenerating}
+            >
+              {reGenerating ? 'Generating...' : 'Generate Random'}
+            </button>
+          )}
+        </div>
+
+        {reSectionOpen && (
+          <div className="bc-re-body">
+            {reLoading ? (
+              <div className="admin-loading">Loading templates...</div>
+            ) : (
+              <>
+                <p className="bc-re-description">
+                  These templates are used for daily automated re-engagement emails to inactive users.
+                  Click &quot;Preview&quot; to see the rendered email with real match data, or generate a broadcast manually.
+                </p>
+                <div className="bc-re-grid">
+                  {reTemplates.map(t => (
+                    <div key={t.index} className="bc-re-card">
+                      <div className="bc-re-card-index">#{t.index + 1}</div>
+                      <div className="bc-re-card-name">{t.name}</div>
+                      <div className="bc-re-card-desc">{t.description}</div>
+                      <div className="bc-re-card-subject">
+                        <strong>Subject:</strong> {t.sample_subject}
+                      </div>
+                      <div className="bc-re-card-actions">
+                        <button
+                          className="bc-re-card-preview-btn"
+                          onClick={() => fetchRePreview(t.index)}
+                          disabled={rePreviewLoading}
+                        >
+                          Preview
+                        </button>
+                        {isSuperAdmin && (
+                          <button
+                            className="bc-re-card-use-btn"
+                            onClick={() => handleReGenerate(t.index)}
+                            disabled={reGenerating}
+                          >
+                            Use This
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {reStatusMsg && <p className="broadcast-status-msg">{reStatusMsg}</p>}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Template Preview Modal */}
+      {(rePreviewLoading || rePreviewData) && (
+        <div className="bc-edit-overlay" onClick={() => { setRePreviewData(null); setRePreviewLoading(false) }}>
+          <div className="bc-re-preview-modal" onClick={e => e.stopPropagation()}>
+            {rePreviewLoading ? (
+              <div className="bc-re-preview-loading">Loading preview with real match data...</div>
+            ) : rePreviewData?.error ? (
+              <>
+                <div className="bc-edit-header">
+                  <h3>Preview Error</h3>
+                  <button className="bc-edit-close" onClick={() => setRePreviewData(null)}>&times;</button>
+                </div>
+                <div className="bc-re-preview-loading">{rePreviewData.error}</div>
+              </>
+            ) : (
+              <>
+                <div className="bc-edit-header">
+                  <h3>{rePreviewData.name}</h3>
+                  <button className="bc-edit-close" onClick={() => setRePreviewData(null)}>&times;</button>
+                </div>
+                <div className="bc-re-preview-meta">
+                  <div className="bc-template-subject"><strong>Subject:</strong> {rePreviewData.subject}</div>
+                  {rePreviewData.matches?.length > 0 && (
+                    <div className="bc-re-match-list">
+                      {rePreviewData.matches.map((m, i) => (
+                        <span key={i} className="bc-re-match-chip">{m.home} vs {m.away}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="bc-re-preview-frame">
+                  <iframe
+                    srcDoc={rePreviewData.html_body}
+                    title="Email Preview"
+                    className="bc-re-iframe"
+                    sandbox=""
+                  />
+                </div>
+                {isSuperAdmin && (
+                  <div className="bc-edit-footer">
+                    <button className="bc-edit-cancel" onClick={() => setRePreviewData(null)}>Close</button>
+                    <button
+                      className="bc-edit-save"
+                      onClick={() => { handleReGenerate(rePreviewData.index); setRePreviewData(null) }}
+                      disabled={reGenerating}
+                    >
+                      Generate with This Template
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="broadcast-history">
         <div className="broadcast-history-header">
@@ -343,6 +596,12 @@ export default function BroadcastTab() {
                     <span>{timeAgo(b.created_at)}</span>
                     {b.status === 'sent' && <span>{b.recipient_count} recipients</span>}
                     {b.channel && <span className="broadcast-channel-badge">{b.channel === 'both' ? 'Email + WhatsApp' : b.channel === 'whatsapp' ? 'WhatsApp' : 'Email'}</span>}
+                    {b.target_type === 'unverified' && (
+                      <span className="bc-target-badge bc-target-unverified">To: Unverified Users</span>
+                    )}
+                    {b.target_type === 'inactive' && (
+                      <span className="bc-target-badge bc-target-inactive">To: Inactive Users</span>
+                    )}
                     {b.target_type === 'specific' && targetNames.length > 0 && (
                       <span className="bc-target-badge">
                         To: {targetNames.length <= 3
@@ -370,6 +629,7 @@ export default function BroadcastTab() {
                         </div>
                       ) : (
                         <>
+                          <button className="broadcast-edit-btn" onClick={() => handleEditOpen(b)}>Edit</button>
                           <button className="broadcast-approve-btn" onClick={() => handleApprove(b.id)}>Approve & Send</button>
                           <button className="broadcast-reject-btn" onClick={() => setRejectingId(b.id)}>Reject</button>
                         </>
@@ -382,6 +642,46 @@ export default function BroadcastTab() {
           </div>
         )}
       </div>
+
+      {/* Edit Broadcast Modal */}
+      {editingBroadcast && (
+        <div className="bc-edit-overlay" onClick={() => setEditingBroadcast(null)}>
+          <div className="bc-edit-modal" onClick={e => e.stopPropagation()}>
+            <div className="bc-edit-header">
+              <h3>Edit Broadcast</h3>
+              <button className="bc-edit-close" onClick={() => setEditingBroadcast(null)}>&times;</button>
+            </div>
+            <div className="bc-edit-body">
+              <label className="bc-edit-label">Subject / Title</label>
+              <input
+                type="text"
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                className="bc-edit-input"
+                maxLength={100}
+              />
+              <label className="bc-edit-label">Message</label>
+              <textarea
+                value={editMessage}
+                onChange={e => setEditMessage(e.target.value)}
+                className="bc-edit-textarea"
+                rows={8}
+              />
+              {editingBroadcast.target_type === 'inactive' && (
+                <p className="bc-edit-note">
+                  Note: For re-engagement emails, the message stores template info. The actual email HTML is generated at send time with personalized names and live match data.
+                </p>
+              )}
+            </div>
+            <div className="bc-edit-footer">
+              <button className="bc-edit-cancel" onClick={() => setEditingBroadcast(null)}>Cancel</button>
+              <button className="bc-edit-save" onClick={handleEditSave} disabled={editSaving}>
+                {editSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

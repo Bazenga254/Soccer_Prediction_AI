@@ -107,10 +107,15 @@ function createClient() {
     }, 5000)
   })
 
-  client.on('message', async (msg) => {
+  // Shared handler for both incoming and outgoing messages
+  async function handleMessage(msg) {
     try {
-      // Skip status updates and group join/leave messages
+      // Skip status updates, notifications
       if (msg.type === 'e2e_notification' || msg.type === 'notification_template') return
+      // Skip reactions (they aren't real chat messages)
+      if (msg.type === 'reaction') return
+
+      console.log(`[WhatsApp] ${msg.fromMe ? 'OUT' : 'IN'} msg from ${msg.from}: "${(msg.body || '').substring(0, 60)}"`)
 
       const contact = await msg.getContact()
       const chat = await msg.getChat()
@@ -124,7 +129,6 @@ function createClient() {
         try {
           const media = await msg.downloadMedia()
           if (media) {
-            // Send media data to FastAPI for storage
             const mediaRes = await axios.post(`${FASTAPI_URL}/api/internal/whatsapp/store-media`, {
               data: media.data,
               mimetype: media.mimetype,
@@ -143,13 +147,14 @@ function createClient() {
       }
 
       const payload = {
-        from: msg.from,                    // e.g. "254712345678@c.us"
+        from: msg.from,
         from_name: contact.pushname || contact.name || msg.from.split('@')[0],
         chat_id: chat.id._serialized,
         chat_name: chat.name || '',
         is_group: chat.isGroup,
         body: msg.body || '',
         type: msg.type,
+        from_me: msg.fromMe,
         media_url: mediaUrl,
         media_type: mediaType,
         media_filename: mediaFilename,
@@ -161,6 +166,14 @@ function createClient() {
     } catch (e) {
       console.error('[WhatsApp] Message handler error:', e.message)
     }
+  }
+
+  // Incoming messages from others
+  client.on('message', handleMessage)
+
+  // Messages sent from the phone (so inbox stays in sync)
+  client.on('message_create', async (msg) => {
+    if (msg.fromMe) await handleMessage(msg)
   })
 
   client.initialize().catch(e => {
@@ -227,6 +240,33 @@ app.post('/send-media', async (req, res) => {
     res.json({ ok: true, message_id: msg.id._serialized })
   } catch (e) {
     console.error('[WhatsApp] Send media error:', e.message)
+    res.status(500).json({ ok: false, error: e.message })
+  }
+})
+
+// Get all chats (for sync)
+app.get('/chats', async (req, res) => {
+  if (!clientReady) return res.status(503).json({ ok: false, error: 'WhatsApp not connected' })
+  try {
+    const chats = await client.getChats()
+    const result = chats.slice(0, 100).map(chat => {
+      const lm = chat.lastMessage
+      return {
+        chat_id: chat.id._serialized,
+        name: chat.name || chat.id._serialized.split('@')[0],
+        is_group: chat.isGroup,
+        unread_count: chat.unreadCount || 0,
+        last_message: lm ? {
+          body: lm.body || '',
+          timestamp: lm.timestamp,
+          from_me: lm.fromMe,
+          type: lm.type,
+        } : null,
+      }
+    })
+    res.json({ ok: true, chats: result })
+  } catch (e) {
+    console.error('[WhatsApp] Get chats error:', e.message)
     res.status(500).json({ ok: false, error: e.message })
   }
 })

@@ -3806,7 +3806,7 @@ def create_broadcast(sender_id: int, sender_name: str, title: str, message: str,
     target_type: 'all' or 'specific'. If 'specific', target_user_ids must be provided."""
     if channel not in ("email", "whatsapp", "both"):
         channel = "email"
-    if target_type not in ("all", "specific"):
+    if target_type not in ("all", "specific", "unverified", "inactive"):
         target_type = "all"
     import json
     user_ids_json = json.dumps(target_user_ids) if target_user_ids else None
@@ -3832,6 +3832,34 @@ def create_broadcast(sender_id: int, sender_name: str, title: str, message: str,
         result.update(send_result)
 
     return result
+
+
+def update_broadcast(broadcast_id: int, title: str = None, message: str = None) -> Dict:
+    """Update a pending broadcast's title and/or message."""
+    conn = _get_db()
+    row = conn.execute("SELECT * FROM broadcast_messages WHERE id = ?", (broadcast_id,)).fetchone()
+    if not row:
+        conn.close()
+        return {"success": False, "error": "Broadcast not found"}
+    if row["status"] != "pending_approval":
+        conn.close()
+        return {"success": False, "error": "Only pending broadcasts can be edited"}
+    updates = []
+    params = []
+    if title is not None:
+        updates.append("title = ?")
+        params.append(title)
+    if message is not None:
+        updates.append("message = ?")
+        params.append(message)
+    if not updates:
+        conn.close()
+        return {"success": False, "error": "Nothing to update"}
+    params.append(broadcast_id)
+    conn.execute(f"UPDATE broadcast_messages SET {', '.join(updates)} WHERE id = ?", params)
+    conn.commit()
+    conn.close()
+    return {"success": True, "broadcast_id": broadcast_id}
 
 
 def approve_broadcast(broadcast_id: int, approver_id: int, approver_name: str) -> Dict:
@@ -3903,7 +3931,16 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
     # Get users based on target type
     auth_conn = user_auth._get_db()
     target_user_ids_raw = broadcast["target_user_ids"] if "target_user_ids" in broadcast.keys() else None
-    if target_type == "specific" and target_user_ids_raw:
+    if target_type == "unverified":
+        users = auth_conn.execute(
+            "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1 AND email_verified = 0 AND is_bot = 0"
+        ).fetchall()
+    elif target_type == "inactive":
+        inactive_users = user_auth.get_inactive_users(days=2)
+        users = [{"id": u["id"], "whatsapp_number": None, "whatsapp_verified": 0} for u in inactive_users]
+        auth_conn.close()
+        auth_conn = None  # Already closed
+    elif target_type == "specific" and target_user_ids_raw:
         try:
             specific_ids = _json.loads(target_user_ids_raw)
         except (ValueError, TypeError):
@@ -3920,27 +3957,29 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
         users = auth_conn.execute(
             "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1"
         ).fetchall()
-    auth_conn.close()
+    if auth_conn:
+        auth_conn.close()
 
     user_ids = [u["id"] for u in users]
     now = datetime.now().isoformat()
 
-    # Create in-app notification for ALL users regardless of channel
-    for uid in user_ids:
-        create_notification(
-            user_id=uid,
-            notif_type="broadcast",
-            title=broadcast["title"],
-            message=broadcast["message"],
-            metadata={"broadcast_id": broadcast_id, "sender_name": broadcast["sender_name"]},
-        )
+    # Create in-app notification for users (skip for unverified/inactive — email only)
+    if target_type not in ("unverified", "inactive"):
+        for uid in user_ids:
+            create_notification(
+                user_id=uid,
+                notif_type="broadcast",
+                title=broadcast["title"],
+                message=broadcast["message"],
+                metadata={"broadcast_id": broadcast_id, "sender_name": broadcast["sender_name"]},
+            )
 
     # Send email if channel is 'email' or 'both'
     if channel in ("email", "both"):
         import threading
         import time as _bcast_time
         def _send_broadcast_emails():
-            """Send emails sequentially with delay to avoid Zoho rate limits."""
+            """Send emails sequentially with delay to avoid rate limits."""
             import user_auth
             sent = 0
             failed = 0
@@ -3948,18 +3987,54 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
                 try:
                     user_info = user_auth.get_user_email_by_id(uid)
                     if user_info and user_info.get("email"):
-                        ok = user_auth.send_notification_email(
-                            to_email=user_info["email"],
-                            display_name=user_info.get("display_name", ""),
-                            notif_type="broadcast",
-                            title=broadcast["title"],
-                            message=broadcast["message"],
-                        )
+                        if target_type == "unverified":
+                            ok = user_auth.send_registration_reminder_email(
+                                to_email=user_info["email"],
+                                full_name=user_info.get("full_name", ""),
+                                display_name=user_info.get("display_name", ""),
+                            )
+                        elif target_type == "inactive":
+                            # Re-engagement: rebuild HTML with user's real name
+                            import reengagement
+                            msg_text = broadcast["message"] or ""
+                            template_idx = 0
+                            if msg_text.startswith("[TEMPLATE:"):
+                                try:
+                                    template_idx = int(msg_text.split("]")[0].split(":")[1])
+                                except (ValueError, IndexError):
+                                    template_idx = 0
+                            template_fn = reengagement.ALL_TEMPLATES[template_idx % len(reengagement.ALL_TEMPLATES)]
+                            first_name = (user_info.get("full_name") or user_info.get("display_name") or "there").split()[0].capitalize()
+                            # Fetch matches (cached) — use empty list if unavailable
+                            import asyncio as _aio
+                            try:
+                                loop = _aio.get_event_loop()
+                                if loop.is_running():
+                                    import concurrent.futures
+                                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                                        _matches = pool.submit(lambda: _aio.run(reengagement.get_big_league_fixtures(days=3))).result(timeout=30)
+                                else:
+                                    _matches = loop.run_until_complete(reengagement.get_big_league_fixtures(days=3))
+                            except Exception:
+                                _matches = []
+                            personalized = template_fn(first_name, _matches)
+                            ok = user_auth.send_reengagement_email(
+                                to_email=user_info["email"],
+                                subject=personalized["subject"],
+                                html_body=personalized["html_body"],
+                            )
+                        else:
+                            ok = user_auth.send_notification_email(
+                                to_email=user_info["email"],
+                                display_name=user_info.get("display_name", ""),
+                                notif_type="broadcast",
+                                title=broadcast["title"],
+                                message=broadcast["message"],
+                            )
                         if ok:
                             sent += 1
                         else:
                             failed += 1
-                    # Delay between each email to avoid Zoho rate limits
                     _bcast_time.sleep(3)
                 except Exception as e:
                     failed += 1

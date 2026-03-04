@@ -234,9 +234,8 @@ def _check_admin_auth(
                 if required_module:
                     if not admin_rbac.has_permission(user_id, required_module, required_action):
                         return None
-
-                # Legacy role check (backward compat)
-                if required_roles:
+                elif required_roles:
+                    # Legacy role check only when no RBAC module specified
                     legacy_role = user_auth.get_staff_role(user_id)
                     if legacy_role and legacy_role not in required_roles:
                         return None
@@ -1962,6 +1961,130 @@ async def admin_reject_broadcast(broadcast_id: int, request: Request, body: Reje
     _log_action(auth, "reject_broadcast", "community", request, "broadcast", broadcast_id,
                 {"reason": body.reason})
     return result
+
+
+class UpdateBroadcastRequest(BaseModel):
+    title: Optional[str] = None
+    message: Optional[str] = None
+
+class GenerateReengagementRequest(BaseModel):
+    template_index: Optional[int] = None
+
+
+@admin_router.put("/broadcast/{broadcast_id}")
+async def admin_update_broadcast(broadcast_id: int, request: Request, body: UpdateBroadcastRequest,
+                                  x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Edit a pending broadcast's title or message before approval."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'},
+                             required_module="community", required_action="approve")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = community.update_broadcast(broadcast_id, title=body.title, message=body.message)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    _log_action(auth, "update_broadcast", "community", request, "broadcast", broadcast_id)
+    return result
+
+
+# ═══════════════════════════════════════════════════════════
+#  RE-ENGAGEMENT TEMPLATES
+# ═══════════════════════════════════════════════════════════
+
+@admin_router.get("/reengagement/templates")
+async def get_reengagement_templates(
+    x_admin_password: str = Header(None), authorization: str = Header(None)
+):
+    """Get all re-engagement email template metadata and inactive user count."""
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             {'super_admin', 'customer_care', 'customer_care_hod', 'customer_support_agent'},
+                             required_module="community", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    import reengagement
+    templates = [{"index": i, **meta} for i, meta in enumerate(reengagement.TEMPLATE_META)]
+    inactive_count = len(user_auth.get_inactive_users(days=2))
+    return {"templates": templates, "inactive_user_count": inactive_count}
+
+
+@admin_router.get("/reengagement/preview/{template_index}")
+async def preview_reengagement_template(
+    template_index: int,
+    x_admin_password: str = Header(None), authorization: str = Header(None)
+):
+    """Render a specific re-engagement template with real match data for preview."""
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             {'super_admin', 'customer_care', 'customer_care_hod', 'customer_support_agent'},
+                             required_module="community", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    import reengagement
+    if template_index < 0 or template_index >= len(reengagement.ALL_TEMPLATES):
+        raise HTTPException(status_code=400, detail="Invalid template index")
+    matches = await reengagement.get_big_league_fixtures(days=3)
+    template_fn = reengagement.ALL_TEMPLATES[template_index]
+    result = template_fn("John", matches)
+    match_summaries = [
+        {"league": m.get("competition", {}).get("name", ""), "home": m.get("home_team", {}).get("name", ""),
+         "away": m.get("away_team", {}).get("name", ""), "kickoff": reengagement._format_kickoff(m.get("date", ""))}
+        for m in matches[:3]
+    ]
+    meta = reengagement.TEMPLATE_META[template_index]
+    return {"index": template_index, "name": meta["name"], "subject": result["subject"],
+            "html_body": result["html_body"], "match_count": len(matches), "matches": match_summaries}
+
+
+@admin_router.post("/reengagement/generate")
+async def generate_reengagement(
+    request: Request, body: GenerateReengagementRequest,
+    x_admin_password: str = Header(None), authorization: str = Header(None)
+):
+    """Manually trigger re-engagement broadcast generation."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'},
+                             required_module="community", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    import reengagement
+    import random as _rand
+    # Check for existing pending
+    existing = community.get_broadcasts(status_filter="pending_approval", limit=50)
+    for b in existing:
+        if b.get("target_type") == "inactive":
+            return {"success": False, "error": "A pending re-engagement broadcast already exists. Approve or reject it first."}
+    inactive_users = user_auth.get_inactive_users(days=2)
+    if not inactive_users:
+        return {"success": False, "error": "No inactive users found."}
+    matches = await reengagement.get_big_league_fixtures(days=3)
+    if not matches:
+        return {"success": False, "error": "No big-league fixtures found in next 3 days."}
+    # Pick template
+    if body.template_index is not None:
+        if body.template_index < 0 or body.template_index >= len(reengagement.ALL_TEMPLATES):
+            raise HTTPException(status_code=400, detail="Invalid template index")
+        template_fn = reengagement.ALL_TEMPLATES[body.template_index]
+        template_idx = body.template_index
+    else:
+        template_fn = _rand.choice(reengagement.ALL_TEMPLATES)
+        template_idx = reengagement.ALL_TEMPLATES.index(template_fn)
+    result = template_fn("there", matches)
+    match_summary_lines = []
+    for m in matches[:3]:
+        league = m.get("competition", {}).get("name", "")
+        home = m.get("home_team", {}).get("name", "")
+        away = m.get("away_team", {}).get("name", "")
+        kickoff = reengagement._format_kickoff(m.get("date", ""))
+        match_summary_lines.append(f"{league}: {home} vs {away} ({kickoff})")
+    broadcast_result = community.create_broadcast(
+        sender_id=auth.get("user_id") or 0,
+        sender_name=auth.get("display_name", "Admin"),
+        title=result["subject"],
+        message=f"[TEMPLATE:{template_idx}]\n---\nFeatured Matches:\n" + "\n".join(match_summary_lines) + f"\n---\nInactive users: {len(inactive_users)}",
+        auto_approve=False, channel="email", target_type="inactive",
+    )
+    meta = reengagement.TEMPLATE_META[template_idx]
+    _log_action(auth, "generate_reengagement", "community", request, "broadcast",
+                broadcast_result.get("broadcast_id"), {"template": meta["name"]})
+    return {"success": True, "broadcast_id": broadcast_result.get("broadcast_id"),
+            "template_name": meta["name"], "inactive_user_count": len(inactive_users), "match_count": len(matches[:3])}
 
 
 # ═══════════════════════════════════════════════════════════

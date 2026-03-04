@@ -166,43 +166,6 @@ export default function EmployeeDashboard() {
         </div>
       </div>
 
-      {/* Recent Activity Feed */}
-      <div className="emp-section">
-        <h3 className="emp-section-title">Recent Activity</h3>
-        <div className="emp-activity-feed">
-          {activity.length === 0 ? (
-            <div className="emp-empty-state">
-              <p>No recent activity to display.</p>
-            </div>
-          ) : (
-            activity.slice(0, 10).map((item, idx) => {
-              const actionStyle = ACTION_STYLES[item.action] || ACTION_STYLES.login
-              return (
-                <div key={item.id || idx} className="emp-activity-item">
-                  <div className="emp-activity-dot" style={{ background: actionStyle.color }}></div>
-                  <div className="emp-activity-content">
-                    <div className="emp-activity-top">
-                      <span
-                        className="emp-activity-action"
-                        style={{ background: actionStyle.bg, color: actionStyle.color }}
-                      >
-                        {(item.action || 'action').replace(/_/g, ' ')}
-                      </span>
-                      <span className="emp-activity-time">{timeAgo(item.created_at || item.timestamp)}</span>
-                    </div>
-                    <p className="emp-activity-description">
-                      {item.description || item.details || item.action}
-                    </p>
-                    {item.target_user && (
-                      <span className="emp-activity-target">User: {item.target_user}</span>
-                    )}
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </div>
 
       <style>{`
         .emp-dashboard {

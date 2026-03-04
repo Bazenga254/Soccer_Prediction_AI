@@ -600,7 +600,7 @@ export default function CustomerCarePage() {
 
       <style>{`
         .emp-customer-care {
-          height: calc(100vh - 40px);
+          height: calc(100vh - 90px);
           display: flex;
           flex-direction: column;
         }
@@ -948,6 +948,7 @@ export default function CustomerCarePage() {
           flex-direction: column;
           overflow: hidden;
           min-height: 0;
+          height: 100%;
         }
 
         /* Chat Empty */
@@ -1126,6 +1127,7 @@ export default function CustomerCarePage() {
           flex-direction: column;
           gap: 6px;
           min-height: 0;
+          justify-content: flex-end;
         }
 
         .emp-bubble {

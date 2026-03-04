@@ -283,6 +283,7 @@ export default function UsersTab() {
             <span className="col-status">
               <span className={`status-dot ${u.is_active ? 'active' : 'suspended'}`}></span>
               {u.is_active ? 'Active' : 'Suspended'}
+              {!u.email_verified && <span className="unverified-badge">Unverified</span>}
             </span>
             <span className="col-joined">{u.created_at ? new Date(u.created_at).toLocaleDateString() : '-'}</span>
             <span className="col-actions">
