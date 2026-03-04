@@ -1262,7 +1262,7 @@ def send_phone_otp(user_id: int, phone: str) -> Dict:
 
         masked_phone = f"{phone[:3]}***{phone[-3:]}"
         greeting = user_info.get("display_name", "there")
-        payment_email = os.environ.get("ZOHO_PAYMENT_EMAIL", "")
+        payment_email = os.environ.get("BREVO_PAYMENT_EMAIL", "") or os.environ.get("ZOHO_PAYMENT_EMAIL", "")
 
         html_body = f"""
         <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
@@ -1632,7 +1632,7 @@ def _send_withdrawal_method_email(user_id: int, action: str, method_label: str):
         profile = user_auth.get_user_profile(user_id)
         if not profile or not profile.get("email"):
             return
-        payment_email = os.environ.get("ZOHO_PAYMENT_EMAIL", "")
+        payment_email = os.environ.get("BREVO_PAYMENT_EMAIL", "") or os.environ.get("ZOHO_PAYMENT_EMAIL", "")
         user_auth.send_notification_email(
             to_email=profile["email"],
             display_name=profile.get("display_name", "User"),

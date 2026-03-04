@@ -586,37 +586,6 @@ def _classify_referrer(referrer: str) -> str:
     """Classify a referrer URL into a traffic source name."""
     if not referrer:
         return "Direct"
-    # UTM source stored at registration as "utm:<value>" — takes priority over referrer URL
-    if referrer.startswith("utm:"):
-        raw = referrer[4:].strip().lower()
-        if not raw:
-            return "Direct"
-        if "facebook" in raw or raw in ("fb", "fbad", "facebook_ad"):
-            return "Facebook"
-        if "instagram" in raw or raw in ("ig", "insta"):
-            return "Instagram"
-        if "tiktok" in raw or raw == "tt":
-            return "TikTok"
-        if "youtube" in raw or raw in ("yt", "youtu"):
-            return "YouTube"
-        if "twitter" in raw or "x.com" in raw or raw in ("x", "tweet"):
-            return "X (Twitter)"
-        if "whatsapp" in raw or raw == "wa":
-            return "WhatsApp"
-        if "telegram" in raw or raw in ("tg", "tme"):
-            return "Telegram"
-        if "google" in raw:
-            return "Google"
-        if "bing" in raw:
-            return "Bing"
-        if "yahoo" in raw:
-            return "Yahoo"
-        if "reddit" in raw:
-            return "Reddit"
-        if "linkedin" in raw:
-            return "LinkedIn"
-        # Unknown UTM value — capitalise and show as-is
-        return referrer[4:].strip().title()
     r = referrer.lower()
     if "google" in r and "youtube" not in r:
         return "Google"
@@ -1007,60 +976,18 @@ def _generate_verification_code() -> str:
     return str(random.randint(100000, 999999))
 
 
-# Zoho token cache — avoids refreshing on every email send
-_zoho_token_cache = {"token": "", "expires_at": 0}
-_zoho_token_lock = threading.Lock()
-
-# Email rate limiter — max 20 emails per 10-minute window to avoid Zoho blocks
+# Email rate limiter — max 20 emails per 10-minute window
 _email_send_times = []
 _email_rate_lock = threading.Lock()
 _EMAIL_RATE_LIMIT = 20       # max emails per window
 _EMAIL_RATE_WINDOW = 600     # 10 minutes in seconds
 
 
-def _get_zoho_access_token() -> str:
-    """Get a Zoho access token, using cache when possible (tokens last ~55 min)."""
-    import time as _t
-    with _zoho_token_lock:
-        if _zoho_token_cache["token"] and _t.time() < _zoho_token_cache["expires_at"]:
-            return _zoho_token_cache["token"]
-
-    client_id = os.environ.get("ZOHO_CLIENT_ID", "")
-    client_secret = os.environ.get("ZOHO_CLIENT_SECRET", "")
-    refresh_token = os.environ.get("ZOHO_REFRESH_TOKEN", "")
-
-    if not all([client_id, client_secret, refresh_token]):
-        print("[WARN] Zoho OAuth not configured")
-        return ""
-
-    try:
-        data = urllib.parse.urlencode({
-            "grant_type": "refresh_token",
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-        }).encode()
-        req = urllib.request.Request("https://accounts.zoho.com/oauth/v2/token", data=data, method="POST")
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            result = _json.loads(resp.read().decode())
-            token = result.get("access_token", "")
-            if token:
-                import time as _t2
-                with _zoho_token_lock:
-                    _zoho_token_cache["token"] = token
-                    _zoho_token_cache["expires_at"] = _t2.time() + 3300  # cache for 55 min
-                print("[OK] Zoho access token refreshed and cached")
-            return token
-    except Exception as e:
-        print(f"[ERROR] Failed to get Zoho access token: {e}")
-        return ""
-
-
 def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email: str = "", sender_name: str = "Spark AI") -> bool:
-    """Send an email via Zoho Mail API (HTTPS). Bypasses SMTP port blocking."""
+    """Send an email via Brevo API (formerly Sendinblue). Function name kept for compatibility."""
     import time as _rate_t
 
-    # Rate limiting — prevent Zoho from blocking us for unusual activity
+    # Rate limiting
     with _email_rate_lock:
         now = _rate_t.time()
         _email_send_times[:] = [t for t in _email_send_times if now - t < _EMAIL_RATE_WINDOW]
@@ -1068,60 +995,52 @@ def _send_zoho_email(to_email: str, subject: str, html_content: str, from_email:
             wait = _EMAIL_RATE_WINDOW - (now - _email_send_times[0]) + 1
             print("[WARN] Email rate limit hit ({}/{}s). Waiting {:.0f}s for {}".format(
                 _EMAIL_RATE_LIMIT, _EMAIL_RATE_WINDOW, wait, to_email))
-            _rate_t.sleep(min(wait, 30))  # wait up to 30s for window to clear
+            _rate_t.sleep(min(wait, 30))
             _email_send_times[:] = [t for t in _email_send_times if _rate_t.time() - t < _EMAIL_RATE_WINDOW]
         _email_send_times.append(_rate_t.time())
 
-    account_id = os.environ.get("ZOHO_ACCOUNT_ID", "")
+    api_key = os.environ.get("BREVO_API_KEY", "")
     if not from_email:
-        from_email = os.environ.get("ZOHO_FROM_EMAIL", "")
+        from_email = os.environ.get("BREVO_FROM_EMAIL", "") or os.environ.get("ZOHO_FROM_EMAIL", "")
+    if not sender_name or sender_name == "Spark AI":
+        sender_name = os.environ.get("BREVO_FROM_NAME", "Spark AI Prediction")
 
-    if not account_id or not from_email:
-        print("[WARN] Zoho Mail API not configured - skipping email send")
+    if not api_key:
+        print("[WARN] Brevo API key not configured - skipping email send")
         return False
 
     import time as _time_mod
 
     for attempt in range(2):
-        access_token = _get_zoho_access_token()
-        if not access_token:
-            print(f"[ERROR] No Zoho access token (attempt {attempt + 1})")
-            if attempt == 0:
-                _time_mod.sleep(0.5)
-            continue
-
         try:
             payload = _json.dumps({
-                "fromAddress": from_email,
-
-                "toAddress": to_email,
+                "sender": {"name": sender_name, "email": from_email},
+                "to": [{"email": to_email}],
                 "subject": subject,
-                "content": html_content,
-                "askReceipt": "no",
+                "htmlContent": html_content,
             }).encode()
 
             req = urllib.request.Request(
-                f"https://mail.zoho.com/api/accounts/{account_id}/messages",
+                "https://api.brevo.com/v3/smtp/email",
                 data=payload,
                 method="POST",
                 headers={
-                    "Authorization": f"Zoho-oauthtoken {access_token}",
+                    "api-key": api_key,
                     "Content-Type": "application/json",
+                    "Accept": "application/json",
                 },
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
                 result = _json.loads(resp.read().decode())
-                if result.get("status", {}).get("code") == 200:
-                    print(f"[OK] Email sent to {to_email}: {subject}")
-                    return True
-                print(f"[ERROR] Zoho API error (attempt {attempt + 1}): {result}")
+                print(f"[OK] Email sent to {to_email}: {subject} (messageId: {result.get('messageId', 'N/A')})")
+                return True
         except urllib.error.HTTPError as e:
             body = ""
             try:
                 body = e.read().decode()[:500]
             except Exception:
                 pass
-            print(f"[ERROR] Zoho HTTP {e.code} sending to {to_email} (attempt {attempt + 1}): {body}")
+            print(f"[ERROR] Brevo HTTP {e.code} sending to {to_email} (attempt {attempt + 1}): {body}")
         except Exception as e:
             print(f"[ERROR] Failed to send email to {to_email} (attempt {attempt + 1}): {e}")
 
@@ -1562,7 +1481,7 @@ def send_invoice_email(
     """
 
     subject = f"Payment Receipt #{invoice_number} - Spark AI"
-    payment_email = os.environ.get("ZOHO_PAYMENT_EMAIL", "")
+    payment_email = os.environ.get("BREVO_PAYMENT_EMAIL", "") or os.environ.get("ZOHO_PAYMENT_EMAIL", "")
     return _send_zoho_email(to_email, subject, html_body, from_email=payment_email)
 
 
@@ -3004,7 +2923,6 @@ def list_all_users() -> List[Dict]:
         "tier": r["tier"],
         "is_active": bool(r["is_active"]),
         "is_admin": bool(r["is_admin"]),
-        "is_bot": bool(r["is_bot"]) if r["is_bot"] is not None else False,
         "avatar_color": r["avatar_color"],
         "full_name": r["full_name"],
         "date_of_birth": r["date_of_birth"],
@@ -3015,7 +2933,6 @@ def list_all_users() -> List[Dict]:
         "last_login": r["last_login"],
         "login_count": r["login_count"],
         "country": r["country"],
-        "last_known_ip": r["last_known_ip"] or "",
     } for r in rows]
 
 
