@@ -26,6 +26,7 @@ SYSTEM_BOT_DISPLAY = "Spark AI Daily Picks"
 SYSTEM_BOT_AVATAR = "#3b82f6"
 
 DAILY_PICK_COUNT = 10
+CANDIDATE_POOL_SIZE = 30  # Predict more matches, then keep top N by probability
 
 
 def _get_or_create_bot_user() -> Dict:
@@ -191,24 +192,26 @@ async def generate_daily_predictions():
         print("[DAILY PICKS] No upcoming fixtures found, will retry later")
         return
 
-    # Select top matches
+    # Select a larger candidate pool, predict all, then keep top N by probability
     needed = DAILY_PICK_COUNT - existing_count
-    matches = select_top_matches(fixtures, count=needed)
-    if not matches:
+    if needed <= 0:
+        return
+    candidates = select_top_matches(fixtures, count=CANDIDATE_POOL_SIZE)
+    if not candidates:
         print("[DAILY PICKS] No eligible matches for daily picks")
         return
 
-    print(f"[DAILY PICKS] Selected {len(matches)} matches for prediction")
+    print(f"[DAILY PICKS] Analyzing {len(candidates)} candidate matches to find top {needed} picks")
 
-    generated = 0
-    for fixture in matches:
+    # Phase 1: Predict all candidates and collect results
+    scored = []
+    for fixture in candidates:
         try:
             home = fixture["home_team"]
             away = fixture["away_team"]
             comp = fixture.get("competition", {})
             comp_code = comp.get("code", "")
             comp_name = comp.get("name", config.COMPETITION_NAMES.get(comp_code, comp_code))
-            league_id = comp.get("id")
 
             # Get team standings data
             teams = await get_teams(comp_code) if comp_code else []
@@ -234,6 +237,45 @@ async def generate_daily_predictions():
             }
             predicted_result = max(probs, key=probs.get)
             predicted_prob = probs[predicted_result]
+
+            scored.append({
+                "fixture": fixture,
+                "outcome": outcome,
+                "predicted_result": predicted_result,
+                "predicted_prob": predicted_prob,
+                "comp_code": comp_code,
+                "comp_name": comp_name,
+            })
+
+            # Small delay between predictions to avoid overloading API
+            await asyncio.sleep(2)
+
+        except Exception as e:
+            print(f"[DAILY PICKS] Failed to analyze {fixture.get('home_team', {}).get('name', '?')} vs {fixture.get('away_team', {}).get('name', '?')}: {e}")
+            continue
+
+    # Phase 2: Sort by probability (highest first) and take top N
+    scored.sort(key=lambda x: x["predicted_prob"], reverse=True)
+    top_picks = scored[:needed]
+
+    print(f"[DAILY PICKS] Top {len(top_picks)} picks by probability:")
+    for i, p in enumerate(top_picks):
+        home_name = p["fixture"]["home_team"]["name"]
+        away_name = p["fixture"]["away_team"]["name"]
+        print(f"  {i+1}. {home_name} vs {away_name} -> {p['predicted_result']} ({p['predicted_prob']:.0f}%)")
+
+    # Phase 3: Save the top picks
+    generated = 0
+    for pick in top_picks:
+        try:
+            fixture = pick["fixture"]
+            home = fixture["home_team"]
+            away = fixture["away_team"]
+            outcome = pick["outcome"]
+            predicted_result = pick["predicted_result"]
+            predicted_prob = pick["predicted_prob"]
+            comp_code = pick["comp_code"]
+            comp_name = pick["comp_name"]
 
             # Build analysis summary
             key_factors = outcome.get("key_factors", [])
@@ -264,7 +306,7 @@ async def generate_daily_predictions():
 
             if result.get("success"):
                 generated += 1
-                print(f"[DAILY PICKS] #{generated}: {home['name']} vs {away['name']} ({comp_name}) → {predicted_result} ({predicted_prob:.0f}%)")
+                print(f"[DAILY PICKS] #{generated}: {home['name']} vs {away['name']} ({comp_name}) -> {predicted_result} ({predicted_prob:.0f}%)")
 
             # Also store in prediction tracker for accuracy tracking
             try:
@@ -285,11 +327,8 @@ async def generate_daily_predictions():
             except Exception as e:
                 print(f"[DAILY PICKS] Tracker store failed (non-fatal): {e}")
 
-            # Small delay between predictions to avoid overloading API
-            await asyncio.sleep(2)
-
         except Exception as e:
-            print(f"[DAILY PICKS] Failed to generate for {fixture.get('home_team', {}).get('name', '?')} vs {fixture.get('away_team', {}).get('name', '?')}: {e}")
+            print(f"[DAILY PICKS] Failed to save {pick['fixture'].get('home_team', {}).get('name', '?')}: {e}")
             continue
 
     print(f"[DAILY PICKS] Generation complete: {generated} new predictions (total today: {existing_count + generated})")
