@@ -154,6 +154,7 @@ function AIAssistant() {
 
     // Create conversation first if none active
     let convId = activeConversation
+    let isNewConversation = false
     if (!convId) {
       try {
         const res = await fetch('/api/ai-assistant/conversations/new', {
@@ -163,6 +164,7 @@ function AIAssistant() {
         if (res.ok) {
           const data = await res.json()
           convId = data.conversation_id
+          isNewConversation = true
           setActiveConversation(convId)
           setActiveTitle('New Chat')
         } else {
@@ -212,9 +214,21 @@ function AIAssistant() {
         const errMsg = err.detail || 'Failed to send message. Please try again.'
         const isCredit = /insufficient credits|not enough credits/i.test(errMsg)
         setMessages(prev => [...prev, { role: 'assistant', content: isCredit ? "Sorry, you don't have enough credits to use this service." : errMsg, match_links: [], created_at: new Date().toISOString(), isError: true, creditError: isCredit }])
+        // Clean up empty conversation if the first message failed
+        if (isNewConversation) {
+          fetch(`/api/ai-assistant/conversations/${convId}`, { method: 'DELETE', headers: authHeaders }).catch(() => {})
+          setActiveConversation(null)
+          setConversations(prev => prev.filter(c => c.id !== convId))
+        }
       }
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Network error. Please check your connection.', match_links: [], created_at: new Date().toISOString(), isError: true }])
+      // Clean up empty conversation on network error
+      if (isNewConversation) {
+        fetch(`/api/ai-assistant/conversations/${convId}`, { method: 'DELETE', headers: authHeaders }).catch(() => {})
+        setActiveConversation(null)
+        setConversations(prev => prev.filter(c => c.id !== convId))
+      }
     } finally {
       setLoading(false)
     }
