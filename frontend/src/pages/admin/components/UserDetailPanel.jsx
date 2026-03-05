@@ -11,6 +11,9 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
   const [showAdjust, setShowAdjust] = useState(false)
   const [txPage, setTxPage] = useState(1)
   const [adjPage, setAdjPage] = useState(1)
+  const [showProModal, setShowProModal] = useState(false)
+  const [proDays, setProDays] = useState(7)
+  const [proSaving, setProSaving] = useState(false)
 
   if (!userProfile) return null
 
@@ -53,6 +56,33 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
       setAdjustMsg(err.response?.data?.detail || 'Failed to adjust balance')
     }
     setAdjusting(false)
+  }
+
+  const handleUpgradePro = async () => {
+    setProSaving(true)
+    try {
+      await axios.post(`/api/admin/users/${userProfile.id}/set-tier`, {
+        tier: 'pro',
+        days: proDays,
+      }, { headers: getAuthHeaders() })
+      setShowProModal(false)
+      if (onRefresh) onRefresh(userProfile.id)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to upgrade user')
+    }
+    setProSaving(false)
+  }
+
+  const handleDowngrade = async () => {
+    if (!confirm('Downgrade this user to Free tier?')) return
+    try {
+      await axios.post(`/api/admin/users/${userProfile.id}/set-tier`, {
+        tier: 'free',
+      }, { headers: getAuthHeaders() })
+      if (onRefresh) onRefresh(userProfile.id)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to downgrade user')
+    }
   }
 
   return (
@@ -386,13 +416,53 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
 
         {/* Actions */}
         <div className="user-detail-actions">
-          <button className="admin-action-btn tier" onClick={() => onTierChange(userProfile.id, userProfile.tier)}>
-            {userProfile.tier === 'pro' ? 'Downgrade to Free' : 'Upgrade to Pro'}
-          </button>
+          {userProfile.tier === 'pro' ? (
+            <button className="admin-action-btn tier" onClick={handleDowngrade}>Downgrade to Free</button>
+          ) : (
+            <button className="admin-action-btn tier" onClick={() => setShowProModal(true)}>Upgrade to Pro</button>
+          )}
           <button className={`admin-action-btn ${userProfile.is_active ? 'suspend' : 'activate'}`} onClick={() => onToggleActive(userProfile.id, userProfile.is_active)}>
             {userProfile.is_active ? 'Suspend User' : 'Activate User'}
           </button>
         </div>
+
+        {/* Pro expiry info */}
+        {userProfile.tier === 'pro' && userProfile.pro_expires_at && (
+          <div className="pro-expiry-info">
+            Pro expires: {new Date(userProfile.pro_expires_at).toLocaleString()}
+          </div>
+        )}
+
+        {/* Upgrade to Pro Modal */}
+        {showProModal && (
+          <div className="pro-modal-overlay" onClick={() => setShowProModal(false)}>
+            <div className="pro-modal" onClick={e => e.stopPropagation()}>
+              <h3>Upgrade to Pro</h3>
+              <p className="pro-modal-user">User: <strong>{userProfile.display_name}</strong> (@{userProfile.username})</p>
+              <label className="pro-modal-label">Duration (days)</label>
+              <div className="pro-modal-days-grid">
+                {[1, 2, 3, 5, 7, 10, 14, 21, 30].map(d => (
+                  <button
+                    key={d}
+                    className={`pro-modal-day-btn ${proDays === d ? 'active' : ''}`}
+                    onClick={() => setProDays(d)}
+                  >
+                    {d} {d === 1 ? 'day' : 'days'}
+                  </button>
+                ))}
+              </div>
+              <p className="pro-modal-summary">
+                Pro access will expire on: <strong>{new Date(Date.now() + proDays * 86400000).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</strong>
+              </p>
+              <div className="pro-modal-actions">
+                <button className="pro-modal-btn confirm" onClick={handleUpgradePro} disabled={proSaving}>
+                  {proSaving ? 'Upgrading...' : 'Confirm Upgrade'}
+                </button>
+                <button className="pro-modal-btn cancel" onClick={() => setShowProModal(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -410,6 +410,7 @@ def init_user_db():
         "ALTER TABLE users ADD COLUMN whatsapp_verified INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN whatsapp_code TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN whatsapp_code_expires TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN pro_expires_at TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(col_sql)
@@ -2871,6 +2872,7 @@ def get_user_profile(user_id: int) -> Optional[Dict]:
         "sensitive_actions_remaining_seconds": sensitive_check.get("remaining_seconds", 0),
         "account_activated": _get_account_activated(user["id"]),
         "credits": _get_user_credits_total(user["id"]),
+        "pro_expires_at": user["pro_expires_at"] if "pro_expires_at" in user.keys() else None,
     }
 
 
@@ -3073,15 +3075,39 @@ def mark_trial_used(user_id: int):
     conn.close()
 
 
-def set_user_tier(user_id: int, tier: str) -> bool:
-    """Set user tier: 'free', 'pro', or 'trial' (admin only)."""
+def set_user_tier(user_id: int, tier: str, days: int = None) -> bool:
+    """Set user tier: 'free', 'pro', or 'trial' (admin only).
+    If days is provided, set pro_expires_at to auto-revert after N days."""
     if tier not in ("free", "pro", "trial"):
         return False
     conn = _get_db()
-    conn.execute("UPDATE users SET tier = ? WHERE id = ?", (tier, user_id))
+    if tier == "pro" and days and days > 0:
+        expires_at = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute("UPDATE users SET tier = ?, pro_expires_at = ? WHERE id = ?", (tier, expires_at, user_id))
+    elif tier == "free":
+        conn.execute("UPDATE users SET tier = ?, pro_expires_at = NULL WHERE id = ?", (tier, user_id))
+    else:
+        conn.execute("UPDATE users SET tier = ? WHERE id = ?", (tier, user_id))
     conn.commit()
     conn.close()
     return True
+
+
+def expire_pro_tiers():
+    """Check and revert any expired pro tiers back to free. Called by background task."""
+    conn = _get_db()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    expired = conn.execute(
+        "SELECT id, username FROM users WHERE tier = 'pro' AND pro_expires_at IS NOT NULL AND pro_expires_at <= ?",
+        (now,)
+    ).fetchall()
+    for u in expired:
+        conn.execute("UPDATE users SET tier = 'free', pro_expires_at = NULL WHERE id = ?", (u["id"],))
+        print(f"[PRO EXPIRY] User {u['username']} (ID {u['id']}) pro tier expired, reverted to free")
+    if expired:
+        conn.commit()
+    conn.close()
+    return len(expired)
 
 
 def get_user_stats() -> Dict:

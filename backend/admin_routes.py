@@ -50,6 +50,7 @@ class AdminResetPasswordRequest(BaseModel):
 
 class SetTierRequest(BaseModel):
     tier: str
+    days: int = None  # Optional: auto-expire pro after N days (1-30)
 
 class SetActiveRequest(BaseModel):
     is_active: bool
@@ -1003,8 +1004,10 @@ async def admin_set_tier(user_id: int, request: Request, body: SetTierRequest,
         raise HTTPException(status_code=401, detail="Unauthorized")
     if body.tier not in ("free", "pro"):
         raise HTTPException(status_code=400, detail="Tier must be 'free' or 'pro'")
-    result = user_auth.set_user_tier(user_id, body.tier)
-    _log_action(auth, "set_tier", "users", request, "user", user_id, {"tier": body.tier})
+    if body.days is not None and (body.days < 1 or body.days > 30):
+        raise HTTPException(status_code=400, detail="Days must be between 1 and 30")
+    result = user_auth.set_user_tier(user_id, body.tier, days=body.days)
+    _log_action(auth, "set_tier", "users", request, "user", user_id, {"tier": body.tier, "days": body.days})
     return result
 
 

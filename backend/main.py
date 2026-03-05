@@ -227,8 +227,10 @@ async def startup():
     asyncio.create_task(goal_monitor.goal_score_monitor())
     asyncio.create_task(social_media_hub.check_scheduled_posts())
     asyncio.create_task(_reengagement_task())
+    asyncio.create_task(_pro_expiry_checker())
     print("[OK] Support keep-alive checker started (30-min idle, 3-min response)")
     print("[OK] Social Media Hub scheduled post checker started")
+    print("[OK] Pro tier expiry checker started (runs every 5 min)")
     print("[OK] Payment expiry checker started (15-min timeout)")
     print("[OK] Active user tracking started")
     print("[OK] Bot heartbeat system started")
@@ -2113,6 +2115,19 @@ async def _reengagement_task():
         except Exception as e:
             print(f"[RE-ENGAGEMENT] Error: {e}")
         await asyncio.sleep(300)  # Check every 5 minutes
+
+
+async def _pro_expiry_checker():
+    """Background task: check and revert expired pro tiers every 5 minutes."""
+    await asyncio.sleep(60)
+    while True:
+        try:
+            expired = user_auth.expire_pro_tiers()
+            if expired:
+                print(f"[PRO EXPIRY] Reverted {expired} expired pro tier(s)")
+        except Exception as e:
+            print(f"[PRO EXPIRY] Error: {e}")
+        await asyncio.sleep(300)
 
 
 async def _prediction_result_checker():
