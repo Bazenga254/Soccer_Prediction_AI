@@ -715,6 +715,39 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
               Continue with Whop
             </button>
 
+            {/* Google Terms Section (shown when Google sign-in requires terms acceptance) */}
+            {showGoogleTerms && (
+              <div className="google-terms-section" style={{ marginTop: '16px', padding: '16px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '12px' }}>
+                <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '12px', lineHeight: '1.5' }}>
+                  Please accept the terms and verify to create your account:
+                </p>
+                <div className="captcha-container" style={{ marginBottom: '12px' }}>
+                  <HCaptcha ref={captchaRef} sitekey={HCAPTCHA_SITE_KEY} onVerify={handleCaptchaVerify}
+                    onExpire={handleCaptchaExpire} onError={handleCaptchaError} theme="dark" size="compact" />
+                </div>
+                <div className="terms-checkbox-section" style={{ marginBottom: '12px' }}>
+                  <label className="terms-checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', color: '#cbd5e1', fontSize: '13px' }}>
+                    <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)}
+                      style={{ marginTop: '2px', accentColor: '#3b82f6' }} />
+                    <span>I agree to the{' '}
+                      <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                        Terms of Service
+                      </a>{' '}and{' '}
+                      <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                        Privacy Policy
+                      </a>
+                    </span>
+                  </label>
+                </div>
+                {error && <div className="gate-error" style={{ marginBottom: '12px' }}>{error}</div>}
+                <button type="button" className="gate-submit-btn" onClick={handleGoogleTermsSubmit}
+                  disabled={loading || !captchaToken || !termsAccepted}
+                  style={{ width: '100%' }}>
+                  {loading ? 'Creating Account...' : 'Complete Registration'}
+                </button>
+              </div>
+            )}
+
             <div className="gate-footer">
               <p>{t('auth.haveAccount')} <button className="link-btn" onClick={() => setMode('login')}>{t('auth.logIn')}</button></p>
             </div>
