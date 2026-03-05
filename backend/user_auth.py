@@ -3215,6 +3215,51 @@ def send_pro_expiry_reminder_email(to_email: str, display_name: str, days_left: 
     return _send_zoho_email(to_email, subject, html)
 
 
+def send_low_credits_email(to_email: str, display_name: str, remaining: int) -> bool:
+    """Send a low-credits warning email when balance drops below threshold."""
+    name = display_name or "there"
+    subject = "Your Spark AI credits are running low"
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:Arial,sans-serif;">
+<div style="max-width:560px;margin:0 auto;padding:32px 20px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <h1 style="color:#f1f5f9;font-size:22px;margin:0;">Spark AI</h1>
+  </div>
+  <div style="background:#1e293b;border-radius:12px;padding:28px;border:1px solid rgba(255,255,255,0.08);">
+    <h2 style="color:#fbbf24;font-size:18px;margin:0 0 12px;text-align:center;">Credits Running Low</h2>
+    <p style="color:#cbd5e1;font-size:14px;line-height:1.6;margin:0 0 16px;">
+      Hi {name}, you only have <strong style="color:#ef4444;">{remaining} credits</strong> remaining on your Spark AI account.
+      That's not enough for another prediction analysis or AI chat session.
+    </p>
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:16px;margin-bottom:20px;">
+      <p style="color:#94a3b8;font-size:13px;margin:0 0 8px;">Credit costs:</p>
+      <ul style="color:#cbd5e1;font-size:13px;margin:0;padding-left:18px;line-height:1.8;">
+        <li>AI Assistant chat: 50 credits per message</li>
+        <li>Match analysis: 250 credits per view</li>
+        <li>Jackpot analysis: 500 credits per run</li>
+      </ul>
+    </div>
+    <div style="text-align:center;">
+      <a href="https://spark-ai-prediction.com/upgrade"
+         style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#6366f1,#7c3aed);
+                color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">
+        Buy More Credits
+      </a>
+    </div>
+  </div>
+  <p style="color:#475569;font-size:11px;text-align:center;margin-top:20px;">
+    Spark AI - Soccer Predictions &amp; Analysis
+  </p>
+</div>
+</body>
+</html>"""
+
+    return _send_zoho_email(to_email, subject, html)
+
+
 def get_user_stats() -> Dict:
     """Get overall user statistics (admin only)."""
     conn = _get_db()

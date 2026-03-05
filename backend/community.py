@@ -4384,12 +4384,31 @@ def deduct_credits(user_id: int, amount: int, reason: str) -> Dict:
     if daily_expires and daily_expires < now:
         new_daily = 0
 
-    return {
+    result = {
         "total_credits": (row["credits"] if row else 0) + new_daily,
         "purchased_credits": row["credits"] if row else 0,
         "daily_credits": new_daily,
         "credits_deducted": amount,
     }
+
+    # Send low-credit reminder if balance dropped below threshold
+    LOW_CREDIT_THRESHOLD = 50
+    if result["total_credits"] < LOW_CREDIT_THRESHOLD:
+        try:
+            import user_auth
+            if not user_auth.has_reminder_been_sent(user_id, "low_credits"):
+                profile = user_auth.get_user_profile(user_id)
+                if profile and profile.get("email"):
+                    user_auth.send_low_credits_email(
+                        profile["email"],
+                        profile.get("display_name", ""),
+                        result["total_credits"]
+                    )
+                    user_auth.mark_reminder_sent(user_id, "low_credits")
+        except Exception as e:
+            print(f"[LOW CREDITS] Failed to send reminder for user {user_id}: {e}")
+
+    return result
 
 
 def refresh_daily_credits(user_id: int, amount: int) -> Dict:
