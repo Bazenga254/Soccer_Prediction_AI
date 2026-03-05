@@ -411,6 +411,7 @@ def init_user_db():
         "ALTER TABLE users ADD COLUMN whatsapp_code TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN whatsapp_code_expires TEXT DEFAULT NULL",
         "ALTER TABLE users ADD COLUMN pro_expires_at TEXT DEFAULT NULL",
+        "ALTER TABLE users ADD COLUMN promo_code_used TEXT DEFAULT NULL",
     ]:
         try:
             conn.execute(col_sql)

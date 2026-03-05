@@ -46,6 +46,7 @@ from employee_routes import employee_router
 import employee_portal
 import bot_manager
 import social_media_hub
+import promotional_packages
 from telegram_service import TelegramService
 from whatsapp_social_service import WhatsAppSocialService
 
@@ -178,6 +179,9 @@ async def startup():
     # Initialize pricing configuration
     pricing_config.init_pricing_db()
     print("[OK] Pricing configuration initialized")
+
+    # Initialize promotional packages
+    promotional_packages.init_promo_db()
 
     # Initialize subscriptions
     subscriptions.init_subscriptions_db()
@@ -886,6 +890,7 @@ class RegisterRequest(BaseModel):
     country: str = ""
     utm_source: str = ""      # e.g. "facebook", "whatsapp", "tiktok"
     referrer_url: str = ""    # HTTP referrer captured by the browser
+    promo_code: str = ""      # Promotional package code
 
 class LoginRequest(BaseModel):
     email: str
@@ -1237,6 +1242,14 @@ async def register(body: RegisterRequest, request: Request):
     if not body.terms_accepted:
         raise HTTPException(status_code=400, detail="You must accept the Terms of Service to create an account.")
 
+    # Pre-validate promo code if provided
+    promo = None
+    if body.promo_code:
+        validation = promotional_packages.validate_promo(body.promo_code)
+        if not validation["valid"]:
+            raise HTTPException(status_code=400, detail=validation["error"])
+        promo = validation["promo"]
+
     result = user_auth.register_user(
         email=body.email,
         password=body.password,
@@ -1299,6 +1312,14 @@ async def register(body: RegisterRequest, request: Request):
                 )
             except Exception:
                 pass
+
+            # Redeem promo code if provided
+            if promo:
+                redeem = promotional_packages.redeem_promo(body.promo_code, user["id"])
+                if redeem.get("success"):
+                    result["promo_applied"] = True
+                    result["promo_pro_days"] = promo["pro_days"]
+
         conn.close()
 
     return result
@@ -1739,6 +1760,15 @@ async def get_plans():
 async def get_public_pricing():
     """Get all public pricing info (plans, pay-per-use, commissions, free limits)."""
     return pricing_config.get_public_pricing()
+
+
+@app.get("/api/promo/{code}")
+async def get_promo_info(code: str):
+    """Get public info about a promotional package."""
+    info = promotional_packages.get_promo_public_info(code)
+    if not info:
+        raise HTTPException(status_code=404, detail="Promo not found")
+    return info
 
 
 # ─── Geo Detection (Public) ───

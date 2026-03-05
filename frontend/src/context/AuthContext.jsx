@@ -188,6 +188,7 @@ export function AuthProvider({ children }) {
         terms_accepted: personalInfo.terms_accepted || false,
         utm_source: utmSource,
         referrer_url: referrerUrl,
+        promo_code: personalInfo.promo_code || '',
       })
       if (response.data.success) {
         if (response.data.requires_verification) {

@@ -40,6 +40,75 @@ export default function PricingTab() {
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState(null)
 
+  // Promotional packages
+  const [promos, setPromos] = useState([])
+  const [showNewPromo, setShowNewPromo] = useState(false)
+  const [newPromo, setNewPromo] = useState({ name: '', pro_days: 7, max_slots: 100, code: '', expires_at: '', description: '' })
+  const [promoCreating, setPromoCreating] = useState(false)
+  const [promoCopied, setPromoCopied] = useState(null)
+  const [promoDeleteConfirm, setPromoDeleteConfirm] = useState(null)
+  const [customDays, setCustomDays] = useState('')
+
+  const fetchPromos = useCallback(async () => {
+    try {
+      const res = await axios.get('/api/admin/promos', { headers: getAuthHeaders() })
+      setPromos(res.data.promos || [])
+    } catch { /* ignore */ }
+  }, [getAuthHeaders])
+
+  const handleCreatePromo = async () => {
+    const days = newPromo.pro_days === 'custom' ? parseInt(customDays) : newPromo.pro_days
+    if (!newPromo.name || !days || days < 1 || !newPromo.max_slots) {
+      setMessage({ type: 'error', text: 'Please fill in name, duration, and max slots' })
+      return
+    }
+    setPromoCreating(true)
+    try {
+      await axios.post('/api/admin/promos', {
+        name: newPromo.name,
+        pro_days: days,
+        max_slots: parseInt(newPromo.max_slots),
+        code: newPromo.code || '',
+        expires_at: newPromo.expires_at || '',
+        description: newPromo.description || '',
+      }, { headers: getAuthHeaders() })
+      setMessage({ type: 'success', text: 'Promotional package created!' })
+      setNewPromo({ name: '', pro_days: 7, max_slots: 100, code: '', expires_at: '', description: '' })
+      setCustomDays('')
+      setShowNewPromo(false)
+      fetchPromos()
+    } catch (e) {
+      setMessage({ type: 'error', text: e.response?.data?.detail || 'Failed to create promo' })
+    }
+    setPromoCreating(false)
+  }
+
+  const handleTogglePromo = async (promoId, currentActive) => {
+    try {
+      await axios.put(`/api/admin/promos/${promoId}/toggle`, { is_active: !currentActive }, { headers: getAuthHeaders() })
+      fetchPromos()
+    } catch (e) {
+      setMessage({ type: 'error', text: e.response?.data?.detail || 'Failed to toggle promo' })
+    }
+  }
+
+  const handleDeletePromo = async (promoId) => {
+    try {
+      await axios.delete(`/api/admin/promos/${promoId}`, { headers: getAuthHeaders() })
+      setMessage({ type: 'success', text: 'Promo deleted' })
+      setPromoDeleteConfirm(null)
+      fetchPromos()
+    } catch (e) {
+      setMessage({ type: 'error', text: e.response?.data?.detail || 'Failed to delete promo' })
+    }
+  }
+
+  const copyPromoLink = (code) => {
+    navigator.clipboard.writeText(`https://spark-ai-prediction.com/register?promo=${code}`)
+    setPromoCopied(code)
+    setTimeout(() => setPromoCopied(null), 2000)
+  }
+
   const fetchPricing = useCallback(async () => {
     setLoading(true)
     try {
@@ -49,7 +118,7 @@ export default function PricingTab() {
     setLoading(false)
   }, [getAuthHeaders])
 
-  useEffect(() => { fetchPricing() }, [fetchPricing])
+  useEffect(() => { fetchPricing(); fetchPromos() }, [fetchPricing, fetchPromos])
 
   const handleValueChange = (key, value) => {
     setEditedValues(prev => ({ ...prev, [key]: value }))
@@ -539,6 +608,195 @@ export default function PricingTab() {
           ))}
         </div>
       </div>
+
+      {/* ─── Promotional Packages ─── */}
+      <div className="pricing-section">
+        <div className="pricing-section-header">
+          <h4>Promotional Packages</h4>
+          <button className="pricing-add-btn" onClick={() => setShowNewPromo(!showNewPromo)}>
+            {showNewPromo ? 'Cancel' : '+ New Promo'}
+          </button>
+        </div>
+
+        {showNewPromo && (
+          <div className="pricing-new-plan-form">
+            <h5>Create Promotional Package</h5>
+            <div className="pricing-form-grid">
+              <div className="pricing-form-group">
+                <label>Promo Name *</label>
+                <input
+                  type="text"
+                  value={newPromo.name}
+                  onChange={e => setNewPromo(p => ({ ...p, name: e.target.value }))}
+                  placeholder="e.g. Twitter Launch Promo"
+                  className="pricing-input"
+                />
+              </div>
+              <div className="pricing-form-group">
+                <label>Custom Code (optional)</label>
+                <input
+                  type="text"
+                  value={newPromo.code}
+                  onChange={e => setNewPromo(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                  placeholder="Auto-generated if empty"
+                  className="pricing-input"
+                />
+              </div>
+              <div className="pricing-form-group full-width">
+                <label>Pro Duration *</label>
+                <div className="promo-days-grid">
+                  {[3, 7, 14, 30, 60, 90].map(d => (
+                    <button
+                      key={d}
+                      className={`promo-day-btn ${newPromo.pro_days === d ? 'active' : ''}`}
+                      onClick={() => { setNewPromo(p => ({ ...p, pro_days: d })); setCustomDays('') }}
+                    >
+                      {d} {d === 1 ? 'day' : 'days'}
+                    </button>
+                  ))}
+                  <button
+                    className={`promo-day-btn ${newPromo.pro_days === 'custom' ? 'active' : ''}`}
+                    onClick={() => setNewPromo(p => ({ ...p, pro_days: 'custom' }))}
+                  >
+                    Custom
+                  </button>
+                </div>
+                {newPromo.pro_days === 'custom' && (
+                  <input
+                    type="number"
+                    value={customDays}
+                    onChange={e => setCustomDays(e.target.value)}
+                    placeholder="Enter days (1-365)"
+                    min="1"
+                    max="365"
+                    className="pricing-input"
+                    style={{ marginTop: 8, maxWidth: 200 }}
+                  />
+                )}
+              </div>
+              <div className="pricing-form-group">
+                <label>Max Users *</label>
+                <input
+                  type="number"
+                  value={newPromo.max_slots}
+                  onChange={e => setNewPromo(p => ({ ...p, max_slots: e.target.value }))}
+                  placeholder="100"
+                  min="1"
+                  className="pricing-input"
+                />
+              </div>
+              <div className="pricing-form-group">
+                <label>Link Expiry Date (optional)</label>
+                <input
+                  type="date"
+                  value={newPromo.expires_at}
+                  onChange={e => setNewPromo(p => ({ ...p, expires_at: e.target.value }))}
+                  className="pricing-input"
+                />
+              </div>
+              <div className="pricing-form-group full-width">
+                <label>Description (optional)</label>
+                <input
+                  type="text"
+                  value={newPromo.description}
+                  onChange={e => setNewPromo(p => ({ ...p, description: e.target.value }))}
+                  placeholder="Internal notes about this promo"
+                  className="pricing-input"
+                />
+              </div>
+            </div>
+            <button className="pricing-create-btn" onClick={handleCreatePromo} disabled={promoCreating}>
+              {promoCreating ? 'Creating...' : 'Create Promo'}
+            </button>
+          </div>
+        )}
+
+        {promos.length > 0 ? (
+          <div className="promo-list">
+            {promos.map(promo => {
+              const pct = promo.max_slots > 0 ? Math.round((promo.used_slots / promo.max_slots) * 100) : 0
+              const barColor = pct < 50 ? '#00b894' : pct < 80 ? '#fdcb6e' : '#e17055'
+              return (
+                <div key={promo.id} className={`promo-card ${promo.status !== 'active' ? 'inactive' : ''}`}>
+                  <div className="promo-card-top">
+                    <div className="promo-card-info">
+                      <strong className="promo-card-name">{promo.name}</strong>
+                      <code className="promo-card-code">{promo.code}</code>
+                    </div>
+                    <span className={`promo-status-badge ${promo.status}`}>{promo.status}</span>
+                  </div>
+
+                  <div className="promo-card-stats">
+                    <div className="promo-stat">
+                      <span className="promo-stat-label">Pro Duration</span>
+                      <span className="promo-stat-value">{promo.pro_days} days</span>
+                    </div>
+                    <div className="promo-stat">
+                      <span className="promo-stat-label">Slots Used</span>
+                      <span className="promo-stat-value">{promo.used_slots} / {promo.max_slots}</span>
+                    </div>
+                    <div className="promo-stat">
+                      <span className="promo-stat-label">Remaining</span>
+                      <span className="promo-stat-value" style={{ color: barColor, fontWeight: 700 }}>
+                        {promo.remaining_slots}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="promo-progress">
+                    <div className="promo-progress-bar" style={{ width: `${pct}%`, background: barColor }} />
+                  </div>
+
+                  <div className="promo-card-meta">
+                    <small>Created: {new Date(promo.created_at).toLocaleDateString()}</small>
+                    {promo.expires_at && <small>Expires: {new Date(promo.expires_at).toLocaleDateString()}</small>}
+                    {promo.description && <small>{promo.description}</small>}
+                  </div>
+
+                  <div className="promo-card-actions">
+                    <button
+                      className="promo-action-btn copy"
+                      onClick={() => copyPromoLink(promo.code)}
+                    >
+                      {promoCopied === promo.code ? 'Copied!' : 'Copy Link'}
+                    </button>
+                    <button
+                      className={`promo-action-btn ${promo.is_active ? 'disable' : 'enable'}`}
+                      onClick={() => handleTogglePromo(promo.id, promo.is_active)}
+                    >
+                      {promo.is_active ? 'Disable' : 'Enable'}
+                    </button>
+                    <button
+                      className="promo-action-btn delete"
+                      onClick={() => setPromoDeleteConfirm(promo.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="pricing-empty-note">No promotional packages yet. Create one to generate a shareable registration link.</p>
+        )}
+      </div>
+
+      {/* Promo Delete Confirmation Modal */}
+      {promoDeleteConfirm && (
+        <div className="admin-modal-overlay" onClick={() => setPromoDeleteConfirm(null)}>
+          <div className="admin-modal" onClick={e => e.stopPropagation()}>
+            <h3>Delete Promo</h3>
+            <p className="admin-modal-user">Are you sure you want to delete this promotional package?</p>
+            <div className="admin-modal-actions">
+              <button className="admin-modal-cancel" onClick={() => setPromoDeleteConfirm(null)}>Cancel</button>
+              <button className="admin-modal-confirm" style={{ background: '#dc2626' }} onClick={() => handleDeletePromo(promoDeleteConfirm)}>
+                Delete Promo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Save Bar ─── */}
       {hasChanges && (

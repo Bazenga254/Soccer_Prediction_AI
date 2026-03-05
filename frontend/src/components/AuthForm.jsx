@@ -27,6 +27,11 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     const match = document.cookie.match(/spark_ref=([^;]+)/)
     return match ? match[1] : ''
   })
+  const [promoCode] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('promo') || ''
+  })
+  const [promoInfo, setPromoInfo] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login, register, googleLogin, checkCaptchaRequired, pendingVerification, verifyEmail, resendCode, cancelVerification, refreshProfile } = useAuth()
@@ -72,6 +77,23 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   const { t } = useTranslation()
 
   useEffect(() => { referralRef.current = referralCode }, [referralCode])
+
+  // Fetch promo info if promo code in URL
+  useEffect(() => {
+    if (!promoCode) return
+    axios.get(`/api/promo/${encodeURIComponent(promoCode)}`)
+      .then(res => {
+        if (res.data.is_available) {
+          setPromoInfo(res.data)
+          setMode('signup') // Auto-switch to signup for promo links
+        } else {
+          setError('This promotional offer is no longer available.')
+        }
+      })
+      .catch(() => {
+        setError('Invalid promo code.')
+      })
+  }, [promoCode])
 
   // Reset CAPTCHA and forgot password when mode changes
   useEffect(() => {
@@ -431,6 +453,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     try {
       const result = await register(email, password, '', referralCode, captchaToken, {
         terms_accepted: true,
+        promo_code: promoCode || '',
       })
       if (result.requires_verification) {
         setResendCooldown(60)
@@ -649,6 +672,18 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
           <div className="wizard-progress-bar" style={{ width: `${(signupStep / TOTAL_SIGNUP_STEPS) * 100}%` }} />
         </div>
         <p className="wizard-step-label">Step {signupStep} of {TOTAL_SIGNUP_STEPS}</p>
+
+        {/* Promo Banner */}
+        {promoInfo && (
+          <div className="promo-banner">
+            <div className="promo-banner-badge">PROMO</div>
+            <div className="promo-banner-info">
+              <strong>{promoInfo.name}</strong>
+              <span>Free Pro access for <b>{promoInfo.pro_days} days</b></span>
+              <span className="promo-banner-slots">{promoInfo.remaining_slots} spots remaining</span>
+            </div>
+          </div>
+        )}
 
         {/* ===== STEP 1: EMAIL ===== */}
         {signupStep === 1 && (

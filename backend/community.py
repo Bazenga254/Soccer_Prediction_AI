@@ -4474,6 +4474,17 @@ def is_account_activated(user_id: int) -> bool:
         SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active'
         AND expires_at > datetime('now') LIMIT 1
     """, (user_id,)).fetchone()
-    uconn.close()
+    if sub:
+        uconn.close()
+        return True
 
-    return sub is not None
+    # Check if user registered via promo code (skip activation wall)
+    promo_user = uconn.execute(
+        "SELECT promo_code_used FROM users WHERE id = ? AND promo_code_used IS NOT NULL",
+        (user_id,)
+    ).fetchone()
+    uconn.close()
+    if promo_user:
+        return True
+
+    return False

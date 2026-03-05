@@ -25,6 +25,7 @@ import admin_rbac
 import activity_logger
 import pricing_config
 import social_media_hub
+import promotional_packages
 
 admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -566,6 +567,74 @@ async def revoke_code(code: str, request: Request,
         _log_action(auth, "revoke_code", "access_codes", request, details={"code": code})
         return {"message": f"Code {code} revoked"}
     raise HTTPException(status_code=404, detail="Code not found")
+
+
+# ═══════════════════════════════════════════════════════════
+#  PROMOTIONAL PACKAGES
+# ═══════════════════════════════════════════════════════════
+
+class CreatePromoRequest(BaseModel):
+    name: str
+    pro_days: int
+    max_slots: int
+    code: str = ""
+    expires_at: str = ""
+    description: str = ""
+
+class TogglePromoRequest(BaseModel):
+    is_active: bool
+
+@admin_router.post("/promos")
+async def admin_create_promo(body: CreatePromoRequest, request: Request,
+                              x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Create a new promotional package."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="settings", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if body.pro_days < 1 or body.pro_days > 365:
+        raise HTTPException(status_code=400, detail="Pro days must be between 1 and 365")
+    if body.max_slots < 1:
+        raise HTTPException(status_code=400, detail="Max slots must be at least 1")
+    result = promotional_packages.create_promo(
+        name=body.name, pro_days=body.pro_days, max_slots=body.max_slots,
+        code=body.code or None, expires_at=body.expires_at or None,
+        description=body.description,
+        created_by=auth.get("display_name", "Admin"),
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to create promo"))
+    _log_action(auth, "create_promo", "settings", request, details={"name": body.name, "code": result.get("code")})
+    return result
+
+@admin_router.get("/promos")
+async def admin_list_promos(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """List all promotional packages."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="settings", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"promos": promotional_packages.list_all_promos()}
+
+@admin_router.put("/promos/{promo_id}/toggle")
+async def admin_toggle_promo(promo_id: int, body: TogglePromoRequest, request: Request,
+                              x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Activate or deactivate a promo."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="settings", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    promotional_packages.toggle_promo(promo_id, body.is_active)
+    _log_action(auth, "toggle_promo", "settings", request, details={"promo_id": promo_id, "is_active": body.is_active})
+    return {"success": True}
+
+@admin_router.delete("/promos/{promo_id}")
+async def admin_delete_promo(promo_id: int, request: Request,
+                              x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Delete a promotional package."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="settings", required_action="delete")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    promotional_packages.delete_promo(promo_id)
+    _log_action(auth, "delete_promo", "settings", request, details={"promo_id": promo_id})
+    return {"success": True}
 
 
 # ═══════════════════════════════════════════════════════════

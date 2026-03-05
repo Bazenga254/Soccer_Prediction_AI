@@ -1,0 +1,97 @@
+{
+  "manifest_version": 3,
+  "name": "Spark AI - Soccer Prediction Assistant",
+  "version": "1.0.0",
+  "description": "AI soccer predictions on betting sites. Match analysis, odds comparison, and live goal alerts.",
+  "homepage_url": "https://spark-ai-prediction.com",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "identity",
+    "alarms",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://spark-ai-prediction.com/*",
+    "https://accounts.google.com/*",
+    "https://oauth2.googleapis.com/*",
+    "https://*.betika.com/*",
+    "https://*.sportpesa.com/*",
+    "https://*.1xbet.com/*",
+    "https://*.1xbet.co.ke/*",
+    "https://*.mozzartbet.co.ke/*",
+    "https://*.mozzartbet.com/*",
+    "https://*.bet365.com/*",
+    "https://*.williamhill.com/*",
+    "https://*.betway.com/*",
+    "https://*.betway.co.ke/*",
+    "https://*.draftkings.com/*",
+    "https://*.fanduel.com/*",
+    "https://*.betmgm.com/*"
+  ],
+  "oauth2": {
+    "client_id": "905871526482-4i8pfv8435p4eq10226j0agks7j007ag.apps.googleusercontent.com",
+    "scopes": ["openid", "email", "profile"]
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.betika.com/*",
+        "https://*.sportpesa.com/*",
+        "https://*.1xbet.com/*",
+        "https://*.1xbet.co.ke/*",
+        "https://*.mozzartbet.co.ke/*",
+        "https://*.mozzartbet.com/*",
+        "https://*.bet365.com/*",
+        "https://*.williamhill.com/*",
+        "https://*.betway.com/*",
+        "https://*.betway.co.ke/*",
+        "https://*.draftkings.com/*",
+        "https://*.fanduel.com/*",
+        "https://*.betmgm.com/*"
+      ],
+      "js": [
+        "content/inject-ui.js",
+        "content/content.js"
+      ],
+      "css": ["styles/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*", "styles/*", "notification/*"],
+      "matches": [
+        "https://*.betika.com/*",
+        "https://*.sportpesa.com/*",
+        "https://*.1xbet.com/*",
+        "https://*.1xbet.co.ke/*",
+        "https://*.mozzartbet.co.ke/*",
+        "https://*.mozzartbet.com/*",
+        "https://*.bet365.com/*",
+        "https://*.williamhill.com/*",
+        "https://*.betway.com/*",
+        "https://*.betway.co.ke/*",
+        "https://*.draftkings.com/*",
+        "https://*.fanduel.com/*",
+        "https://*.betmgm.com/*"
+      ]
+    }
+  ]
+}
