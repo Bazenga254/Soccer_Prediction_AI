@@ -210,7 +210,8 @@ function AIAssistant() {
       } else {
         const err = await res.json().catch(() => ({}))
         const errMsg = err.detail || 'Failed to send message. Please try again.'
-        setMessages(prev => [...prev, { role: 'assistant', content: errMsg, match_links: [], created_at: new Date().toISOString(), isError: true }])
+        const isCredit = /insufficient credits|not enough credits/i.test(errMsg)
+        setMessages(prev => [...prev, { role: 'assistant', content: isCredit ? "Sorry, you don't have enough credits to use this service." : errMsg, match_links: [], created_at: new Date().toISOString(), isError: true, creditError: isCredit }])
       }
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Network error. Please check your connection.', match_links: [], created_at: new Date().toISOString(), isError: true }])
@@ -475,6 +476,11 @@ function AIAssistant() {
                   <div className="ai-message-content">
                     <div className="ai-message-body">
                       {renderMessageContent(msg.content, msg.match_links)}
+                      {msg.creditError && (
+                        <a href="/upgrade" className="ai-credit-link" onClick={(e) => { e.preventDefault(); navigate('/upgrade', { state: { from: 'ai-assistant' } }) }}>
+                          Click here to purchase credits {'\u27A1'}
+                        </a>
+                      )}
                     </div>
                     {renderMatchCards(msg.match_links)}
                     {msg.sources && msg.sources.length > 0 && (
