@@ -228,9 +228,11 @@ async def startup():
     asyncio.create_task(social_media_hub.check_scheduled_posts())
     asyncio.create_task(_reengagement_task())
     asyncio.create_task(_pro_expiry_checker())
+    asyncio.create_task(_subscription_reminder_task())
     print("[OK] Support keep-alive checker started (30-min idle, 3-min response)")
     print("[OK] Social Media Hub scheduled post checker started")
     print("[OK] Pro tier expiry checker started (runs every 5 min)")
+    print("[OK] Subscription reminder task started (daily at 9AM EAT)")
     print("[OK] Payment expiry checker started (15-min timeout)")
     print("[OK] Active user tracking started")
     print("[OK] Bot heartbeat system started")
@@ -2128,6 +2130,52 @@ async def _pro_expiry_checker():
         except Exception as e:
             print(f"[PRO EXPIRY] Error: {e}")
         await asyncio.sleep(300)
+
+
+async def _subscription_reminder_task():
+    """Background task: send expiry reminder emails 3 days before and on the day of expiration. Runs daily at ~9AM EAT."""
+    await asyncio.sleep(180)  # Wait for services to initialize
+    while True:
+        try:
+            now = datetime.now()
+            eat_hour = (now.hour + 3) % 24  # Server is UTC, EAT = UTC+3
+            if eat_hour == 9 and now.minute < 5:
+                print("[SUB REMINDER] Running daily expiry reminder check...")
+                sent_count = 0
+
+                # Check both 3-day and same-day reminders
+                for days_left, reminder_suffix in [(3, "3d"), (0, "0d")]:
+                    # 1. Admin-granted pro users (pro_expires_at)
+                    pro_users = user_auth.get_expiring_pro_users(days_left)
+                    for u in pro_users:
+                        rtype = f"pro_expiry_{reminder_suffix}"
+                        if user_auth.has_reminder_been_sent(u["id"], rtype):
+                            continue
+                        ok = user_auth.send_pro_expiry_reminder_email(
+                            u["email"], u["display_name"], days_left, u["pro_expires_at"]
+                        )
+                        if ok:
+                            user_auth.mark_reminder_sent(u["id"], rtype)
+                            sent_count += 1
+
+                    # 2. Paid subscription users
+                    import subscriptions
+                    sub_users = subscriptions.get_expiring_subscriptions(days_left)
+                    for s in sub_users:
+                        rtype = f"sub_expiry_{reminder_suffix}"
+                        if user_auth.has_reminder_been_sent(s["user_id"], rtype):
+                            continue
+                        ok = user_auth.send_pro_expiry_reminder_email(
+                            s["email"], s["display_name"], days_left, s["expires_at"]
+                        )
+                        if ok:
+                            user_auth.mark_reminder_sent(s["user_id"], rtype)
+                            sent_count += 1
+
+                print(f"[SUB REMINDER] Done. Sent {sent_count} reminder email(s)")
+        except Exception as e:
+            print(f"[SUB REMINDER] Error: {e}")
+        await asyncio.sleep(300)  # Check every 5 minutes
 
 
 async def _prediction_result_checker():

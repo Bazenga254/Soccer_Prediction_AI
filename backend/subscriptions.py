@@ -397,6 +397,21 @@ def check_expired_subscriptions():
     return len(expired)
 
 
+def get_expiring_subscriptions(days_remaining: int) -> list:
+    """Get active subscriptions expiring in exactly N days (by date).
+    Returns list of {user_id, email, display_name, plan, expires_at}."""
+    conn = _get_db()
+    target_date = (datetime.now() + timedelta(days=days_remaining)).strftime("%Y-%m-%d")
+    rows = conn.execute("""
+        SELECT s.user_id, u.email, u.display_name, s.plan, s.expires_at
+        FROM subscriptions s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.status = 'active' AND s.expires_at LIKE ?
+    """, (f"{target_date}%",)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def get_subscription_history(user_id: int) -> List[Dict]:
     """Get subscription history for a user."""
     conn = _get_db()

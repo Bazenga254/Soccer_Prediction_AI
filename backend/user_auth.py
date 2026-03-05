@@ -761,6 +761,14 @@ def init_employee_tables():
             created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_expense_status ON expenses(status);
+
+        CREATE TABLE IF NOT EXISTS reminder_emails_sent (
+            user_id INTEGER NOT NULL,
+            reminder_type TEXT NOT NULL,
+            sent_date TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, reminder_type, sent_date)
+        );
     """)
     conn.commit()
     conn.close()
@@ -3108,6 +3116,103 @@ def expire_pro_tiers():
         conn.commit()
     conn.close()
     return len(expired)
+
+
+def get_expiring_pro_users(days_remaining: int) -> list:
+    """Get users whose admin-granted pro tier expires in exactly N days (by date)."""
+    conn = _get_db()
+    target_date = (datetime.now() + timedelta(days=days_remaining)).strftime("%Y-%m-%d")
+    rows = conn.execute(
+        "SELECT id, email, display_name, pro_expires_at FROM users "
+        "WHERE tier = 'pro' AND pro_expires_at IS NOT NULL AND pro_expires_at LIKE ?",
+        (f"{target_date}%",)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def has_reminder_been_sent(user_id: int, reminder_type: str, date_str: str = None) -> bool:
+    """Check if a reminder email has already been sent today."""
+    conn = _get_db()
+    if not date_str:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+    row = conn.execute(
+        "SELECT 1 FROM reminder_emails_sent WHERE user_id = ? AND reminder_type = ? AND sent_date = ?",
+        (user_id, reminder_type, date_str)
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def mark_reminder_sent(user_id: int, reminder_type: str):
+    """Record that a reminder was sent to avoid duplicates."""
+    conn = _get_db()
+    now = datetime.now()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO reminder_emails_sent (user_id, reminder_type, sent_date, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, reminder_type, now.strftime("%Y-%m-%d"), now.isoformat())
+        )
+        conn.commit()
+    except Exception:
+        pass
+    conn.close()
+
+
+def send_pro_expiry_reminder_email(to_email: str, display_name: str, days_left: int, expires_at: str) -> bool:
+    """Send a pro tier expiry reminder email."""
+    name = display_name or "there"
+    expires_formatted = ""
+    try:
+        expires_formatted = datetime.fromisoformat(expires_at).strftime("%B %d, %Y at %I:%M %p")
+    except Exception:
+        expires_formatted = expires_at
+
+    if days_left == 0:
+        subject = "Your Spark AI Pro access expires today!"
+        headline = "Your Pro Access Expires Today"
+        message = f"Hi {name}, this is a final reminder that your Spark AI Pro access expires today ({expires_formatted}). After expiration, you'll lose access to premium features."
+    else:
+        subject = f"Your Spark AI Pro expires in {days_left} day{'s' if days_left != 1 else ''}"
+        headline = f"Pro Access Expiring in {days_left} Day{'s' if days_left != 1 else ''}"
+        message = f"Hi {name}, your Spark AI Pro access will expire on {expires_formatted}. Renew now to keep enjoying premium features without interruption."
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:Arial,sans-serif;">
+<div style="max-width:560px;margin:0 auto;padding:32px 20px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <h1 style="color:#f1f5f9;font-size:22px;margin:0;">Spark AI</h1>
+  </div>
+  <div style="background:#1e293b;border-radius:12px;padding:28px;border:1px solid rgba(255,255,255,0.08);">
+    <h2 style="color:{'#ef4444' if days_left == 0 else '#fbbf24'};font-size:18px;margin:0 0 12px;text-align:center;">{headline}</h2>
+    <p style="color:#cbd5e1;font-size:14px;line-height:1.6;margin:0 0 20px;">{message}</p>
+    <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:16px;margin-bottom:20px;">
+      <p style="color:#94a3b8;font-size:13px;margin:0 0 8px;">What you'll lose without Pro:</p>
+      <ul style="color:#cbd5e1;font-size:13px;margin:0;padding-left:18px;line-height:1.8;">
+        <li>AI-powered match predictions & analysis</li>
+        <li>Upcoming match insights</li>
+        <li>AI Assistant access</li>
+        <li>Premium community features</li>
+      </ul>
+    </div>
+    <div style="text-align:center;">
+      <a href="https://spark-ai-prediction.com/upgrade"
+         style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#6366f1,#7c3aed);
+                color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">
+        Renew Pro Access
+      </a>
+    </div>
+  </div>
+  <p style="color:#475569;font-size:11px;text-align:center;margin-top:20px;">
+    Spark AI - Soccer Predictions &amp; Analysis
+  </p>
+</div>
+</body>
+</html>"""
+
+    return _send_zoho_email(to_email, subject, html)
 
 
 def get_user_stats() -> Dict:
