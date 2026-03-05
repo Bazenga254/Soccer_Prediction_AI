@@ -4450,7 +4450,29 @@ def refresh_daily_credits(user_id: int, amount: int) -> Dict:
 
 
 def is_account_activated(user_id: int) -> bool:
-    """Check if user has ever made a deposit or has an active subscription."""
+    """Check if user has ever made a deposit, has an active subscription, or registered via promo."""
+    # Check promo code first (no deposit required for promo users)
+    import sqlite3 as _sq
+    uconn = _sq.connect("users.db")
+    uconn.row_factory = _sq.Row
+    promo_user = uconn.execute(
+        "SELECT promo_code_used FROM users WHERE id = ? AND promo_code_used IS NOT NULL",
+        (user_id,)
+    ).fetchone()
+    if promo_user:
+        uconn.close()
+        return True
+
+    # Check active subscriptions
+    sub = uconn.execute("""
+        SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active'
+        AND expires_at > datetime('now') LIMIT 1
+    """, (user_id,)).fetchone()
+    uconn.close()
+    if sub:
+        return True
+
+    # Check balances/deposits
     conn = _get_db()
     row = conn.execute("SELECT * FROM user_balances WHERE user_id = ?", (user_id,)).fetchone()
     conn.close()
@@ -4458,33 +4480,11 @@ def is_account_activated(user_id: int) -> bool:
     if not row:
         return False
 
-    # Activated if they've ever deposited anything or have credits
     if (row["total_deposited_usd"] or 0) > 0:
         return True
     if (row["total_deposited_kes"] or 0) > 0:
         return True
     if (row["credits"] or 0) > 0:
-        return True
-
-    # Also check subscriptions
-    import sqlite3 as _sq
-    uconn = _sq.connect("users.db")
-    uconn.row_factory = _sq.Row
-    sub = uconn.execute("""
-        SELECT id FROM subscriptions WHERE user_id = ? AND status = 'active'
-        AND expires_at > datetime('now') LIMIT 1
-    """, (user_id,)).fetchone()
-    if sub:
-        uconn.close()
-        return True
-
-    # Check if user registered via promo code (skip activation wall)
-    promo_user = uconn.execute(
-        "SELECT promo_code_used FROM users WHERE id = ? AND promo_code_used IS NOT NULL",
-        (user_id,)
-    ).fetchone()
-    uconn.close()
-    if promo_user:
         return True
 
     return False

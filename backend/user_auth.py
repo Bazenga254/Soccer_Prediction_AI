@@ -2031,6 +2031,7 @@ def google_login(google_token: str, referral_code: str = "", captcha_token: str 
         token = _create_token(user["id"], user["username"], user["tier"], bool(user["is_admin"]), user["staff_role"])
         return {
             "success": True,
+            "is_new_user": True,
             "token": token,
             "user": {
                 "id": user["id"],

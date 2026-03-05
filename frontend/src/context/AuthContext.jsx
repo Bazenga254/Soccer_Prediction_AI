@@ -209,13 +209,14 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const googleLogin = useCallback(async (googleToken, referralCode = '', captchaToken = '', termsAccepted = false) => {
+  const googleLogin = useCallback(async (googleToken, referralCode = '', captchaToken = '', termsAccepted = false, promoCode = '') => {
     try {
       const response = await axios.post('/api/user/google-login', {
         token: googleToken,
         referral_code: referralCode,
         captcha_token: captchaToken,
         terms_accepted: termsAccepted,
+        promo_code: promoCode,
       })
       if (response.data.success) {
         const { token, user: userData } = response.data

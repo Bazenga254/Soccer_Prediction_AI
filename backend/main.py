@@ -902,6 +902,7 @@ class GoogleLoginRequest(BaseModel):
     referral_code: str = ""
     captcha_token: str = ""
     terms_accepted: bool = False
+    promo_code: str = ""
 
 class CaptchaCheckRequest(BaseModel):
     email: str
@@ -1431,6 +1432,24 @@ async def google_login(body: GoogleLoginRequest, request: Request):
                 content={"success": False, "detail": result["error"], "suspended": True}
             )
         raise HTTPException(status_code=401, detail=result["error"])
+
+    # Redeem promo code for newly registered Google users
+    if body.promo_code and result.get("is_new_user"):
+        try:
+            validation = promotional_packages.validate_promo(body.promo_code)
+            if validation["valid"]:
+                user_data = result.get("user", {})
+                user_id = user_data.get("id")
+                if user_id:
+                    redeem = promotional_packages.redeem_promo(body.promo_code, user_id)
+                    if redeem.get("success"):
+                        result["promo_applied"] = True
+                        # Refresh user data to reflect new tier
+                        result["user"]["tier"] = "pro"
+                        result["user"]["account_activated"] = True
+        except Exception:
+            pass
+
     return result
 
 

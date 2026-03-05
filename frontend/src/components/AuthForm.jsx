@@ -155,7 +155,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     }
     setLoading(true)
     setError('')
-    const result = await googleLogin(response.credential, referralRef.current, captchaToken, termsAccepted)
+    const result = await googleLogin(response.credential, referralRef.current, captchaToken, termsAccepted, promoCode)
     if (result.success) {
       setLoading(false)
       setCaptchaToken('')
@@ -182,14 +182,14 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     setLoading(false)
     setCaptchaToken('')
     if (captchaRef.current) captchaRef.current.resetCaptcha()
-  }, [googleLogin, captchaToken, t, mode, termsAccepted, showGoogleTerms])
+  }, [googleLogin, captchaToken, t, mode, termsAccepted, showGoogleTerms, promoCode])
 
   useEffect(() => {
     if (googlePendingToken && captchaToken && (!showGoogleTerms || termsAccepted)) {
       (async () => {
         setLoading(true)
         setError('')
-        const result = await googleLogin(googlePendingToken, referralRef.current, captchaToken, termsAccepted)
+        const result = await googleLogin(googlePendingToken, referralRef.current, captchaToken, termsAccepted, promoCode)
         if (result.success) {
           setShowGoogleTerms(false)
           setShowCaptcha(false)
@@ -202,7 +202,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
         if (captchaRef.current) captchaRef.current.resetCaptcha()
       })()
     }
-  }, [googlePendingToken, captchaToken, googleLogin, t, showGoogleTerms, termsAccepted])
+  }, [googlePendingToken, captchaToken, googleLogin, t, showGoogleTerms, termsAccepted, promoCode])
 
   const handleGoogleTermsSubmit = async () => {
     if (!termsAccepted) {
@@ -220,7 +220,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
     }
     setLoading(true)
     setError('')
-    const result = await googleLogin(googlePendingToken, referralRef.current, captchaToken, termsAccepted)
+    const result = await googleLogin(googlePendingToken, referralRef.current, captchaToken, termsAccepted, promoCode)
     if (result.success) {
       setShowGoogleTerms(false)
       setShowCaptcha(false)
