@@ -186,6 +186,16 @@ def redeem_promo(code: str, user_id: int) -> Dict:
         # Set pro tier with duration
         user_auth.set_user_tier(user_id, "pro", days=promo["pro_days"])
 
+        # Grant daily credits (same as subscribers)
+        try:
+            import community
+            import pricing_config
+            daily_amount = int(pricing_config.get("daily_credits_subscriber", 2000))
+            community.refresh_daily_credits(user_id, daily_amount)
+            print(f"[Promo] Granted {daily_amount} daily credits to user {user_id}")
+        except Exception as e:
+            print(f"[Promo] Warning: could not grant credits to user {user_id}: {e}")
+
         return {
             "success": True,
             "pro_days": promo["pro_days"],

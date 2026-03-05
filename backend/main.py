@@ -2866,9 +2866,27 @@ async def get_credits_balance(authorization: str = Header(None)):
 
     credits = community.get_user_credits(payload["user_id"])
 
-    # Check if user has active subscription and daily credits need refresh
+    # Check if user has active subscription or is a promo pro user
     sub = subscriptions.get_active_subscription(payload["user_id"])
-    if sub:
+    is_promo_pro = False
+    if not sub:
+        # Check if user is a promo pro user (tier=pro with promo_code_used)
+        try:
+            _uconn = __import__("sqlite3").connect("users.db")
+            _uconn.row_factory = __import__("sqlite3").Row
+            _prow = _uconn.execute(
+                "SELECT tier, pro_expires_at, promo_code_used FROM users WHERE id = ?",
+                (payload["user_id"],)
+            ).fetchone()
+            _uconn.close()
+            if _prow and _prow["tier"] == "pro" and _prow["promo_code_used"]:
+                from datetime import datetime as _dt2
+                if _prow["pro_expires_at"] and _prow["pro_expires_at"] > _dt2.now().isoformat():
+                    is_promo_pro = True
+        except Exception:
+            pass
+
+    if sub or is_promo_pro:
         daily_expires = credits.get("daily_expires_at")
         from datetime import datetime as _dt
         now = _dt.now().isoformat()
@@ -2877,7 +2895,7 @@ async def get_credits_balance(authorization: str = Header(None)):
             daily_amount = int(pricing_config.get("daily_credits_subscriber", 2000))
             credits = community.refresh_daily_credits(payload["user_id"], daily_amount)
 
-    credits["has_subscription"] = sub is not None
+    credits["has_subscription"] = sub is not None or is_promo_pro
     return credits
 
 
