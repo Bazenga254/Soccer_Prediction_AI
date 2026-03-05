@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
+import { useCredits } from '../context/CreditContext'
 import LiveChatPopup from '../components/LiveChatPopup'
 import axios from 'axios'
 
@@ -240,6 +241,7 @@ function playGoalSound() {
 export default function LiveScores() {
   const { t } = useTranslation()
   const { user } = useAuth()
+  const { totalCredits } = useCredits()
   const [liveMatches, setLiveMatches] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -1223,7 +1225,7 @@ export default function LiveScores() {
                       </div>
                       <div className="upcoming-fixtures-grid">
                         {groups[date].map(fixture => {
-                          const isPro = user?.tier === 'pro' || user?.tier === 'trial'
+                          const isPro = user?.tier === 'pro' || user?.tier === 'trial' || totalCredits > 0
                           const compCode = fixture.competition?.code || 'PL'
                           return (
                             <div
