@@ -63,12 +63,16 @@ def get_conversations(user_id: int, page: int = 1, per_page: int = 10) -> Dict:
     conn = _get_db()
     offset = (page - 1) * per_page
 
+    # Only return conversations that have at least one message
     total = conn.execute(
-        "SELECT COUNT(*) as cnt FROM ai_conversations WHERE user_id = ?", (user_id,)
+        "SELECT COUNT(*) as cnt FROM ai_conversations c WHERE c.user_id = ? AND EXISTS (SELECT 1 FROM ai_messages m WHERE m.conversation_id = c.id)",
+        (user_id,)
     ).fetchone()["cnt"]
 
     rows = conn.execute(
-        "SELECT id, title, created_at, updated_at FROM ai_conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+        "SELECT c.id, c.title, c.created_at, c.updated_at FROM ai_conversations c "
+        "WHERE c.user_id = ? AND EXISTS (SELECT 1 FROM ai_messages m WHERE m.conversation_id = c.id) "
+        "ORDER BY c.updated_at DESC LIMIT ? OFFSET ?",
         (user_id, per_page, offset)
     ).fetchall()
     conn.close()
