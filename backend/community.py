@@ -3953,18 +3953,6 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
             ).fetchall()
         else:
             users = []
-    elif target_type == "unverified":
-        users = auth_conn.execute(
-            "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1 AND (email_verified = 0 OR email_verified IS NULL) AND is_bot = 0"
-        ).fetchall()
-    elif target_type == "inactive":
-        # Users who haven't logged in for 7+ days
-        from datetime import timedelta
-        cutoff = (datetime.now() - timedelta(days=7)).isoformat()
-        users = auth_conn.execute(
-            "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1 AND is_bot = 0 AND (last_login IS NULL OR last_login < ?)",
-            (cutoff,)
-        ).fetchall()
     else:
         users = auth_conn.execute(
             "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1 AND is_bot = 0"
@@ -3975,9 +3963,8 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
     user_ids = [u["id"] for u in users]
     now = datetime.now().isoformat()
 
-    # Create in-app notification for users (skip for unverified/inactive — email only)
-    if target_type not in ("unverified", "inactive"):
-        for uid in user_ids:
+    # Create in-app notification for ALL targeted users
+    for uid in user_ids:
             create_notification(
                 user_id=uid,
                 notif_type="broadcast",
