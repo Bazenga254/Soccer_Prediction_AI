@@ -272,7 +272,10 @@ export default function BroadcastTab() {
         ? `Send to ${selectedUsers.length} User${selectedUsers.length !== 1 ? 's' : ''}`
         : 'Submit for Approval'
     }
-    return isSuperAdmin ? 'Send to All Users' : 'Submit for Approval'
+    if (!isSuperAdmin) return 'Submit for Approval'
+    if (targetType === 'inactive') return 'Send to Inactive Users'
+    if (targetType === 'unverified') return 'Send to Unverified Users'
+    return 'Send to All Users'
   }
 
   if (loading) return <div className="admin-loading">Loading broadcasts...</div>
@@ -298,6 +301,22 @@ export default function BroadcastTab() {
               onClick={() => { setTargetType('all'); setSelectedUsers([]) }}
             >
               All Users
+            </button>
+            <button
+              type="button"
+              className={`bc-target-btn ${targetType === 'inactive' ? 'active' : ''}`}
+              onClick={() => { setTargetType('inactive'); setSelectedUsers([]) }}
+              title="Users who haven't logged in for 7+ days"
+            >
+              Inactive Users
+            </button>
+            <button
+              type="button"
+              className={`bc-target-btn ${targetType === 'unverified' ? 'active' : ''}`}
+              onClick={() => { setTargetType('unverified'); setSelectedUsers([]) }}
+              title="Users who haven't verified their email"
+            >
+              Unverified
             </button>
             <button
               type="button"
@@ -404,7 +423,7 @@ export default function BroadcastTab() {
                 maxLength={100}
               />
               <textarea
-                placeholder={targetType === 'specific' ? 'Write your message to selected users...' : 'Write your message to all users...'}
+                placeholder={targetType === 'specific' ? 'Write your message to selected users...' : targetType === 'inactive' ? 'Write your message to inactive users...' : 'Write your message to all users...'}
                 value={message}
                 onChange={e => setMessage(e.target.value)}
                 className="broadcast-message-input"

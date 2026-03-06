@@ -3953,9 +3953,21 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
             ).fetchall()
         else:
             users = []
+    elif target_type == "unverified":
+        users = auth_conn.execute(
+            "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1 AND (email_verified = 0 OR email_verified IS NULL) AND is_bot = 0"
+        ).fetchall()
+    elif target_type == "inactive":
+        # Users who haven't logged in for 7+ days
+        from datetime import timedelta
+        cutoff = (datetime.now() - timedelta(days=7)).isoformat()
+        users = auth_conn.execute(
+            "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1 AND is_bot = 0 AND (last_login IS NULL OR last_login < ?)",
+            (cutoff,)
+        ).fetchall()
     else:
         users = auth_conn.execute(
-            "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1"
+            "SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1 AND is_bot = 0"
         ).fetchall()
     if auth_conn:
         auth_conn.close()
@@ -4069,6 +4081,19 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
     """, (now, len(user_ids), broadcast_id))
     conn.commit()
     conn.close()
+
+    # Notify the sender that the broadcast was delivered
+    sender_id = broadcast["sender_id"] if "sender_id" in broadcast.keys() else None
+    if sender_id:
+        target_label = {"all": "all users", "unverified": "unverified users",
+                        "inactive": "inactive users", "specific": "selected users"}.get(target_type, "users")
+        create_notification(
+            user_id=sender_id,
+            notif_type="broadcast",
+            title=f"Broadcast Sent: {broadcast['title']}",
+            message=f"Your broadcast was delivered to {len(user_ids)} {target_label}.",
+            metadata={"broadcast_id": broadcast_id, "recipient_count": len(user_ids)},
+        )
 
     return {"recipient_count": len(user_ids)}
 
