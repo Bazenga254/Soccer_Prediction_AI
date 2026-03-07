@@ -3128,6 +3128,12 @@
   color: #fbbf24;
 }
 
+.tx-tab.active.crypto {
+  background: rgba(247, 147, 26, 0.12);
+  border-color: rgba(247, 147, 26, 0.4);
+  color: #f7931a;
+}
+
 .tx-tab-icon {
   font-size: 15px;
 }

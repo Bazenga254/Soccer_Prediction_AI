@@ -4,6 +4,7 @@ import { useCurrency } from '../context/CurrencyContext'
 import { useAuth } from '../context/AuthContext'
 import MpesaPaymentModal from './MpesaPaymentModal'
 import WhopCheckoutModal from './WhopCheckoutModal'
+import CryptoCheckoutModal from './CryptoCheckoutModal'
 import axios from 'axios'
 import './AccountActivation.css'
 
@@ -13,6 +14,7 @@ export default function AccountActivation() {
   const { refreshProfile } = useAuth()
   const [showMpesa, setShowMpesa] = useState(false)
   const [showWhop, setShowWhop] = useState(false)
+  const [showCrypto, setShowCrypto] = useState(false)
   const [activationInfo, setActivationInfo] = useState(null)
 
   useEffect(() => {
@@ -30,6 +32,7 @@ export default function AccountActivation() {
   const handlePaymentSuccess = () => {
     setShowMpesa(false)
     setShowWhop(false)
+    setShowCrypto(false)
     refreshProfile()
     // Track account activation conversion
     if (typeof window.gtag === 'function') {
@@ -114,6 +117,12 @@ export default function AccountActivation() {
               Pay with Card instead
             </button>
           )}
+          <button
+            className="activation-btn activation-btn-alt"
+            onClick={() => setShowCrypto(true)}
+          >
+            Pay with Crypto
+          </button>
         </div>
 
         <p className="activation-note">
@@ -137,6 +146,17 @@ export default function AccountActivation() {
           onClose={() => setShowWhop(false)}
           transactionType="balance_topup"
           amount={minUsd}
+          onSuccess={handlePaymentSuccess}
+        />
+      )}
+
+      {showCrypto && (
+        <CryptoCheckoutModal
+          isOpen={true}
+          onClose={() => setShowCrypto(false)}
+          transactionType="balance_topup"
+          amountUsd={minUsd}
+          title="Activate with Crypto"
           onSuccess={handlePaymentSuccess}
         />
       )}

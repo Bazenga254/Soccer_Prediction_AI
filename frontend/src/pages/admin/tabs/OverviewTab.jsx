@@ -403,6 +403,9 @@ export default function OverviewTab() {
           <button className={`tx-tab ${txTab === 'whop' ? 'active whop' : ''}`} onClick={() => switchTab('whop')}>
             <span className="tx-tab-icon">🏪</span> Whop Marketplace
           </button>
+          <button className={`tx-tab ${txTab === 'crypto' ? 'active crypto' : ''}`} onClick={() => switchTab('crypto')}>
+            <span className="tx-tab-icon">🪙</span> Crypto
+          </button>
         </div>
 
         {txData ? (
@@ -438,14 +441,14 @@ export default function OverviewTab() {
             <div className="tx-chart-container">
               <div className="tx-chart-header">
                 <span className="tx-chart-title">
-                  {txTab === 'kes' ? 'M-Pesa Income' : txTab === 'whop' ? 'Whop Marketplace Income' : 'Card Income'} — {rangeLabel}
+                  {txTab === 'kes' ? 'M-Pesa Income' : txTab === 'whop' ? 'Whop Marketplace Income' : txTab === 'crypto' ? 'Crypto Income' : 'Card Income'} — {rangeLabel}
                 </span>
               </div>
               <div className="tx-chart-body">
                 <MiniChart
                   labels={txData.chart_labels}
                   data={txData.chart}
-                  color={txTab === 'kes' ? '#22c55e' : txTab === 'whop' ? '#f59e0b' : '#3b82f6'}
+                  color={txTab === 'kes' ? '#22c55e' : txTab === 'whop' ? '#f59e0b' : txTab === 'crypto' ? '#f7931a' : '#3b82f6'}
                   prefix={txTab === 'kes' ? '' : '$'}
                 />
               </div>

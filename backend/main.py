@@ -37,6 +37,7 @@ import ai_support
 import ai_assistant
 import daraja_payment
 import whop_payment
+import coinbase_payment
 import jackpot_analyzer
 import data_verifier
 import admin_rbac
@@ -196,6 +197,7 @@ async def startup():
 
     # Initialize Whop payment system
     whop_payment.init_whop_db()
+    coinbase_payment.init_coinbase_db()
     print("[OK] Whop payment system initialized")
 
     # Initialize jackpot analyzer
@@ -2831,6 +2833,117 @@ async def get_referral_earnings(authorization: str = Header(None)):
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return whop_payment.get_referral_earnings(payload["user_id"])
+
+
+# ==================== COINBASE COMMERCE ENDPOINTS ====================
+
+class CoinbaseCheckoutRequest(BaseModel):
+    transaction_type: str  # 'subscription', 'prediction_purchase', 'balance_topup'
+    plan_id: str = ""
+    prediction_id: int = 0
+    amount_usd: float = 0
+
+
+@app.post("/api/coinbase/create-charge")
+async def create_coinbase_charge(body: CoinbaseCheckoutRequest, authorization: str = Header(None)):
+    """Create a Coinbase Commerce charge for crypto payments."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_id = payload["user_id"]
+
+    if body.transaction_type == "subscription":
+        plans = subscriptions.get_plans()
+        if not body.plan_id or body.plan_id not in plans:
+            raise HTTPException(status_code=400, detail="Invalid plan")
+        plan = plans[body.plan_id]
+        amount = plan["price"]
+        if plan["currency"] == "KES":
+            amount = round(plan["price"] / 130.0, 2)
+        result = coinbase_payment.create_charge(
+            user_id=user_id,
+            transaction_type="subscription",
+            amount_usd=amount,
+            reference_id=body.plan_id,
+            title=f"Spark AI - {plan['name']}",
+            description=f"{plan['name']} subscription",
+        )
+
+    elif body.transaction_type == "prediction_purchase":
+        if not body.prediction_id:
+            raise HTTPException(status_code=400, detail="Missing prediction_id")
+        pred = community.get_prediction(body.prediction_id)
+        if not pred or not pred.get("is_paid"):
+            raise HTTPException(status_code=404, detail="Prediction not found or not paid")
+        result = coinbase_payment.create_charge(
+            user_id=user_id,
+            transaction_type="prediction_purchase",
+            amount_usd=pred["price_usd"],
+            reference_id=str(body.prediction_id),
+            title=f"Unlock: {pred.get('team_a_name', '')} vs {pred.get('team_b_name', '')}",
+            description="Unlock premium prediction",
+        )
+
+    elif body.transaction_type == "balance_topup":
+        if body.amount_usd < 1.0:
+            raise HTTPException(status_code=400, detail="Minimum top-up is $1.00")
+        result = coinbase_payment.create_charge(
+            user_id=user_id,
+            transaction_type="balance_topup",
+            amount_usd=body.amount_usd,
+            reference_id="",
+            title="Spark AI - Buy Credits",
+            description=f"Credit purchase - ${body.amount_usd:.2f}",
+        )
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid transaction type")
+
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result.get("error", "Charge creation failed"))
+
+    return result
+
+
+@app.get("/api/coinbase/check-payment/{charge_code}")
+async def check_coinbase_payment(charge_code: str, authorization: str = Header(None)):
+    """Check if a Coinbase Commerce charge has been confirmed (for polling from frontend)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    status = coinbase_payment.check_charge_status(charge_code, payload["user_id"])
+    return {"status": status}
+
+
+@app.post("/api/webhook/coinbase")
+async def handle_coinbase_webhook(request: Request):
+    """Handle incoming Coinbase Commerce webhook events. Public endpoint, signature-verified."""
+    try:
+        body = await request.body()
+        signature = request.headers.get("X-CC-Webhook-Signature", "")
+
+        print(f"[Coinbase Webhook] Received webhook, body length: {len(body)}")
+
+        if not coinbase_payment.verify_webhook(body, signature):
+            print(f"[Coinbase Webhook] Signature verification FAILED")
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+        print(f"[Coinbase Webhook] Signature verified OK")
+
+        event = json.loads(body)
+        event_type = event.get("event", {}).get("type", "") or event.get("type", "")
+        print(f"[Coinbase Webhook] Event type: {event_type}")
+
+        result = coinbase_payment.process_webhook_event(event)
+        return {"ok": True}
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Coinbase webhook: {e}")
+        return {"ok": True}  # Always return 200 to prevent retries
 
 
 # ==================== END PAYMENT ENDPOINTS ====================

@@ -696,7 +696,7 @@ async def admin_transaction_analytics(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     cur = currency.lower()
-    if cur not in ("kes", "usd", "whop"):
+    if cur not in ("kes", "usd", "whop", "crypto"):
         cur = "kes"
 
     # Kenyan time = UTC+3
@@ -743,6 +743,9 @@ async def admin_transaction_analytics(
     elif cur == "whop":
         tbl, amt_col = "whop_transactions", "amount_usd"
         status_cond = "payment_status = 'completed' AND transaction_type = 'marketplace_subscription'"
+    elif cur == "crypto":
+        tbl, amt_col = "coinbase_transactions", "amount_usd"
+        status_cond = "payment_status = 'completed'"
     else:  # usd (card)
         tbl, amt_col = "whop_transactions", "amount_usd"
         status_cond = "payment_status = 'completed' AND transaction_type != 'marketplace_subscription'"

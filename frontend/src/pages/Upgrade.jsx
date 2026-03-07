@@ -4,6 +4,7 @@ import { useCredits } from '../context/CreditContext'
 import { useAuth } from '../context/AuthContext'
 import MpesaPaymentModal from '../components/MpesaPaymentModal'
 import WhopCheckoutModal from '../components/WhopCheckoutModal'
+import CryptoCheckoutModal from '../components/CryptoCheckoutModal'
 import SEOHead from '../components/SEOHead'
 import axios from 'axios'
 
@@ -33,6 +34,7 @@ export default function Upgrade() {
   // Modal state
   const [mpesaModal, setMpesaModal] = useState({ open: false, amountKes: 0, amountUsd: 0, txType: 'balance_topup', refId: '', title: '' })
   const [whopModal, setWhopModal] = useState({ open: false, txType: 'balance_topup', planId: '', amountUsd: 0, title: '' })
+  const [cryptoModal, setCryptoModal] = useState({ open: false, txType: 'balance_topup', planId: '', amountUsd: 0, title: '' })
 
   // Fetch data on mount
   useEffect(() => {
@@ -118,9 +120,32 @@ export default function Upgrade() {
     })
   }
 
+  const openPaygoCrypto = () => {
+    const usdAmount = isKenyan ? numericAmount / 130 : numericAmount
+    setCryptoModal({
+      open: true,
+      txType: 'balance_topup',
+      planId: '',
+      amountUsd: Math.max(usdAmount, 1),
+      title: 'Buy Credits with Crypto',
+    })
+  }
+
+  const openSubCrypto = () => {
+    const usdPrice = isKenyan ? planPrice / 130 : planPrice
+    setCryptoModal({
+      open: true,
+      txType: 'subscription',
+      planId: planId,
+      amountUsd: usdPrice,
+      title: `Subscribe with Crypto - ${selectedPlan?.name || billingCycle}`,
+    })
+  }
+
   const handlePaymentSuccess = useCallback(async () => {
     setMpesaModal(prev => ({ ...prev, open: false }))
     setWhopModal(prev => ({ ...prev, open: false }))
+    setCryptoModal(prev => ({ ...prev, open: false }))
     await refreshCredits()
     refreshProfile()
     try {
@@ -243,6 +268,8 @@ export default function Upgrade() {
             ) : (
               <>Kenyan? <button className="upgrade-v2-link-btn" disabled={!isValidAmount} onClick={openPaygoMpesa}>Use M-Pesa</button></>
             )}
+            {' | '}
+            <button className="upgrade-v2-link-btn" disabled={!isValidAmount} onClick={openPaygoCrypto}>Pay with Crypto</button>
           </p>
         </div>
       )}
@@ -308,6 +335,8 @@ export default function Upgrade() {
                 ) : (
                   <>Kenyan? <button className="upgrade-v2-link-btn" onClick={openSubMpesa}>Use M-Pesa</button></>
                 )}
+                {' | '}
+                <button className="upgrade-v2-link-btn" onClick={openSubCrypto}>Pay with Crypto</button>
               </p>
             )}
           </div>
@@ -353,6 +382,18 @@ export default function Upgrade() {
           planId={whopModal.planId}
           amountUsd={whopModal.amountUsd}
           title={whopModal.title}
+        />
+      )}
+
+      {cryptoModal.open && (
+        <CryptoCheckoutModal
+          isOpen={true}
+          onClose={() => setCryptoModal(prev => ({ ...prev, open: false }))}
+          onSuccess={handlePaymentSuccess}
+          transactionType={cryptoModal.txType}
+          planId={cryptoModal.planId}
+          amountUsd={cryptoModal.amountUsd}
+          title={cryptoModal.title}
         />
       )}
     </div>

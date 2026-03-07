@@ -7,6 +7,7 @@ import axios from 'axios'
 import { useCurrency } from '../context/CurrencyContext'
 import MpesaPaymentModal from '../components/MpesaPaymentModal'
 import WhopCheckoutModal from '../components/WhopCheckoutModal'
+import CryptoCheckoutModal from '../components/CryptoCheckoutModal'
 
 // Module-level set to prevent duplicate impression tracking across re-mounts
 const _trackedImpressions = new Set()
@@ -362,6 +363,7 @@ function PredictionCard({ pred, onRate, onPurchase }) {
   const isOwn = user?.id === pred.user_id
   const [showMpesa, setShowMpesa] = useState(false)
   const [showWhop, setShowWhop] = useState(false)
+  const [showCrypto, setShowCrypto] = useState(false)
   const [showPayChoice, setShowPayChoice] = useState(false)
   const [showFollowPrompt, setShowFollowPrompt] = useState(false)
   const [showStats, setShowStats] = useState(false)
@@ -452,6 +454,7 @@ function PredictionCard({ pred, onRate, onPurchase }) {
   const handlePaymentSuccess = () => {
     setShowMpesa(false)
     setShowWhop(false)
+    setShowCrypto(false)
     if (onPurchase) onPurchase(pred.id)
     if (!isOwn && !followState.isFollowing && followState.loaded) {
       setTimeout(() => setShowFollowPrompt(true), 500)
@@ -552,6 +555,9 @@ function PredictionCard({ pred, onRate, onPurchase }) {
                       {t('upgrade.cardPayment')}
                     </button>
                   )}
+                  <button className="pay-choice-btn crypto" onClick={() => { setShowPayChoice(false); setShowCrypto(true) }}>
+                    Crypto
+                  </button>
                 </div>
               )}
             </div>
@@ -701,6 +707,18 @@ function PredictionCard({ pred, onRate, onPurchase }) {
           predictionId={pred.id}
           amountUsd={pred.price_usd}
           title={`${t('community.unlock')}: ${pred.team_a_name} vs ${pred.team_b_name}`}
+        />
+      )}
+
+      {showCrypto && (
+        <CryptoCheckoutModal
+          isOpen={showCrypto}
+          onClose={() => setShowCrypto(false)}
+          onSuccess={handlePaymentSuccess}
+          transactionType="prediction_purchase"
+          predictionId={pred.id}
+          amountUsd={pred.price_usd}
+          title={`Unlock with Crypto: ${pred.team_a_name} vs ${pred.team_b_name}`}
         />
       )}
 

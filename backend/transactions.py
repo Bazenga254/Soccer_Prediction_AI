@@ -368,6 +368,57 @@ def _fetch_prediction_purchases(user_id: int) -> List[Dict]:
     return results
 
 
+def _fetch_coinbase_transactions(user_id: int) -> List[Dict]:
+    """Fetch Coinbase Commerce (crypto) payment transactions."""
+    try:
+        conn = _get_db()
+        rows = conn.execute(
+            "SELECT * FROM coinbase_transactions WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,)
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return []
+
+    results = []
+    for r in rows:
+        tx_type = r["transaction_type"] or ""
+        amount_usd = _safe_float(r["amount_usd"])
+        crypto_currency = r["crypto_currency"] or ""
+        crypto_amount = r["crypto_amount"] or ""
+
+        if tx_type == "balance_topup":
+            unified_type, desc = "deposit", "Crypto deposit"
+        elif tx_type == "subscription":
+            ref_id = r["reference_id"] or ""
+            unified_type = "subscription"
+            desc = f"Pro subscription ({ref_id})" if ref_id else "Pro subscription"
+        else:
+            unified_type, desc = "purchase", "Prediction purchase (Crypto)"
+
+        if crypto_currency:
+            desc += f" via {crypto_currency}"
+
+        results.append({
+            "id": f"crypto_{r['id']}",
+            "date": r["completed_at"] or r["created_at"],
+            "type": unified_type,
+            "category": "payments",
+            "description": desc,
+            "amount": amount_usd,
+            "currency": "USD",
+            "amount_secondary": float(crypto_amount) if crypto_amount else None,
+            "currency_secondary": crypto_currency if crypto_amount else None,
+            "fee": 0.0,
+            "fee_currency": "USD",
+            "fee_description": "",
+            "status": _normalize_status(r["payment_status"]),
+            "payment_method": "crypto",
+            "reference": r["coinbase_charge_code"] or "",
+        })
+    return results
+
+
 def _fetch_referral_earnings(user_id: int) -> List[Dict]:
     """Fetch referral commission earnings."""
     try:
@@ -420,6 +471,7 @@ def get_unified_transactions(
     all_transactions = []
     all_transactions.extend(_fetch_mpesa_transactions(user_id))
     all_transactions.extend(_fetch_whop_transactions(user_id))
+    all_transactions.extend(_fetch_coinbase_transactions(user_id))
     all_transactions.extend(_fetch_withdrawals(user_id))
     all_transactions.extend(_fetch_balance_adjustments(user_id))
     all_transactions.extend(_fetch_prediction_purchases(user_id))

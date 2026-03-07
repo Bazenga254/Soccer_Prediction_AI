@@ -11769,6 +11769,10 @@ html, body {
   background: linear-gradient(135deg, #3b82f6, #2563eb);
 }
 
+.pay-choice-btn.crypto {
+  background: linear-gradient(135deg, #f7931a, #e2761b);
+}
+
 .pay-choice-btn:hover {
   opacity: 0.9;
 }
