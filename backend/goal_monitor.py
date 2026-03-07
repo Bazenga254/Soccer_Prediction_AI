@@ -218,6 +218,8 @@ async def goal_score_monitor():
                             match, tracked_info, goal_type,
                             current_home, current_away,
                         )
+                        # Use competition emblem as notification image
+                        notif_image = match.get("competition", {}).get("emblem") or None
                         push_notifications.send_push_notification(
                             user_id=user_id,
                             notif_type="goal_scored",
@@ -229,6 +231,10 @@ async def goal_score_monitor():
                                 "away_goals": current_away,
                                 "goal_type": goal_type,
                             },
+                            image=notif_image,
+                            actions=[
+                                {"action": "view", "title": "View Match"},
+                            ],
                         )
 
                     print(f"[GoalMonitor] Goal in fixture {fixture_id}: "
@@ -249,6 +255,7 @@ async def goal_score_monitor():
                         title, message = _format_end_notification(
                             match, tracked_info, end_type,
                         )
+                        notif_image = match.get("competition", {}).get("emblem") or None
                         push_notifications.send_push_notification(
                             user_id=user_id,
                             notif_type="match_ended",
@@ -260,6 +267,7 @@ async def goal_score_monitor():
                                 "away_goals": current_away,
                                 "end_type": end_type,
                             },
+                            image=notif_image,
                         )
 
                     print(f"[GoalMonitor] Match ended {fixture_id}: "

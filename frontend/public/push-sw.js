@@ -28,6 +28,16 @@ self.addEventListener('push', function(event) {
     data: payload.data || {},
   };
 
+  // Add large image if provided (shows as rich preview like news notifications)
+  if (payload.image) {
+    options.image = payload.image;
+  }
+
+  // Add action buttons if provided
+  if (payload.actions && payload.actions.length > 0) {
+    options.actions = payload.actions;
+  }
+
   event.waitUntil(
     self.registration.showNotification(payload.title || 'Spark AI', options)
   );
@@ -39,7 +49,13 @@ self.addEventListener('notificationclick', function(event) {
 
   if (event.action === 'dismiss') return;
 
-  var targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  // "view" action on goal notifications navigates to /live
+  var targetUrl;
+  if (event.action === 'view' && event.notification.data && event.notification.data.type) {
+    targetUrl = event.notification.data.url || '/live';
+  } else {
+    targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  }
   var fullUrl = new URL(targetUrl, self.location.origin).href;
 
   event.waitUntil(

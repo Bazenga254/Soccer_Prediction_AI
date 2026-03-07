@@ -104,10 +104,14 @@ def send_push_notification(
     message: str,
     metadata: dict = None,
     notif_id: int = None,
+    image: str = None,
+    actions: list = None,
 ):
     """
     Send Web Push to ALL of a user's subscriptions.
     Runs in a background thread to avoid blocking.
+    image: URL for a large preview image (shown like news card notifications)
+    actions: list of {"action": "id", "title": "Label"} for notification buttons
     """
     if notif_type in PUSH_EXCLUDED_TYPES:
         return
@@ -128,7 +132,7 @@ def send_push_notification(
             tag = notif_type
             if notif_type in ("goal_scored", "match_ended") and metadata:
                 tag = f"{notif_type}_{metadata.get('fixture_id', '')}_{metadata.get('home_goals', '')}_{metadata.get('away_goals', '')}"
-            payload = json.dumps({
+            payload_dict = {
                 "title": title,
                 "body": message,
                 "icon": "/pwa-192x192.png",
@@ -139,7 +143,12 @@ def send_push_notification(
                     "notif_id": notif_id,
                     "type": notif_type,
                 },
-            })
+            }
+            if image:
+                payload_dict["image"] = image
+            if actions:
+                payload_dict["actions"] = actions
+            payload = json.dumps(payload_dict)
 
             stale_endpoints = []
 
