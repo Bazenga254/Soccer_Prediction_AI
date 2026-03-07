@@ -286,10 +286,7 @@ export default function BroadcastTab() {
         ? `Send to ${selectedUsers.length} User${selectedUsers.length !== 1 ? 's' : ''}`
         : 'Submit for Approval'
     }
-    if (!isSuperAdmin) return 'Submit for Approval'
-    if (targetType === 'inactive') return 'Send to Inactive Users'
-    if (targetType === 'unverified') return 'Send to Unverified Users'
-    return 'Send to All Users'
+    return isSuperAdmin ? 'Send to All Users' : 'Submit for Approval'
   }
 
   if (loading) return <div className="admin-loading">Loading broadcasts...</div>
@@ -338,20 +335,6 @@ export default function BroadcastTab() {
               onClick={() => setTargetType('specific')}
             >
               Specific User(s)
-            </button>
-            <button
-              type="button"
-              className={`bc-target-btn ${targetType === 'inactive' ? 'active' : ''}`}
-              onClick={() => { setTargetType('inactive'); setSelectedUsers([]) }}
-            >
-              Inactive Users
-            </button>
-            <button
-              type="button"
-              className={`bc-target-btn ${targetType === 'unverified' ? 'active' : ''}`}
-              onClick={() => { setTargetType('unverified'); setSelectedUsers([]) }}
-            >
-              Unverified Users
             </button>
           </div>
 
