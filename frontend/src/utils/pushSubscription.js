@@ -35,14 +35,6 @@ export async function subscribeToPush() {
       return false
     }
 
-    // Check if already subscribed
-    const existingSub = await registration.pushManager.getSubscription()
-    if (existingSub) {
-      // Re-send to server in case it was lost
-      await sendSubscriptionToServer(existingSub)
-      return true
-    }
-
     // Fetch VAPID public key from server
     const { data } = await axios.get('/api/push/vapid-key')
     if (!data.vapid_public_key) {
@@ -50,10 +42,35 @@ export async function subscribeToPush() {
       return false
     }
 
+    const serverKey = urlBase64ToUint8Array(data.vapid_public_key)
+
+    // Check if already subscribed
+    let existingSub = await registration.pushManager.getSubscription()
+    if (existingSub) {
+      // Verify the subscription uses the current VAPID key
+      const existingKey = existingSub.options?.applicationServerKey
+      if (existingKey) {
+        const existingArr = new Uint8Array(existingKey)
+        const keysMatch = existingArr.length === serverKey.length &&
+          existingArr.every((val, i) => val === serverKey[i])
+        if (!keysMatch) {
+          // VAPID key changed — unsubscribe old and create new
+          console.log('[Push] VAPID key changed, re-subscribing...')
+          await existingSub.unsubscribe()
+          existingSub = null
+        }
+      }
+      if (existingSub) {
+        // Re-send to server in case it was lost
+        await sendSubscriptionToServer(existingSub)
+        return true
+      }
+    }
+
     // Subscribe to push
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(data.vapid_public_key),
+      applicationServerKey: serverKey,
     })
 
     // Send subscription to server

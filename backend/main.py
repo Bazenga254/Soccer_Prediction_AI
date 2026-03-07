@@ -3316,7 +3316,7 @@ async def track_page_visit(body: TrackPageRequest, request: Request, authorizati
     country = None
     if client_ip in _geo_cache:
         code, ts = _geo_cache[client_ip]
-        if time.time() - ts < GEO_CACHE_TTL:
+        if _time.time() - ts < GEO_CACHE_TTL:
             country = code
     user_auth.record_page_visit(
         session_id=body.session_id,
