@@ -3802,9 +3802,9 @@ def create_broadcast(sender_id: int, sender_name: str, title: str, message: str,
                      target_type: str = "all", target_user_ids: list = None,
                      target_user_names: list = None) -> Dict:
     """Create a broadcast message. If auto_approve=True (super admin), it's sent immediately.
-    channel: 'email', 'whatsapp', or 'both'.
-    target_type: 'all' or 'specific'. If 'specific', target_user_ids must be provided."""
-    if channel not in ("email", "whatsapp", "both"):
+    channel: 'email', 'push', 'email_push', 'whatsapp', or 'both'.
+    target_type: 'all', 'specific', 'inactive', or 'unverified'."""
+    if channel not in ("email", "push", "email_push", "whatsapp", "both"):
         channel = "email"
     if target_type not in ("all", "specific", "unverified", "inactive"):
         target_type = "all"
@@ -3973,8 +3973,8 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
                 metadata={"broadcast_id": broadcast_id, "sender_name": broadcast["sender_name"]},
             )
 
-    # Send email if channel is 'email' or 'both'
-    if channel in ("email", "both"):
+    # Send email if channel includes email
+    if channel in ("email", "both", "email_push"):
         import threading
         import time as _bcast_time
         def _send_broadcast_emails():
@@ -4041,6 +4041,27 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
                     _bcast_time.sleep(3)
             print(f"[INFO] Broadcast emails done: {sent} sent, {failed} failed out of {len(user_ids)}")
         threading.Thread(target=_send_broadcast_emails, daemon=True).start()
+
+    # Send push notifications if channel is 'push' or 'email_push'
+    if channel in ("push", "email_push"):
+        import threading as _push_thr
+        import push_notifications
+        def _send_broadcast_push():
+            sent = 0
+            for uid in user_ids:
+                try:
+                    push_notifications.send_push_notification(
+                        user_id=uid,
+                        notif_type="broadcast",
+                        title=broadcast["title"],
+                        message=broadcast["message"],
+                        metadata={"broadcast_id": broadcast_id, "sender_name": broadcast["sender_name"]},
+                    )
+                    sent += 1
+                except Exception as e:
+                    print(f"[WARN] Push broadcast to user {uid} failed: {e}")
+            print(f"[INFO] Push broadcast: triggered for {sent}/{len(user_ids)} users")
+        _push_thr.Thread(target=_send_broadcast_push, daemon=True).start()
 
     # Send WhatsApp if channel is 'whatsapp' or 'both'
     if channel in ("whatsapp", "both"):

@@ -242,6 +242,17 @@ export default function BroadcastTab() {
     setReGenerating(false)
   }
 
+  const handleUseTemplate = (template) => {
+    // Populate the compose form with template data and scroll to top
+    setTitle(template.sample_subject || template.name)
+    setMessage(template.description || '')
+    setTargetType('all')
+    setSelectedUsers([])
+    setReStatusMsg(`Template "${template.name}" loaded into compose form. Choose your audience and channel, then send.`)
+    // Scroll to compose form
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const timeAgo = (dateStr) => {
     if (!dateStr) return ''
     const utcStr = dateStr && !dateStr.endsWith('Z') && !dateStr.includes('+') ? dateStr + 'Z' : dateStr
@@ -266,6 +277,9 @@ export default function BroadcastTab() {
     if (sending) return 'Sending...'
     if (targetType === 'unverified') {
       return isSuperAdmin ? 'Send to Unverified Users' : 'Submit for Approval'
+    }
+    if (targetType === 'inactive') {
+      return isSuperAdmin ? 'Send to Inactive Users' : 'Submit for Approval'
     }
     if (targetType === 'specific' && selectedUsers.length > 0) {
       return isSuperAdmin
@@ -324,6 +338,13 @@ export default function BroadcastTab() {
               onClick={() => setTargetType('specific')}
             >
               Specific User(s)
+            </button>
+            <button
+              type="button"
+              className={`bc-target-btn ${targetType === 'inactive' ? 'active' : ''}`}
+              onClick={() => { setTargetType('inactive'); setSelectedUsers([]) }}
+            >
+              Inactive Users
             </button>
             <button
               type="button"
@@ -434,8 +455,8 @@ export default function BroadcastTab() {
                 <label>Send via:</label>
                 <select value={channel} onChange={e => setChannel(e.target.value)} className="broadcast-channel-select">
                   <option value="email">Email Only</option>
-                  <option value="whatsapp">WhatsApp Only</option>
-                  <option value="both">Email + WhatsApp</option>
+                  <option value="push">App Notification Only</option>
+                  <option value="email_push">Email + App Notification</option>
                 </select>
               </div>
             </>
@@ -446,6 +467,7 @@ export default function BroadcastTab() {
               type="submit"
               className="broadcast-send-btn"
               disabled={targetType === 'unverified' ? sending : (!title.trim() || !message.trim() || sending || (targetType === 'specific' && selectedUsers.length === 0))}
+
             >
               {getSendButtonText()}
             </button>
@@ -505,8 +527,7 @@ export default function BroadcastTab() {
                         {isSuperAdmin && (
                           <button
                             className="bc-re-card-use-btn"
-                            onClick={() => handleReGenerate(t.index)}
-                            disabled={reGenerating}
+                            onClick={() => handleUseTemplate(t)}
                           >
                             Use This
                           </button>
@@ -564,11 +585,22 @@ export default function BroadcastTab() {
                   <div className="bc-edit-footer">
                     <button className="bc-edit-cancel" onClick={() => setRePreviewData(null)}>Close</button>
                     <button
+                      className="bc-re-card-use-btn"
+                      style={{ padding: '8px 16px', fontSize: '13px' }}
+                      onClick={() => {
+                        const t = reTemplates.find(t => t.index === rePreviewData.index)
+                        if (t) handleUseTemplate(t)
+                        setRePreviewData(null)
+                      }}
+                    >
+                      Use in Compose
+                    </button>
+                    <button
                       className="bc-edit-save"
                       onClick={() => { handleReGenerate(rePreviewData.index); setRePreviewData(null) }}
                       disabled={reGenerating}
                     >
-                      Generate with This Template
+                      Send to Inactive Users
                     </button>
                   </div>
                 )}
@@ -614,7 +646,12 @@ export default function BroadcastTab() {
                     <span>By: {b.sender_name}</span>
                     <span>{timeAgo(b.created_at)}</span>
                     {b.status === 'sent' && <span>{b.recipient_count} recipients</span>}
-                    {b.channel && <span className="broadcast-channel-badge">{b.channel === 'both' ? 'Email + WhatsApp' : b.channel === 'whatsapp' ? 'WhatsApp' : 'Email'}</span>}
+                    {b.channel && <span className="broadcast-channel-badge">{
+                      b.channel === 'email_push' ? 'Email + Push' :
+                      b.channel === 'push' ? 'App Notification' :
+                      b.channel === 'both' ? 'Email + WhatsApp' :
+                      b.channel === 'whatsapp' ? 'WhatsApp' : 'Email'
+                    }</span>}
                     {b.target_type === 'unverified' && (
                       <span className="bc-target-badge bc-target-unverified">To: Unverified Users</span>
                     )}
