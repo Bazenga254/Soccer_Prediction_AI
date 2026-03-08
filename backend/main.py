@@ -2886,8 +2886,8 @@ async def create_coinbase_charge(body: CoinbaseCheckoutRequest, authorization: s
         )
 
     elif body.transaction_type == "balance_topup":
-        if body.amount_usd < 1.0:
-            raise HTTPException(status_code=400, detail="Minimum top-up is $1.00")
+        if body.amount_usd < 2.0:
+            raise HTTPException(status_code=400, detail="Minimum crypto top-up is $2.00 (to cover network fees)")
         result = coinbase_payment.create_charge(
             user_id=user_id,
             transaction_type="balance_topup",

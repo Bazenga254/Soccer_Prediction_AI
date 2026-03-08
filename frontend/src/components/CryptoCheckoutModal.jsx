@@ -210,6 +210,11 @@ export default function CryptoCheckoutModal({
               <span style={{...styles.coinBadge, color: '#64748b'}}>+300</span>
             </div>
 
+            {/* Disclaimer */}
+            <p style={styles.disclaimer}>
+              Note: Crypto payments have minimum amounts per coin due to network fees. If your deposit is too small, select a coin with lower fees (e.g. USDT TRC20, LTC, or TRX) or increase your deposit amount.
+            </p>
+
             <div style={styles.waitingDots}>
               <div className="spinner" style={{ width: 18, height: 18 }}></div>
               <span style={styles.waitingStatus}>Waiting for blockchain confirmation...</span>
@@ -373,6 +378,18 @@ const styles = {
   waitingStatus: {
     color: '#64748b',
     fontSize: '13px',
+  },
+  disclaimer: {
+    color: '#94a3b8',
+    fontSize: '11px',
+    margin: 0,
+    textAlign: 'center',
+    lineHeight: '1.5',
+    padding: '8px 12px',
+    background: 'rgba(251, 191, 36, 0.08)',
+    border: '1px solid rgba(251, 191, 36, 0.15)',
+    borderRadius: '8px',
+    marginTop: '4px',
   },
   reopenBtn: {
     padding: '8px 20px',
