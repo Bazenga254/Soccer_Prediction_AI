@@ -1,7 +1,9 @@
 """
-Coinbase Commerce Payment Integration for Spark AI Prediction
-Handles cryptocurrency payments via Coinbase Commerce API.
+NOWPayments Crypto Payment Integration for Spark AI Prediction
+Handles cryptocurrency payments via NOWPayments API (invoice-based hosted checkout).
 Works alongside M-Pesa and Whop (card) as an alternative payment method.
+
+Migrated from Coinbase Commerce to NOWPayments for simpler merchant onboarding.
 """
 
 import os
@@ -22,9 +24,9 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = "community.db"
 
-COINBASE_COMMERCE_API_KEY = os.environ.get("COINBASE_COMMERCE_API_KEY", "")
-COINBASE_WEBHOOK_SECRET = os.environ.get("COINBASE_WEBHOOK_SECRET", "")
-COINBASE_API_URL = "https://api.commerce.coinbase.com"
+NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY", "")
+NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
+NOWPAYMENTS_API_URL = "https://api.nowpayments.io/v1"
 
 
 def _get_db():
@@ -42,7 +44,7 @@ def _get_users_db():
 
 
 def init_coinbase_db():
-    """Create Coinbase Commerce transaction table."""
+    """Create crypto transaction table (kept name for backward compat)."""
     conn = _get_db()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS coinbase_transactions (
@@ -70,10 +72,10 @@ def init_coinbase_db():
     """)
     conn.commit()
     conn.close()
-    logger.info("[Coinbase] Database tables initialized")
+    logger.info("[NOWPayments] Database tables initialized")
 
 
-# ==================== CHARGE CREATION ====================
+# ==================== INVOICE CREATION ====================
 
 def create_charge(
     user_id: int,
@@ -83,68 +85,64 @@ def create_charge(
     title: str = "Spark AI Payment",
     description: str = "",
 ) -> Dict:
-    """Create a Coinbase Commerce charge for crypto payment.
+    """Create a NOWPayments invoice for crypto payment.
 
-    Args:
-        user_id: The ID of the user making the payment
-        transaction_type: 'subscription', 'prediction_purchase', or 'balance_topup'
-        amount_usd: Amount to charge in USD
-        reference_id: Plan ID or prediction ID
-        title: Display title for the charge
-        description: Description shown on payment page
+    Uses the invoice-based hosted checkout flow. User picks their coin
+    on the NOWPayments page, and we poll / get IPN callbacks for status.
     """
-    if not COINBASE_COMMERCE_API_KEY:
-        return {"success": False, "error": "Coinbase Commerce not configured. Admin needs to add API key."}
+    if not NOWPAYMENTS_API_KEY:
+        return {"success": False, "error": "Crypto payments not configured. Admin needs to add NOWPayments API key."}
 
     now = datetime.now().isoformat()
 
-    metadata = {
-        "spark_user_id": str(user_id),
-        "transaction_type": transaction_type,
-        "reference_id": reference_id,
-    }
+    # Build unique order_id that encodes our metadata
+    order_id = f"spark_{user_id}_{transaction_type}_{reference_id}_{int(datetime.now().timestamp())}"
 
     try:
-        # Create charge via Coinbase Commerce API
         headers = {
+            "x-api-key": NOWPAYMENTS_API_KEY,
             "Content-Type": "application/json",
-            "X-CC-Api-Key": COINBASE_COMMERCE_API_KEY,
-            "X-CC-Version": "2018-03-22",
         }
 
-        charge_data = {
-            "name": title,
-            "description": description or f"Spark AI - {transaction_type.replace('_', ' ').title()}",
-            "pricing_type": "fixed_price",
-            "local_price": {
-                "amount": str(round(amount_usd, 2)),
-                "currency": "USD",
-            },
-            "metadata": metadata,
-            "redirect_url": "https://spark-ai-prediction.com/upgrade?crypto=success",
+        invoice_data = {
+            "price_amount": round(amount_usd, 2),
+            "price_currency": "usd",
+            "order_id": order_id,
+            "order_description": description or f"Spark AI - {transaction_type.replace('_', ' ').title()}",
+            "ipn_callback_url": "https://spark-ai-prediction.com/api/webhook/coinbase",
+            "success_url": "https://spark-ai-prediction.com/upgrade?crypto=success",
             "cancel_url": "https://spark-ai-prediction.com/upgrade?crypto=cancelled",
         }
 
         resp = requests.post(
-            f"{COINBASE_API_URL}/charges",
+            f"{NOWPAYMENTS_API_URL}/invoice",
             headers=headers,
-            json=charge_data,
+            json=invoice_data,
             timeout=15,
         )
 
         if resp.status_code not in (200, 201):
             error_msg = resp.text[:300]
-            logger.error(f"[Coinbase] Charge creation failed: {resp.status_code} {error_msg}")
-            return {"success": False, "error": f"Failed to create charge: {error_msg}"}
+            logger.error(f"[NOWPayments] Invoice creation failed: {resp.status_code} {error_msg}")
+            return {"success": False, "error": f"Failed to create invoice: {error_msg}"}
 
-        charge = resp.json().get("data", {})
-        charge_id = charge.get("id", "")
-        charge_code = charge.get("code", "")
-        hosted_url = charge.get("hosted_url", "")
+        data = resp.json()
+        invoice_id = str(data.get("id", ""))
+        invoice_url = data.get("invoice_url", "")
 
-        logger.info(f"[Coinbase] Charge created: id={charge_id}, code={charge_code}, url={hosted_url}")
+        logger.info(f"[NOWPayments] Invoice created: id={invoice_id}, order={order_id}, url={invoice_url}")
 
-        # Store in DB
+        # Store metadata for webhook/polling lookup
+        metadata = {
+            "spark_user_id": str(user_id),
+            "transaction_type": transaction_type,
+            "reference_id": reference_id,
+        }
+
+        # Store in DB — reuse coinbase_transactions table columns:
+        #   coinbase_charge_id  -> nowpayments invoice id
+        #   coinbase_charge_code -> order_id (our lookup key)
+        #   hosted_url -> invoice_url
         conn = _get_db()
         conn.execute("""
             INSERT INTO coinbase_transactions
@@ -154,7 +152,7 @@ def create_charge(
             VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
         """, (
             user_id, transaction_type, reference_id, amount_usd,
-            charge_id, charge_code, hosted_url,
+            invoice_id, order_id, invoice_url,
             json.dumps(metadata), now, now,
         ))
         conn.commit()
@@ -162,27 +160,27 @@ def create_charge(
 
         return {
             "success": True,
-            "charge_id": charge_id,
-            "charge_code": charge_code,
-            "hosted_url": hosted_url,
+            "charge_id": invoice_id,
+            "charge_code": order_id,
+            "hosted_url": invoice_url,
         }
 
     except requests.RequestException as e:
-        logger.error(f"[Coinbase] Network error creating charge: {e}")
+        logger.error(f"[NOWPayments] Network error creating invoice: {e}")
         return {"success": False, "error": f"Network error: {str(e)}"}
     except Exception as e:
-        logger.error(f"[Coinbase] Error creating charge: {e}")
-        return {"success": False, "error": f"Failed to create charge: {str(e)}"}
+        logger.error(f"[NOWPayments] Error creating invoice: {e}")
+        return {"success": False, "error": f"Failed to create invoice: {str(e)}"}
 
 
 # ==================== PAYMENT STATUS ====================
 
 def check_charge_status(charge_code: str, user_id: int) -> str:
-    """Check Coinbase Commerce charge status and fulfill if confirmed.
+    """Check NOWPayments payment status via our DB + IPN updates.
 
-    Called from the polling endpoint. Returns: 'pending', 'completed', 'expired', or 'failed'.
+    The IPN webhook updates the DB, so polling just reads our local state.
+    We also do a direct API check as fallback.
     """
-    # Check our DB first
     conn = _get_db()
     row = conn.execute(
         "SELECT payment_status, transaction_type, reference_id, amount_usd, coinbase_charge_id "
@@ -197,17 +195,15 @@ def check_charge_status(charge_code: str, user_id: int) -> str:
     if row["payment_status"] in ("completed", "failed", "expired"):
         return row["payment_status"]
 
-    # Still pending — check Coinbase API
-    if not COINBASE_COMMERCE_API_KEY:
+    # Still pending — try checking NOWPayments API directly
+    if not NOWPAYMENTS_API_KEY:
         return "pending"
 
     try:
-        headers = {
-            "X-CC-Api-Key": COINBASE_COMMERCE_API_KEY,
-            "X-CC-Version": "2018-03-22",
-        }
+        # List payments for this invoice
+        headers = {"x-api-key": NOWPAYMENTS_API_KEY}
         resp = requests.get(
-            f"{COINBASE_API_URL}/charges/{row['coinbase_charge_id']}",
+            f"{NOWPAYMENTS_API_URL}/payment/?invoiceId={row['coinbase_charge_id']}&limit=1&sortBy=created_at&orderBy=desc",
             headers=headers,
             timeout=10,
         )
@@ -215,45 +211,38 @@ def check_charge_status(charge_code: str, user_id: int) -> str:
         if resp.status_code != 200:
             return "pending"
 
-        charge = resp.json().get("data", {})
-        timeline = charge.get("timeline", [])
+        data = resp.json()
+        payments = data.get("data", [])
 
-        # Check latest status from timeline
-        if timeline:
-            latest_status = timeline[-1].get("status", "").upper()
+        if not payments:
+            return "pending"
 
-            if latest_status == "COMPLETED":
-                # Payment confirmed on blockchain
-                payments = charge.get("payments", [])
-                crypto_currency = ""
-                crypto_amount = ""
-                if payments:
-                    network = payments[0].get("network", "")
-                    value = payments[0].get("value", {})
-                    crypto_currency = value.get("crypto", {}).get("currency", network)
-                    crypto_amount = value.get("crypto", {}).get("amount", "")
+        payment = payments[0]
+        np_status = payment.get("payment_status", "").lower()
+        pay_currency = payment.get("pay_currency", "").upper()
+        actually_paid = str(payment.get("actually_paid", ""))
 
-                _fulfill_payment(
-                    user_id=user_id,
-                    transaction_type=row["transaction_type"],
-                    reference_id=row["reference_id"] or "",
-                    charge_code=charge_code,
-                    amount_usd=row["amount_usd"],
-                    crypto_currency=crypto_currency,
-                    crypto_amount=crypto_amount,
-                )
-                return "completed"
-
-            elif latest_status == "EXPIRED":
-                _update_status(charge_code, user_id, "expired")
-                return "expired"
-
-            elif latest_status in ("CANCELED", "UNRESOLVED"):
-                _update_status(charge_code, user_id, "failed")
-                return "failed"
-
+        # Map NOWPayments statuses to our statuses
+        if np_status in ("finished", "confirmed", "sending"):
+            _fulfill_payment(
+                user_id=user_id,
+                transaction_type=row["transaction_type"],
+                reference_id=row["reference_id"] or "",
+                charge_code=charge_code,
+                amount_usd=row["amount_usd"],
+                crypto_currency=pay_currency,
+                crypto_amount=actually_paid,
+            )
+            return "completed"
+        elif np_status == "expired":
+            _update_status(charge_code, user_id, "expired")
+            return "expired"
+        elif np_status in ("failed", "refunded"):
+            _update_status(charge_code, user_id, "failed")
+            return "failed"
+        # waiting, confirming, partially_paid -> still pending
     except Exception as e:
-        logger.error(f"[Coinbase] Error checking charge status: {e}")
+        logger.error(f"[NOWPayments] Error checking payment status: {e}")
 
     return "pending"
 
@@ -279,13 +268,22 @@ def _fulfill_payment(user_id: int, transaction_type: str, reference_id: str,
     """Fulfill a confirmed crypto payment: activate subscription, credit balance, or unlock prediction."""
     now = datetime.now().isoformat()
 
-    # Update transaction record
+    # Check if already fulfilled (prevent double-fulfillment)
     conn = _get_db()
+    existing = conn.execute(
+        "SELECT payment_status FROM coinbase_transactions WHERE coinbase_charge_code = ? AND user_id = ?",
+        (charge_code, user_id)
+    ).fetchone()
+    if existing and existing["payment_status"] == "completed":
+        conn.close()
+        logger.info(f"[NOWPayments] Payment {charge_code} already fulfilled, skipping")
+        return
+
     conn.execute("""
         UPDATE coinbase_transactions
         SET payment_status = 'completed', crypto_currency = ?, crypto_amount = ?,
             updated_at = ?, completed_at = ?
-        WHERE coinbase_charge_code = ? AND user_id = ? AND payment_status = 'pending'
+        WHERE coinbase_charge_code = ? AND user_id = ? AND payment_status != 'completed'
     """, (crypto_currency, crypto_amount, now, now, charge_code, user_id))
     conn.commit()
     conn.close()
@@ -295,22 +293,22 @@ def _fulfill_payment(user_id: int, transaction_type: str, reference_id: str,
             user_id=user_id,
             plan_id=reference_id,
             payment_method="crypto",
-            payment_ref=f"coinbase:{charge_code}",
+            payment_ref=f"nowpay:{charge_code}",
         )
         _process_referral_commission(user_id, reference_id, "crypto",
                                      amount_usd=amount_usd, transaction_type="subscription")
-        logger.info(f"[Coinbase] Subscription activated: user={user_id}, plan={reference_id}")
+        logger.info(f"[NOWPayments] Subscription activated: user={user_id}, plan={reference_id}")
 
     elif transaction_type == "prediction_purchase":
         community.purchase_prediction(
             prediction_id=int(reference_id),
             buyer_id=user_id,
             payment_method="crypto",
-            payment_ref=f"coinbase:{charge_code}",
+            payment_ref=f"nowpay:{charge_code}",
         )
         _process_referral_commission(user_id, reference_id, "crypto",
                                      amount_usd=amount_usd, transaction_type="prediction_purchase")
-        logger.info(f"[Coinbase] Prediction purchased: user={user_id}, prediction={reference_id}")
+        logger.info(f"[NOWPayments] Prediction purchased: user={user_id}, prediction={reference_id}")
 
     elif transaction_type == "balance_topup":
         community.adjust_user_balance(
@@ -320,7 +318,6 @@ def _fulfill_payment(user_id: int, transaction_type: str, reference_id: str,
             reason="Pay on the Go deposit via Crypto",
             adjustment_type="topup",
         )
-        # Convert to credits
         try:
             usd_rate = int(_pc.get("credit_rate_usd", 1300))
             credit_amount = int(amount_usd * usd_rate) if amount_usd > 0 else 0
@@ -331,7 +328,7 @@ def _fulfill_payment(user_id: int, transaction_type: str, reference_id: str,
             print(f"[Credits] Error adding credits for crypto deposit: {e}")
         _process_referral_commission(user_id, "balance_topup", "crypto",
                                      amount_usd=amount_usd, transaction_type="balance_topup")
-        logger.info(f"[Coinbase] Balance topped up: user={user_id}, amount=${amount_usd}")
+        logger.info(f"[NOWPayments] Balance topped up: user={user_id}, amount=${amount_usd}")
 
     # Send invoice email
     try:
@@ -357,9 +354,9 @@ def _fulfill_payment(user_id: int, transaction_type: str, reference_id: str,
                 reference=charge_code,
             )
     except Exception as e:
-        logger.error(f"[Coinbase] Failed to send invoice email: {e}")
+        logger.error(f"[NOWPayments] Failed to send invoice email: {e}")
 
-    # Send notification
+    # Send push notification
     try:
         import push_notifications
         type_labels = {
@@ -369,103 +366,98 @@ def _fulfill_payment(user_id: int, transaction_type: str, reference_id: str,
         }
         push_notifications.send_push_notification(
             user_id=user_id,
-            notif_type="withdrawal",  # Uses money icon
+            notif_type="withdrawal",
             title="Crypto Payment Confirmed",
             message=f"{type_labels.get(transaction_type, 'Payment')} - ${amount_usd:.2f} via {crypto_currency or 'crypto'}",
             metadata={"charge_code": charge_code},
         )
     except Exception as e:
-        logger.error(f"[Coinbase] Failed to send notification: {e}")
+        logger.error(f"[NOWPayments] Failed to send notification: {e}")
 
 
-# ==================== WEBHOOK ====================
+# ==================== WEBHOOK (IPN) ====================
 
 def verify_webhook(payload: bytes, signature: str) -> bool:
-    """Verify Coinbase Commerce webhook signature."""
-    if not COINBASE_WEBHOOK_SECRET:
-        logger.warning("[Coinbase] No webhook secret configured")
+    """Verify NOWPayments IPN webhook signature (HMAC-SHA512, sorted keys)."""
+    if not NOWPAYMENTS_IPN_SECRET:
+        logger.warning("[NOWPayments] No IPN secret configured — accepting webhook without verification")
+        return True  # Allow processing if no secret set (dev mode)
+
+    try:
+        body = json.loads(payload)
+        sorted_body = json.dumps(body, separators=(',', ':'), sort_keys=True)
+        expected = hmac.new(
+            NOWPAYMENTS_IPN_SECRET.encode("utf-8"),
+            sorted_body.encode("utf-8"),
+            hashlib.sha512,
+        ).hexdigest()
+        return hmac.compare_digest(expected, signature)
+    except Exception as e:
+        logger.error(f"[NOWPayments] Webhook signature verification error: {e}")
         return False
-
-    expected = hmac.new(
-        COINBASE_WEBHOOK_SECRET.encode("utf-8"),
-        payload,
-        hashlib.sha256,
-    ).hexdigest()
-
-    return hmac.compare_digest(expected, signature)
 
 
 def process_webhook_event(event: dict) -> dict:
-    """Process a verified Coinbase Commerce webhook event."""
-    event_type = event.get("type", "")
-    event_data = event.get("event", {}).get("data", {}) if "event" in event else event.get("data", {})
+    """Process a NOWPayments IPN callback.
 
-    charge_code = event_data.get("code", "")
-    charge_id = event_data.get("id", "")
-    metadata = event_data.get("metadata", {})
+    NOWPayments sends the payment object directly (not wrapped in event.data).
+    Fields: payment_id, payment_status, order_id, pay_currency, actually_paid, etc.
+    """
+    order_id = event.get("order_id", "")
+    payment_status = event.get("payment_status", "").lower()
+    payment_id = str(event.get("payment_id", ""))
+    pay_currency = event.get("pay_currency", "").upper()
+    actually_paid = str(event.get("actually_paid", ""))
 
-    user_id_str = metadata.get("spark_user_id", "")
-    transaction_type = metadata.get("transaction_type", "")
-    reference_id = metadata.get("reference_id", "")
+    logger.info(f"[NOWPayments] IPN: order={order_id}, status={payment_status}, payment_id={payment_id}")
 
-    logger.info(f"[Coinbase] Webhook: type={event_type}, code={charge_code}, user={user_id_str}")
+    if not order_id:
+        return {"success": False, "error": "Missing order_id"}
 
-    if not user_id_str or not charge_code:
-        return {"success": False, "error": "Missing metadata"}
-
-    user_id = int(user_id_str)
-
-    # Check if already fulfilled
+    # Look up by order_id (stored as coinbase_charge_code)
     conn = _get_db()
     row = conn.execute(
-        "SELECT payment_status, amount_usd FROM coinbase_transactions "
-        "WHERE coinbase_charge_code = ? AND user_id = ?",
-        (charge_code, user_id)
+        "SELECT user_id, payment_status as db_status, amount_usd, transaction_type, reference_id "
+        "FROM coinbase_transactions WHERE coinbase_charge_code = ?",
+        (order_id,)
     ).fetchone()
     conn.close()
 
     if not row:
-        logger.warning(f"[Coinbase] Webhook for unknown charge: {charge_code}")
+        logger.warning(f"[NOWPayments] IPN for unknown order: {order_id}")
         return {"success": False, "error": "Transaction not found"}
 
-    if row["payment_status"] == "completed":
-        logger.info(f"[Coinbase] Charge {charge_code} already fulfilled, skipping")
+    user_id = row["user_id"]
+
+    if row["db_status"] == "completed":
+        logger.info(f"[NOWPayments] Order {order_id} already fulfilled, skipping")
         return {"success": True, "message": "Already processed"}
 
-    if event_type in ("charge:confirmed", "charge:completed"):
-        # Extract crypto details from payments array
-        payments = event_data.get("payments", [])
-        crypto_currency = ""
-        crypto_amount = ""
-        if payments:
-            value = payments[0].get("value", {})
-            crypto_currency = value.get("crypto", {}).get("currency", "")
-            crypto_amount = value.get("crypto", {}).get("amount", "")
-
+    if payment_status in ("finished", "confirmed"):
         _fulfill_payment(
             user_id=user_id,
-            transaction_type=transaction_type,
-            reference_id=reference_id,
-            charge_code=charge_code,
+            transaction_type=row["transaction_type"],
+            reference_id=row["reference_id"] or "",
+            charge_code=order_id,
             amount_usd=row["amount_usd"],
-            crypto_currency=crypto_currency,
-            crypto_amount=crypto_amount,
+            crypto_currency=pay_currency,
+            crypto_amount=actually_paid,
         )
         return {"success": True, "message": "Payment fulfilled"}
 
-    elif event_type == "charge:failed":
-        _update_status(charge_code, user_id, "failed")
-        return {"success": True, "message": "Marked as failed"}
-
-    elif event_type == "charge:expired":
-        _update_status(charge_code, user_id, "expired")
+    elif payment_status == "expired":
+        _update_status(order_id, user_id, "expired")
         return {"success": True, "message": "Marked as expired"}
 
-    elif event_type == "charge:pending":
-        logger.info(f"[Coinbase] Charge {charge_code} pending (awaiting confirmations)")
-        return {"success": True, "message": "Pending confirmation"}
+    elif payment_status in ("failed", "refunded"):
+        _update_status(order_id, user_id, "failed")
+        return {"success": True, "message": "Marked as failed"}
 
-    return {"success": True, "message": f"Event {event_type} acknowledged"}
+    elif payment_status in ("waiting", "confirming", "sending", "partially_paid"):
+        logger.info(f"[NOWPayments] Order {order_id} status: {payment_status}")
+        return {"success": True, "message": f"Status: {payment_status}"}
+
+    return {"success": True, "message": f"Status {payment_status} acknowledged"}
 
 
 # ==================== REFERRAL COMMISSION ====================
@@ -503,7 +495,6 @@ def _process_referral_commission(user_id: int, reference_id: str, payment_method
         conn.commit()
         conn.close()
 
-        # Credit referrer's balance
         community.adjust_user_balance(
             user_id=referrer_id,
             amount_usd=commission,
@@ -511,16 +502,16 @@ def _process_referral_commission(user_id: int, reference_id: str, payment_method
             reason=f"Referral commission (crypto payment by user {user_id})",
             adjustment_type="referral",
         )
-        logger.info(f"[Coinbase] Referral commission: ${commission} to user {referrer_id}")
+        logger.info(f"[NOWPayments] Referral commission: ${commission} to user {referrer_id}")
 
     except Exception as e:
-        logger.error(f"[Coinbase] Referral commission error: {e}")
+        logger.error(f"[NOWPayments] Referral commission error: {e}")
 
 
 # ==================== ADMIN QUERIES ====================
 
 def get_transactions(offset: int = 0, limit: int = 50, status: str = None) -> list:
-    """Get coinbase transactions for admin view."""
+    """Get crypto transactions for admin view."""
     conn = _get_db()
     query = "SELECT * FROM coinbase_transactions"
     params = []

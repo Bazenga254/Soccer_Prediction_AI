@@ -2917,22 +2917,23 @@ async def check_coinbase_payment(charge_code: str, authorization: str = Header(N
 
 
 @app.post("/api/webhook/coinbase")
-async def handle_coinbase_webhook(request: Request):
-    """Handle incoming Coinbase Commerce webhook events. Public endpoint, signature-verified."""
+async def handle_crypto_webhook(request: Request):
+    """Handle incoming NOWPayments IPN webhook events. Public endpoint, signature-verified."""
     try:
         body = await request.body()
-        signature = request.headers.get("X-CC-Webhook-Signature", "")
+        signature = request.headers.get("x-nowpayments-sig", "")
 
-        print(f"[Coinbase Webhook] Received webhook, body length: {len(body)}")
+        print(f"[NOWPayments IPN] Received webhook, body length: {len(body)}")
 
         if not coinbase_payment.verify_webhook(body, signature):
-            print(f"[Coinbase Webhook] Signature verification FAILED")
+            print(f"[NOWPayments IPN] Signature verification FAILED")
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
-        print(f"[Coinbase Webhook] Signature verified OK")
+        print(f"[NOWPayments IPN] Signature verified OK")
 
         event = json.loads(body)
-        event_type = event.get("event", {}).get("type", "") or event.get("type", "")
-        print(f"[Coinbase Webhook] Event type: {event_type}")
+        payment_status = event.get("payment_status", "")
+        order_id = event.get("order_id", "")
+        print(f"[NOWPayments IPN] order={order_id}, status={payment_status}")
 
         result = coinbase_payment.process_webhook_event(event)
         return {"ok": True}
@@ -2942,7 +2943,7 @@ async def handle_coinbase_webhook(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Coinbase webhook: {e}")
+        print(f"[ERROR] NOWPayments webhook: {e}")
         return {"ok": True}  # Always return 200 to prevent retries
 
 

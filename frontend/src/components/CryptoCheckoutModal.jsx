@@ -189,7 +189,7 @@ export default function CryptoCheckoutModal({
 
             <p style={styles.waitingTitle}>Complete payment in the new tab</p>
             <p style={styles.subText}>
-              A Coinbase Commerce checkout has opened. Send crypto there and this page will update once the blockchain confirms the transaction.
+              A crypto checkout has opened in a new tab. Select your preferred coin, send payment, and this page will update once the blockchain confirms the transaction.
             </p>
 
             {/* Amount display */}
@@ -201,10 +201,13 @@ export default function CryptoCheckoutModal({
             <div style={styles.coinsRow}>
               <span style={styles.coinBadge}>BTC</span>
               <span style={styles.coinBadge}>ETH</span>
-              <span style={styles.coinBadge}>USDC</span>
               <span style={styles.coinBadge}>USDT</span>
-              <span style={styles.coinBadge}>DAI</span>
+              <span style={styles.coinBadge}>USDC</span>
               <span style={styles.coinBadge}>LTC</span>
+              <span style={styles.coinBadge}>SOL</span>
+              <span style={styles.coinBadge}>DOGE</span>
+              <span style={styles.coinBadge}>TRX</span>
+              <span style={{...styles.coinBadge, color: '#64748b'}}>+300</span>
             </div>
 
             <div style={styles.waitingDots}>
