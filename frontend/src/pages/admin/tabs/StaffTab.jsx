@@ -21,13 +21,31 @@ const ROLE_COLORS = {
 }
 
 const MODULE_LABELS = {
-  dashboard: 'Dashboard', users: 'Users', employees: 'Employees',
-  sales: 'Sales', predictions: 'Predictions', support: 'Support',
-  activity_logs: 'Activity Logs', security: 'Security', settings: 'Settings',
-  community: 'Community', referrals: 'Referrals', access_codes: 'Access Codes',
-  withdrawals: 'Withdrawals', subscriptions: 'Subscriptions',
-  online_users: 'Online Users', finance: 'Finance', technical: 'Technical', bots: 'Bots',
+  dashboard: 'Overview',
+  online_users: 'Online Users',
+  users: 'Users',
+  subscriptions: 'Subscriptions',
+  transactions: 'Transactions',
+  withdrawals: 'Withdrawals',
+  community: 'Community',
+  referrals: 'Referrals',
+  access_codes: 'Access Codes',
+  support: 'Support',
+  broadcast: 'Broadcast',
+  employees: 'Employees',
+  activity_logs: 'Activity Logs',
+  security: 'Security',
+  predictions: 'Predictions',
+  sales: 'Sales & Revenue',
+  settings: 'Settings',
+  pricing: 'Pricing',
+  bots: 'Bot Accounts',
+  analytics: 'Creator Analytics',
+  documentation: 'Documentation',
+  extension: 'Chrome Extension',
   social_media: 'Social Media',
+  finance: 'Finance',
+  technical: 'Technical',
 }
 
 const ACTIONS = ['read', 'write', 'edit', 'delete', 'export', 'approve']
