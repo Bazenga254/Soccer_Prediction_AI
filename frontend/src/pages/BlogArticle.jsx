@@ -151,9 +151,9 @@ export default function BlogArticle() {
                 <section className="seo-cta-section">
                   <h2>Try Spark AI Predictions</h2>
                   <p>Get free daily AI predictions across 50+ leagues. Sign up now for match analysis, odds comparison, and more.</p>
-                  <button className="seo-cta-btn" onClick={() => setAuthModal({ open: true, mode: 'signup' })}>
+                  <Link to="/login" className="seo-cta-btn" style={{ textDecoration: 'none' }}>
                     Get Started Free
-                  </button>
+                  </Link>
                 </section>
 
                 {/* Related Articles */}
