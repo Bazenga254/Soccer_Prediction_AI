@@ -60,7 +60,7 @@ export default function BlogIndex() {
         />
 
         <main className="seo-page-content blog-page-content">
-          <div className="seo-container" style={{ maxWidth: 1200 }}>
+          <div className="blog-container">
             <div className="blog-hero">
               <h1>Soccer Betting Tips & Match Previews</h1>
               <p>Expert analysis and guides powered by AI</p>
