@@ -4,6 +4,19 @@ import { useAdmin } from '../context/AdminContext'
 
 const CATEGORIES = ['general', 'predictions', 'tips', 'news', 'tutorials', 'updates']
 
+const FONT_SIZES = [
+  { label: 'Small', tag: 'small', style: 'font-size:13px' },
+  { label: 'Normal', tag: null, style: null },
+  { label: 'Large', tag: 'span', style: 'font-size:20px' },
+  { label: 'Huge', tag: 'span', style: 'font-size:26px;font-weight:600' },
+]
+
+const POPULAR_EMOJIS = [
+  '😀','😂','🤣','😍','🥰','😎','🤔','😮','😢','😡','👍','👎','👏','🙌','💪',
+  '🎯','🔥','⚽','🏆','🥇','💰','📈','📊','✅','❌','⚠️','💡','🎉','🚀','⭐',
+  '❤️','💙','💚','💛','🧡','💜','🤝','✍️','📝','🗒️','📌','🔗','💬','👀','🎓',
+]
+
 export default function BlogTab() {
   const { getAuthHeaders } = useAdmin()
   const [posts, setPosts] = useState([])
@@ -25,9 +38,14 @@ export default function BlogTab() {
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [inlineUploading, setInlineUploading] = useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [showFontSize, setShowFontSize] = useState(false)
+  const [spellCheck, setSpellCheck] = useState(true)
   const fileRef = useRef(null)
   const inlineFileRef = useRef(null)
   const bodyRef = useRef(null)
+  const emojiRef = useRef(null)
+  const fontSizeRef = useRef(null)
 
   const fetchPosts = useCallback(async () => {
     setLoading(true)
@@ -161,6 +179,39 @@ export default function BlogTab() {
     }
     insertAtCursor(`\n<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin:16px 0"><iframe src="${embedUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe></div>\n`)
     showMsg('success', 'Video embedded')
+  }
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (emojiRef.current && !emojiRef.current.contains(e.target)) setShowEmojiPicker(false)
+      if (fontSizeRef.current && !fontSizeRef.current.contains(e.target)) setShowFontSize(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const applyFontSize = (size) => {
+    if (!size.tag) {
+      // Normal — just insert selected text as-is
+      setShowFontSize(false)
+      return
+    }
+    const ta = bodyRef.current
+    if (!ta) { setShowFontSize(false); return }
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const selected = form.body.substring(start, end) || 'text'
+    const html = `<${size.tag} style="${size.style}">${selected}</${size.tag}>`
+    const newBody = form.body.substring(0, start) + html + form.body.substring(end)
+    setForm(f => ({ ...f, body: newBody }))
+    setShowFontSize(false)
+    setTimeout(() => { ta.focus() }, 0)
+  }
+
+  const insertEmoji = (emoji) => {
+    insertAtCursor(emoji)
+    setShowEmojiPicker(false)
   }
 
   // Render markdown/HTML to preview HTML (same logic as BlogArticle.jsx)
@@ -320,28 +371,87 @@ export default function BlogTab() {
           {/* Body toolbar + editor + live preview */}
           <div style={s.bodyWrap}>
             <div style={s.toolbar}>
+              {/* Text formatting */}
               <button type="button" style={s.toolBtn} title="Bold" onClick={() => wrapSelection('**', '**')}>
                 <b>B</b>
               </button>
               <button type="button" style={s.toolBtn} title="Italic" onClick={() => wrapSelection('*', '*')}>
                 <i>I</i>
               </button>
-              <button type="button" style={s.toolBtn} title="Heading" onClick={() => insertAtCursor('\n## ')}>
+              <button type="button" style={s.toolBtn} title="Underline" onClick={() => wrapSelection('<u>', '</u>')}>
+                <span style={{ textDecoration: 'underline' }}>U</span>
+              </button>
+              <button type="button" style={s.toolBtn} title="Strikethrough" onClick={() => wrapSelection('<s>', '</s>')}>
+                <span style={{ textDecoration: 'line-through' }}>S</span>
+              </button>
+              <div style={s.toolDivider} />
+
+              {/* Headings */}
+              <button type="button" style={s.toolBtn} title="Heading 2" onClick={() => insertAtCursor('\n## ')}>
                 H2
               </button>
-              <button type="button" style={s.toolBtn} title="Sub-heading" onClick={() => insertAtCursor('\n### ')}>
+              <button type="button" style={s.toolBtn} title="Heading 3" onClick={() => insertAtCursor('\n### ')}>
                 H3
               </button>
+
+              {/* Font size dropdown */}
+              <div ref={fontSizeRef} style={{ position: 'relative' }}>
+                <button type="button" style={s.toolBtn} title="Font Size" onClick={() => { setShowFontSize(!showFontSize); setShowEmojiPicker(false) }}>
+                  <span style={{ fontSize: 13 }}>A</span><span style={{ fontSize: 9 }}>A</span>
+                  <span style={{ fontSize: 9, marginLeft: 2 }}>&#9660;</span>
+                </button>
+                {showFontSize && (
+                  <div style={s.dropdown}>
+                    {FONT_SIZES.map(sz => (
+                      <button key={sz.label} type="button" style={s.dropdownItem} onClick={() => applyFontSize(sz)}>
+                        <span style={sz.style ? { [sz.style.split(';')[0].split(':')[0]]: sz.style.split(';')[0].split(':')[1] } : {}}>{sz.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div style={s.toolDivider} />
+
+              {/* Lists & links */}
               <button type="button" style={s.toolBtn} title="Bullet list" onClick={() => insertAtCursor('\n- ')}>
                 <span style={{ fontSize: 15 }}>&#8226;</span>
               </button>
-              <button type="button" style={s.toolBtn} title="Link" onClick={() => {
+              <button type="button" style={s.toolBtn} title="Numbered list" onClick={() => insertAtCursor('\n1. ')}>
+                <span style={{ fontSize: 12 }}>1.</span>
+              </button>
+              <button type="button" style={s.toolBtn} title="Hyperlink" onClick={() => {
+                const text = prompt('Link text:')
+                if (!text) return
                 const url = prompt('Paste URL:')
-                if (url) wrapSelection(`[`, `](${url})`)
+                if (url) insertAtCursor(`[${text}](${url})`)
               }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
               </button>
+              <button type="button" style={s.toolBtn} title="Blockquote" onClick={() => insertAtCursor('\n> ')}>
+                <span style={{ fontSize: 16, fontWeight: 700 }}>&ldquo;</span>
+              </button>
               <div style={s.toolDivider} />
+
+              {/* Emoji picker */}
+              <div ref={emojiRef} style={{ position: 'relative' }}>
+                <button type="button" style={s.toolBtn} title="Insert Emoji" onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowFontSize(false) }}>
+                  <span style={{ fontSize: 16 }}>😀</span>
+                </button>
+                {showEmojiPicker && (
+                  <div style={s.emojiDropdown}>
+                    <div style={s.emojiGrid}>
+                      {POPULAR_EMOJIS.map(em => (
+                        <button key={em} type="button" style={s.emojiBtn} onClick={() => insertEmoji(em)}>
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div style={s.toolDivider} />
+
+              {/* Media */}
               <input type="file" accept="image/*" ref={inlineFileRef} style={{ display: 'none' }}
                 onChange={handleInlineImageUpload} />
               <button type="button" style={{ ...s.toolBtn, ...s.toolBtnMedia }} title="Insert Image"
@@ -362,8 +472,17 @@ export default function BlogTab() {
                 onClick={() => insertAtCursor('\n\n---\n\n')}>
                 <span style={{ fontSize: 11 }}>&#8212; HR</span>
               </button>
+              <div style={s.toolDivider} />
+
+              {/* Spell check toggle */}
+              <button type="button" style={{ ...s.toolBtn, ...(spellCheck ? s.toolBtnActive : {}) }} title={spellCheck ? 'Spell Check: ON' : 'Spell Check: OFF'}
+                onClick={() => setSpellCheck(!spellCheck)}>
+                <span style={{ fontSize: 12 }}>ABC</span>
+                <span style={{ fontSize: 9, marginLeft: 2, color: spellCheck ? '#22c55e' : '#64748b' }}>{spellCheck ? '✓' : '✗'}</span>
+              </button>
             </div>
             <textarea ref={bodyRef} style={s.bodyInput} placeholder="Write your blog post here... Use the toolbar to insert images, videos, and formatting." rows={12}
+              spellCheck={spellCheck}
               value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} />
           </div>
 
@@ -583,7 +702,13 @@ const s = {
   toolbar: { display: 'flex', alignItems: 'center', gap: 2, padding: '6px 8px', background: '#1e293b', borderBottom: '1px solid #334155', flexWrap: 'wrap' },
   toolBtn: { background: 'none', border: '1px solid transparent', color: '#94a3b8', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', minHeight: 28 },
   toolBtnMedia: { background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)', color: '#60a5fa', borderRadius: 6, padding: '4px 10px', gap: 2 },
+  toolBtnActive: { background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e' },
   toolDivider: { width: 1, height: 20, background: '#334155', margin: '0 4px' },
+  dropdown: { position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: 4, zIndex: 100, minWidth: 120, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' },
+  dropdownItem: { display: 'block', width: '100%', background: 'none', border: 'none', color: '#e2e8f0', padding: '6px 12px', fontSize: 13, cursor: 'pointer', textAlign: 'left', borderRadius: 4, whiteSpace: 'nowrap' },
+  emojiDropdown: { position: 'absolute', top: '100%', left: -100, marginTop: 4, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: 8, zIndex: 100, width: 260, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' },
+  emojiGrid: { display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 2 },
+  emojiBtn: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', padding: 4, borderRadius: 4, lineHeight: 1, transition: 'background 0.15s' },
   previewSection: { border: '1px solid rgba(139,92,246,0.25)', borderRadius: 10, overflow: 'hidden', marginTop: 4 },
   previewHeader: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: 'rgba(139,92,246,0.08)', borderBottom: '1px solid rgba(139,92,246,0.15)' },
   previewLabel: { fontSize: 12, fontWeight: 600, color: '#a78bfa' },
