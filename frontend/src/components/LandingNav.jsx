@@ -72,7 +72,6 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
           <button className="landing-nav-link" onClick={() => handleNavClick('pricing')}>{t('nav.pricing')}</button>
           <button className="landing-nav-link" onClick={() => handleNavClick('how-it-works')}>{t('nav.howItWorks')}</button>
           <a className="landing-nav-link" href="/docs" style={{ textDecoration: 'none' }}>{t('nav.docs')}</a>
-          <Link to="/today" className="landing-nav-link" onClick={() => setMobileOpen(false)} style={{ textDecoration: 'none' }}>Today</Link>
           <Link to="/blog" className="landing-nav-link" onClick={() => setMobileOpen(false)} style={{ textDecoration: 'none' }}>Blog</Link>
           <div className="landing-nav-mobile-actions">
             <a href="/extension" className="landing-extension-btn" onClick={() => setMobileOpen(false)}>
@@ -92,7 +91,6 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
 
         {/* SEO-only links (hidden, for crawlers) */}
         <div className="landing-nav-seo-links" aria-hidden="true" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
-          <a href={buildLangPath("/today", i18n.language)} tabIndex={-1}>Today</a>
           <a href={buildLangPath("/blog", i18n.language)} tabIndex={-1}>Blog</a>
         </div>
         <div className="landing-nav-actions">
