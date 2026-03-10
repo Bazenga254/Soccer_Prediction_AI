@@ -99,7 +99,7 @@ export default function BlogArticle() {
           onGetStarted={() => setAuthModal({ open: true, mode: 'signup' })}
         />
 
-        <main className="seo-page-content">
+        <main className="seo-page-content blog-page-content">
           <div className="seo-container blog-article-container">
             {loading ? (
               <div className="seo-loading">

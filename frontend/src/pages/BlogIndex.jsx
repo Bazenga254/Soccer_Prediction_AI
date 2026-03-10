@@ -59,7 +59,7 @@ export default function BlogIndex() {
           onGetStarted={() => setAuthModal({ open: true, mode: 'signup' })}
         />
 
-        <main className="seo-page-content">
+        <main className="seo-page-content blog-page-content">
           <div className="seo-container" style={{ maxWidth: 1200 }}>
             <div className="blog-hero">
               <h1>Soccer Betting Tips & Match Previews</h1>
