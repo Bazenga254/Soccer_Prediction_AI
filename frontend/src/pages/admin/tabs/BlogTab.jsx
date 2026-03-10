@@ -24,7 +24,10 @@ export default function BlogTab() {
   })
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [inlineUploading, setInlineUploading] = useState(false)
   const fileRef = useRef(null)
+  const inlineFileRef = useRef(null)
+  const bodyRef = useRef(null)
 
   const fetchPosts = useCallback(async () => {
     setLoading(true)
@@ -98,6 +101,66 @@ export default function BlogTab() {
       showMsg('error', err.response?.data?.detail || 'Upload failed')
     }
     setUploading(false)
+  }
+
+  // Insert text/html at cursor position in body textarea
+  const insertAtCursor = (text) => {
+    const ta = bodyRef.current
+    if (!ta) { setForm(f => ({ ...f, body: f.body + text })); return }
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const before = form.body.substring(0, start)
+    const after = form.body.substring(end)
+    const newBody = before + text + after
+    setForm(f => ({ ...f, body: newBody }))
+    // Restore cursor after the inserted text
+    setTimeout(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = start + text.length }, 0)
+  }
+
+  const wrapSelection = (before, after) => {
+    const ta = bodyRef.current
+    if (!ta) return
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const selected = form.body.substring(start, end)
+    const replacement = before + (selected || 'text') + after
+    const newBody = form.body.substring(0, start) + replacement + form.body.substring(end)
+    setForm(f => ({ ...f, body: newBody }))
+    setTimeout(() => { ta.focus(); ta.selectionStart = start + before.length; ta.selectionEnd = start + before.length + (selected || 'text').length }, 0)
+  }
+
+  // Upload image inline into body
+  const handleInlineImageUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setInlineUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await axios.post('/api/admin/blog/upload-image', fd, {
+        headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' },
+      })
+      const url = res.data.url
+      insertAtCursor(`\n<img src="${url}" alt="${file.name.replace(/\.[^.]+$/, '')}" style="max-width:100%;border-radius:8px;margin:16px 0" />\n`)
+      showMsg('success', 'Image inserted')
+    } catch (err) {
+      showMsg('error', err.response?.data?.detail || 'Upload failed')
+    }
+    setInlineUploading(false)
+    if (inlineFileRef.current) inlineFileRef.current.value = ''
+  }
+
+  const insertVideoEmbed = () => {
+    const url = prompt('Paste YouTube or video URL:')
+    if (!url) return
+    // Convert YouTube watch URL to embed
+    let embedUrl = url
+    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/)
+    if (ytMatch) {
+      embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}`
+    }
+    insertAtCursor(`\n<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px;margin:16px 0"><iframe src="${embedUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe></div>\n`)
+    showMsg('success', 'Video embedded')
   }
 
   const handleSave = async (publishOverride) => {
@@ -231,9 +294,55 @@ export default function BlogTab() {
           <textarea style={s.excerptInput} placeholder="Short excerpt / description..." rows={2}
             value={form.excerpt} onChange={e => setForm(f => ({ ...f, excerpt: e.target.value }))} />
 
-          {/* Body */}
-          <textarea style={s.bodyInput} placeholder="Post body (supports HTML)..." rows={16}
-            value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} />
+          {/* Body toolbar + editor */}
+          <div style={s.bodyWrap}>
+            <div style={s.toolbar}>
+              <button type="button" style={s.toolBtn} title="Bold" onClick={() => wrapSelection('**', '**')}>
+                <b>B</b>
+              </button>
+              <button type="button" style={s.toolBtn} title="Italic" onClick={() => wrapSelection('*', '*')}>
+                <i>I</i>
+              </button>
+              <button type="button" style={s.toolBtn} title="Heading" onClick={() => insertAtCursor('\n## ')}>
+                H2
+              </button>
+              <button type="button" style={s.toolBtn} title="Sub-heading" onClick={() => insertAtCursor('\n### ')}>
+                H3
+              </button>
+              <button type="button" style={s.toolBtn} title="Bullet list" onClick={() => insertAtCursor('\n- ')}>
+                <span style={{ fontSize: 15 }}>&#8226;</span>
+              </button>
+              <button type="button" style={s.toolBtn} title="Link" onClick={() => {
+                const url = prompt('Paste URL:')
+                if (url) wrapSelection(`[`, `](${url})`)
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </button>
+              <div style={s.toolDivider} />
+              <input type="file" accept="image/*" ref={inlineFileRef} style={{ display: 'none' }}
+                onChange={handleInlineImageUpload} />
+              <button type="button" style={{ ...s.toolBtn, ...s.toolBtnMedia }} title="Insert Image"
+                onClick={() => inlineFileRef.current?.click()} disabled={inlineUploading}>
+                {inlineUploading ? (
+                  <div className="spinner" style={{ width: 14, height: 14 }} />
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                )}
+                <span style={{ fontSize: 11, marginLeft: 4 }}>Image</span>
+              </button>
+              <button type="button" style={{ ...s.toolBtn, ...s.toolBtnMedia }} title="Embed Video"
+                onClick={insertVideoEmbed}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span style={{ fontSize: 11, marginLeft: 4 }}>Video</span>
+              </button>
+              <button type="button" style={{ ...s.toolBtn, ...s.toolBtnMedia }} title="Horizontal Rule"
+                onClick={() => insertAtCursor('\n\n---\n\n')}>
+                <span style={{ fontSize: 11 }}>&#8212; HR</span>
+              </button>
+            </div>
+            <textarea ref={bodyRef} style={s.bodyInput} placeholder="Write your blog post here... Use the toolbar above to insert images, videos, and formatting." rows={18}
+              value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} />
+          </div>
 
           {/* Video URL */}
           <input style={s.input} placeholder="Video URL (YouTube embed, etc.)" value={form.video_url}
@@ -438,7 +547,12 @@ const s = {
   formSidebar: { display: 'flex', flexDirection: 'column', gap: 10, background: 'rgba(15,23,42,0.6)', border: '1px solid #1e293b', borderRadius: 12, padding: 16 },
   titleInput: { background: '#0f172a', color: '#f1f5f9', border: '1px solid #334155', borderRadius: 10, padding: '12px 16px', fontSize: 18, fontWeight: 600 },
   excerptInput: { background: '#0f172a', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 10, padding: '10px 14px', fontSize: 14, resize: 'vertical' },
-  bodyInput: { background: '#0f172a', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 10, padding: '12px 14px', fontSize: 14, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.6 },
+  bodyWrap: { display: 'flex', flexDirection: 'column', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden' },
+  toolbar: { display: 'flex', alignItems: 'center', gap: 2, padding: '6px 8px', background: '#1e293b', borderBottom: '1px solid #334155', flexWrap: 'wrap' },
+  toolBtn: { background: 'none', border: '1px solid transparent', color: '#94a3b8', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', minHeight: 28 },
+  toolBtnMedia: { background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)', color: '#60a5fa', borderRadius: 6, padding: '4px 10px', gap: 2 },
+  toolDivider: { width: 1, height: 20, background: '#334155', margin: '0 4px' },
+  bodyInput: { background: '#0f172a', color: '#e2e8f0', border: 'none', borderRadius: 0, padding: '12px 14px', fontSize: 14, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.6 },
   input: { background: '#0f172a', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' },
   select: { background: '#0f172a', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' },
   label: { fontSize: 12, color: '#94a3b8', fontWeight: 500, marginTop: 4 },
