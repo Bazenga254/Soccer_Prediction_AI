@@ -16,6 +16,7 @@ export default function BlogTab() {
   const [analytics, setAnalytics] = useState(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [showPreview, setShowPreview] = useState(false)
 
   // Editor state
   const [form, setForm] = useState({
@@ -163,6 +164,29 @@ export default function BlogTab() {
     showMsg('success', 'Video embedded')
   }
 
+  // Render markdown/HTML to preview HTML (same logic as BlogArticle.jsx)
+  const renderPreviewHtml = (text) => {
+    if (!text) return '<p style="color:#64748b">Start writing to see a preview...</p>'
+    let html = text
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#3b82f6">$1</a>')
+      .replace(/^- (.+)$/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+      .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
+      .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #334155;margin:24px 0" />')
+    html = html.split('\n\n').map(block => {
+      const trimmed = block.trim()
+      if (!trimmed) return ''
+      if (/^<(h[1-6]|ul|ol|li|div|img|iframe|hr|figure|video|table|blockquote|section|br)/i.test(trimmed)) return trimmed
+      if (/<(img|div|iframe|video|figure|hr)\b/i.test(trimmed)) return trimmed
+      return `<p>${trimmed}</p>`
+    }).join('\n')
+    return html
+  }
+
   const handleSave = async (publishOverride) => {
     if (!form.title.trim()) { showMsg('error', 'Title is required'); return }
     setSaving(true)
@@ -297,51 +321,64 @@ export default function BlogTab() {
           {/* Body toolbar + editor */}
           <div style={s.bodyWrap}>
             <div style={s.toolbar}>
-              <button type="button" style={s.toolBtn} title="Bold" onClick={() => wrapSelection('**', '**')}>
-                <b>B</b>
-              </button>
-              <button type="button" style={s.toolBtn} title="Italic" onClick={() => wrapSelection('*', '*')}>
-                <i>I</i>
-              </button>
-              <button type="button" style={s.toolBtn} title="Heading" onClick={() => insertAtCursor('\n## ')}>
-                H2
-              </button>
-              <button type="button" style={s.toolBtn} title="Sub-heading" onClick={() => insertAtCursor('\n### ')}>
-                H3
-              </button>
-              <button type="button" style={s.toolBtn} title="Bullet list" onClick={() => insertAtCursor('\n- ')}>
-                <span style={{ fontSize: 15 }}>&#8226;</span>
-              </button>
-              <button type="button" style={s.toolBtn} title="Link" onClick={() => {
-                const url = prompt('Paste URL:')
-                if (url) wrapSelection(`[`, `](${url})`)
-              }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-              </button>
-              <div style={s.toolDivider} />
-              <input type="file" accept="image/*" ref={inlineFileRef} style={{ display: 'none' }}
-                onChange={handleInlineImageUpload} />
-              <button type="button" style={{ ...s.toolBtn, ...s.toolBtnMedia }} title="Insert Image"
-                onClick={() => inlineFileRef.current?.click()} disabled={inlineUploading}>
-                {inlineUploading ? (
-                  <div className="spinner" style={{ width: 14, height: 14 }} />
-                ) : (
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                )}
-                <span style={{ fontSize: 11, marginLeft: 4 }}>Image</span>
-              </button>
-              <button type="button" style={{ ...s.toolBtn, ...s.toolBtnMedia }} title="Embed Video"
-                onClick={insertVideoEmbed}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                <span style={{ fontSize: 11, marginLeft: 4 }}>Video</span>
-              </button>
-              <button type="button" style={{ ...s.toolBtn, ...s.toolBtnMedia }} title="Horizontal Rule"
-                onClick={() => insertAtCursor('\n\n---\n\n')}>
-                <span style={{ fontSize: 11 }}>&#8212; HR</span>
+              {!showPreview && <>
+                <button type="button" style={s.toolBtn} title="Bold" onClick={() => wrapSelection('**', '**')}>
+                  <b>B</b>
+                </button>
+                <button type="button" style={s.toolBtn} title="Italic" onClick={() => wrapSelection('*', '*')}>
+                  <i>I</i>
+                </button>
+                <button type="button" style={s.toolBtn} title="Heading" onClick={() => insertAtCursor('\n## ')}>
+                  H2
+                </button>
+                <button type="button" style={s.toolBtn} title="Sub-heading" onClick={() => insertAtCursor('\n### ')}>
+                  H3
+                </button>
+                <button type="button" style={s.toolBtn} title="Bullet list" onClick={() => insertAtCursor('\n- ')}>
+                  <span style={{ fontSize: 15 }}>&#8226;</span>
+                </button>
+                <button type="button" style={s.toolBtn} title="Link" onClick={() => {
+                  const url = prompt('Paste URL:')
+                  if (url) wrapSelection(`[`, `](${url})`)
+                }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                </button>
+                <div style={s.toolDivider} />
+                <input type="file" accept="image/*" ref={inlineFileRef} style={{ display: 'none' }}
+                  onChange={handleInlineImageUpload} />
+                <button type="button" style={{ ...s.toolBtn, ...s.toolBtnMedia }} title="Insert Image"
+                  onClick={() => inlineFileRef.current?.click()} disabled={inlineUploading}>
+                  {inlineUploading ? (
+                    <div className="spinner" style={{ width: 14, height: 14 }} />
+                  ) : (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  )}
+                  <span style={{ fontSize: 11, marginLeft: 4 }}>Image</span>
+                </button>
+                <button type="button" style={{ ...s.toolBtn, ...s.toolBtnMedia }} title="Embed Video"
+                  onClick={insertVideoEmbed}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  <span style={{ fontSize: 11, marginLeft: 4 }}>Video</span>
+                </button>
+                <button type="button" style={{ ...s.toolBtn, ...s.toolBtnMedia }} title="Horizontal Rule"
+                  onClick={() => insertAtCursor('\n\n---\n\n')}>
+                  <span style={{ fontSize: 11 }}>&#8212; HR</span>
+                </button>
+              </>}
+              <div style={{ flex: 1 }} />
+              <button type="button"
+                style={showPreview ? s.previewBtnActive : s.previewBtn}
+                onClick={() => setShowPreview(p => !p)}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span style={{ marginLeft: 4 }}>{showPreview ? 'Edit' : 'Preview'}</span>
               </button>
             </div>
-            <textarea ref={bodyRef} style={s.bodyInput} placeholder="Write your blog post here... Use the toolbar above to insert images, videos, and formatting." rows={18}
-              value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} />
+            {showPreview ? (
+              <div style={s.previewPane} dangerouslySetInnerHTML={{ __html: renderPreviewHtml(form.body) }} />
+            ) : (
+              <textarea ref={bodyRef} style={s.bodyInput} placeholder="Write your blog post here... Use the toolbar above to insert images, videos, and formatting." rows={18}
+                value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} />
+            )}
           </div>
 
           {/* Video URL */}
@@ -552,6 +589,9 @@ const s = {
   toolBtn: { background: 'none', border: '1px solid transparent', color: '#94a3b8', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', minHeight: 28 },
   toolBtnMedia: { background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)', color: '#60a5fa', borderRadius: 6, padding: '4px 10px', gap: 2 },
   toolDivider: { width: 1, height: 20, background: '#334155', margin: '0 4px' },
+  previewBtn: { background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: '#a78bfa', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center' },
+  previewBtnActive: { background: '#8b5cf6', border: '1px solid #8b5cf6', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center' },
+  previewPane: { background: '#0f172a', color: '#e2e8f0', padding: '20px 18px', fontSize: 15, lineHeight: 1.7, minHeight: 350, maxHeight: 600, overflowY: 'auto' },
   bodyInput: { background: '#0f172a', color: '#e2e8f0', border: 'none', borderRadius: 0, padding: '12px 14px', fontSize: 14, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.6 },
   input: { background: '#0f172a', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' },
   select: { background: '#0f172a', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' },
