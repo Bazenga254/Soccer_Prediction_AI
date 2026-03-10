@@ -179,16 +179,16 @@ export default function BlogArticle() {
           </div>
         </main>
 
-        <footer className="seo-footer">
-          <div className="seo-container">
-            <div className="seo-footer-links">
+        <footer className="blog-footer">
+          <div className="blog-footer-inner">
+            <div className="blog-footer-links">
               <Link to="/">Home</Link>
               <Link to="/today">Today's Predictions</Link>
               <Link to="/blog">Blog</Link>
               <Link to="/docs">Documentation</Link>
               <Link to="/terms">Terms</Link>
             </div>
-            <p className="seo-footer-copy">&copy; {new Date().getFullYear()} Spark AI Prediction. All rights reserved.</p>
+            <p className="blog-footer-copy">&copy; {new Date().getFullYear()} Spark AI Prediction. All rights reserved.</p>
           </div>
         </footer>
       </div>

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import SEOHead from '../components/SEOHead'
-import { buildLangPath } from '../utils/seoConstants'
 import LandingNav from '../components/LandingNav'
 import AuthModal from '../components/AuthModal'
 import './Blog.css'
@@ -61,9 +60,11 @@ export default function BlogIndex() {
         />
 
         <main className="seo-page-content">
-          <div className="seo-container">
-            <h1 className="seo-page-title">Soccer Betting Tips & Match Previews</h1>
-            <p className="seo-page-subtitle">Expert analysis and guides powered by AI</p>
+          <div className="seo-container" style={{ maxWidth: 1200 }}>
+            <div className="blog-hero">
+              <h1>Soccer Betting Tips & Match Previews</h1>
+              <p>Expert analysis and guides powered by AI</p>
+            </div>
 
             {/* Category Filters */}
             <div className="blog-categories">
@@ -112,16 +113,16 @@ export default function BlogIndex() {
           </div>
         </main>
 
-        <footer className="seo-footer">
-          <div className="seo-container">
-            <div className="seo-footer-links">
+        <footer className="blog-footer">
+          <div className="blog-footer-inner">
+            <div className="blog-footer-links">
               <Link to="/">Home</Link>
               <Link to="/today">Today's Predictions</Link>
               <Link to="/blog">Blog</Link>
               <Link to="/docs">Documentation</Link>
               <Link to="/terms">Terms</Link>
             </div>
-            <p className="seo-footer-copy">&copy; {new Date().getFullYear()} Spark AI Prediction. All rights reserved.</p>
+            <p className="blog-footer-copy">&copy; {new Date().getFullYear()} Spark AI Prediction. All rights reserved.</p>
           </div>
         </footer>
       </div>
