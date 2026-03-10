@@ -95,7 +95,7 @@ export default function BlogIndex() {
                       <p className="blog-card-excerpt">{article.excerpt}</p>
                       <div className="blog-card-meta">
                         <span className="blog-card-date">{new Date(article.published_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                        {article.tags && (
+                        {Array.isArray(article.tags) && article.tags.length > 0 && (
                           <div className="blog-card-tags">
                             {article.tags.slice(0, 3).map(tag => (
                               <span key={tag} className="blog-tag">{tag}</span>

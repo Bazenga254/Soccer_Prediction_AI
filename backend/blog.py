@@ -174,7 +174,11 @@ def get_post(post_id: int) -> Optional[Dict]:
     conn = _get_db()
     row = conn.execute("SELECT * FROM blog_posts WHERE id = ?", (post_id,)).fetchone()
     conn.close()
-    return dict(row) if row else None
+    if not row:
+        return None
+    d = dict(row)
+    d["tags"] = _parse_tags(d.get("tags", ""))
+    return d
 
 
 def get_post_by_slug(slug: str) -> Optional[Dict]:
@@ -184,7 +188,11 @@ def get_post_by_slug(slug: str) -> Optional[Dict]:
         "SELECT * FROM blog_posts WHERE slug = ? AND status = 'published'", (slug,)
     ).fetchone()
     conn.close()
-    return dict(row) if row else None
+    if not row:
+        return None
+    d = dict(row)
+    d["tags"] = _parse_tags(d.get("tags", ""))
+    return d
 
 
 def list_posts(status: str = None, category: str = None, limit: int = 50, offset: int = 0) -> List[Dict]:
@@ -208,6 +216,23 @@ def list_posts(status: str = None, category: str = None, limit: int = 50, offset
     return [dict(r) for r in rows]
 
 
+def _parse_tags(tags_str):
+    """Convert stored tags string like \"['a', 'b']\" into a real list."""
+    if not tags_str:
+        return []
+    if isinstance(tags_str, list):
+        return tags_str
+    try:
+        import ast
+        parsed = ast.literal_eval(tags_str)
+        if isinstance(parsed, list):
+            return parsed
+    except Exception:
+        pass
+    # Fallback: split by comma
+    return [t.strip().strip("'\"") for t in tags_str.strip("[]").split(",") if t.strip()]
+
+
 def list_published(category: str = None) -> List[Dict]:
     """List published posts (public API)."""
     conn = _get_db()
@@ -226,6 +251,7 @@ def list_published(category: str = None) -> List[Dict]:
     for r in rows:
         d = dict(r)
         d.pop("body", None)  # Don't send body in list
+        d["tags"] = _parse_tags(d.get("tags", ""))
         results.append(d)
     return results
 

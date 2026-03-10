@@ -128,7 +128,7 @@ export default function BlogArticle() {
                         <span> &middot; Updated {new Date(article.updated_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                       )}
                     </div>
-                    {article.tags && (
+                    {Array.isArray(article.tags) && article.tags.length > 0 && (
                       <div className="blog-card-tags" style={{ marginTop: 12 }}>
                         {article.tags.map(tag => (
                           <span key={tag} className="blog-tag">{tag}</span>
