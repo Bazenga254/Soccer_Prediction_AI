@@ -14672,6 +14672,20 @@ html, body {
   background: rgba(255, 255, 255, 0.05);
 }
 
+.landing-nav-seo-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  z-index: 2;
+}
+
+.landing-nav-seo-links .landing-nav-link {
+  text-decoration: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
 .landing-nav-actions {
   display: flex;
   align-items: center;
