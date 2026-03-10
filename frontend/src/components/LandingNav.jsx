@@ -83,9 +83,10 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
           </div>
         </div>
 
-        <div className="landing-nav-seo-links">
-          <a href={buildLangPath("/today", i18n.language)} className="landing-nav-link">Today</a>
-          <a href={buildLangPath("/blog", i18n.language)} className="landing-nav-link">Blog</a>
+        {/* SEO-only links (hidden, for crawlers) */}
+        <div className="landing-nav-seo-links" aria-hidden="true" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
+          <a href={buildLangPath("/today", i18n.language)} tabIndex={-1}>Today</a>
+          <a href={buildLangPath("/blog", i18n.language)} tabIndex={-1}>Blog</a>
         </div>
         <div className="landing-nav-actions">
           <LanguageSelector variant="landing" />
