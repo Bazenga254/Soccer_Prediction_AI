@@ -26,6 +26,7 @@ import activity_logger
 import pricing_config
 import social_media_hub
 import promotional_packages
+import blog
 
 admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -3380,3 +3381,135 @@ async def social_analytics(
     if not auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return social_media_hub.get_analytics(period)
+
+
+# ═══════════════════════ Blog Management ═══════════════════════
+
+@admin_router.get("/blog")
+async def admin_list_blog_posts(
+    status: str = Query(None),
+    category: str = Query(None),
+    limit: int = Query(50),
+    offset: int = Query(0),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="blog", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    posts = blog.list_posts(status=status, category=category, limit=limit, offset=offset)
+    return {"posts": posts}
+
+
+@admin_router.get("/blog/analytics")
+async def admin_blog_analytics(
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="blog", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return blog.get_analytics()
+
+
+@admin_router.get("/blog/{post_id}")
+async def admin_get_blog_post(
+    post_id: int,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="blog", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    post = blog.get_post(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post
+
+
+@admin_router.post("/blog")
+async def admin_create_blog_post(
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="blog", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = await request.json()
+    result = blog.create_post(
+        title=body.get("title", ""),
+        excerpt=body.get("excerpt", ""),
+        body=body.get("body", ""),
+        category=body.get("category", "general"),
+        tags=body.get("tags", []),
+        cover_image=body.get("cover_image", ""),
+        video_url=body.get("video_url", ""),
+        status=body.get("status", "draft"),
+        author_name=body.get("author_name", "Spark AI"),
+    )
+    _log_action(auth, "create_blog_post", "blog", request, details={"post_id": result.get("id")})
+    return result
+
+
+@admin_router.put("/blog/{post_id}")
+async def admin_update_blog_post(
+    post_id: int,
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="blog", required_action="edit")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    body = await request.json()
+    result = blog.update_post(post_id, **body)
+    _log_action(auth, "update_blog_post", "blog", request, details={"post_id": post_id})
+    return result
+
+
+@admin_router.delete("/blog/{post_id}")
+async def admin_delete_blog_post(
+    post_id: int,
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="blog", required_action="delete")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    result = blog.delete_post(post_id)
+    _log_action(auth, "delete_blog_post", "blog", request, details={"post_id": post_id})
+    return result
+
+
+@admin_router.post("/blog/upload-image")
+async def admin_upload_blog_image(
+    file: UploadFile = File(...),
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="blog", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    ext = Path(file.filename).suffix.lower() if file.filename else ""
+    if ext not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        raise HTTPException(status_code=400, detail=f"Image type {ext} is not allowed")
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:  # 10MB
+        raise HTTPException(status_code=400, detail="Image is too large (max 10MB)")
+
+    url = blog.save_cover_image(content, file.filename or "image.jpg")
+    return {"success": True, "url": url}

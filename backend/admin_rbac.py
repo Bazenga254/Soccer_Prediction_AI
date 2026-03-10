@@ -40,7 +40,7 @@ ALL_MODULES = [
     "broadcast", "employees", "activity_logs", "security", "predictions",
     "sales", "settings", "pricing", "bots", "analytics",
     "documentation", "extension", "social_media",
-    "finance", "technical",
+    "blog", "finance", "technical",
 ]
 
 # Default permission matrix: role_name -> {module: {perms}}
@@ -73,6 +73,7 @@ DEFAULT_PERMISSIONS = {
         "analytics":     {"read": 1, "write": 1, "edit": 1, "delete": 0, "export": 1, "approve": 0, "scope": "company"},
         "documentation": {"read": 1, "write": 1, "edit": 1, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
         "extension":     {"read": 1, "write": 1, "edit": 1, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
+        "blog":          {"read": 1, "write": 1, "edit": 1, "delete": 1, "export": 1, "approve": 1, "scope": "company"},
     },
     "general_manager": {
         "dashboard":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 1, "approve": 0, "scope": "company"},
@@ -99,6 +100,7 @@ DEFAULT_PERMISSIONS = {
         "analytics":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 1, "approve": 0, "scope": "company"},
         "documentation": {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
         "extension":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
+        "blog":          {"read": 1, "write": 1, "edit": 1, "delete": 0, "export": 0, "approve": 0, "scope": "company"},
     },
     "sales_hod": {
         "dashboard":     {"read": 1, "write": 0, "edit": 0, "delete": 0, "export": 1, "approve": 0, "scope": "department"},

@@ -48,6 +48,7 @@ import employee_portal
 import bot_manager
 import social_media_hub
 import promotional_packages
+import blog
 from telegram_service import TelegramService
 from whatsapp_social_service import WhatsAppSocialService
 
@@ -183,6 +184,10 @@ async def startup():
 
     # Initialize promotional packages
     promotional_packages.init_promo_db()
+
+    # Initialize blog
+    blog.init_blog_db()
+    blog.seed_from_blog_content()
 
     # Initialize subscriptions
     subscriptions.init_subscriptions_db()
@@ -6297,29 +6302,24 @@ async def get_all_league_slugs():
 
 @app.get("/api/blog")
 async def get_blog_articles(category: str = None, lang: str = "en"):
-    """Return blog articles, optionally filtered by category. No auth required."""
-    import blog_content as bc
-
-    articles = bc.get_all_articles_i18n(lang) if hasattr(bc, 'get_all_articles_i18n') else bc.get_all_articles() if not category else bc.get_articles_by_category(category)
-
-    # Return without body for list view
-    return {
-        "articles": [
-            {k: v for k, v in a.items() if k != "body"}
-            for a in articles
-        ],
-        "total": len(articles),
-    }
+    """Return published blog articles, optionally filtered by category. No auth required."""
+    articles = blog.list_published(category=category)
+    return {"articles": articles, "total": len(articles)}
 
 
 @app.get("/api/blog/{slug}")
-async def get_blog_article(slug: str):
-    """Return a single blog article by slug. No auth required."""
-    import blog_content as bc
-
-    article = bc.get_article(slug)
+async def get_blog_article(slug: str, request: Request):
+    """Return a single published blog article by slug. Tracks views."""
+    article = blog.get_post_by_slug(slug)
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
+
+    # Track the view
+    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "")
+    ua = request.headers.get("user-agent", "")[:200]
+    ref = request.headers.get("referer", "")[:300]
+    blog.record_view(article["id"], ip=ip, user_agent=ua, referrer=ref)
+
     return article
 
 
@@ -6702,6 +6702,12 @@ SOCIAL_UPLOADS_DIR = Path(__file__).parent / "uploads" / "social"
 if not SOCIAL_UPLOADS_DIR.exists():
     SOCIAL_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads/social", StaticFiles(directory=str(SOCIAL_UPLOADS_DIR)), name="social_uploads")
+
+# Serve blog uploads
+BLOG_UPLOADS_DIR = Path(__file__).parent / "uploads" / "blog"
+if not BLOG_UPLOADS_DIR.exists():
+    BLOG_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads/blog", StaticFiles(directory=str(BLOG_UPLOADS_DIR)), name="blog_uploads")
 
 
 # ==================== SERVE FRONTEND IN PRODUCTION ====================
