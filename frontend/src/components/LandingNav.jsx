@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import LanguageSelector from './LanguageSelector'
 import { buildLangPath } from '../utils/seoConstants'
@@ -46,19 +46,26 @@ export default function LandingNav({ onSignIn, onGetStarted }) {
     }
   }
 
+  const navigate = useNavigate()
+  const location = useLocation()
+
   const handleNavClick = (id) => {
     setMobileOpen(false)
-    const el = document.getElementById(id)
-    if (el) el.scrollIntoView({ behavior: 'smooth' })
+    if (location.pathname === '/' || location.pathname === '') {
+      const el = document.getElementById(id)
+      if (el) el.scrollIntoView({ behavior: 'smooth' })
+    } else {
+      navigate('/#' + id)
+    }
   }
 
   return (
     <nav className={`landing-nav ${scrolled ? 'scrolled' : ''}`}>
       <div className="landing-nav-content">
-        <div className="landing-nav-logo">
+        <Link to="/" className="landing-nav-logo" style={{ textDecoration: 'none' }}>
           <img src={sparkLogo} alt="Spark AI" className="landing-nav-logo-img" />
           <span className="landing-nav-brand">Spark AI</span>
-        </div>
+        </Link>
 
         <div className={`landing-nav-links ${mobileOpen ? 'open' : ''}`}>
           <button className="landing-nav-link" onClick={() => handleNavClick('features')}>{t('nav.features')}</button>
