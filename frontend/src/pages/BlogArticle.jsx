@@ -9,7 +9,7 @@ import './Blog.css'
 
 function renderMarkdown(text) {
   if (!text) return ''
-  // Simple markdown: headings, bold, italic, links, lists, paragraphs
+  // Simple markdown: headings, bold, italic, links, lists, horizontal rules
   let html = text
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -19,12 +19,16 @@ function renderMarkdown(text) {
     .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
     .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
+    .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #334155;margin:24px 0" />')
 
-  // Wrap remaining text in paragraphs
+  // Wrap remaining text in paragraphs, but preserve raw HTML blocks
   html = html.split('\n\n').map(block => {
     const trimmed = block.trim()
     if (!trimmed) return ''
-    if (trimmed.startsWith('<h') || trimmed.startsWith('<ul') || trimmed.startsWith('<ol')) return trimmed
+    // Don't wrap blocks that are already HTML tags
+    if (/^<(h[1-6]|ul|ol|li|div|img|iframe|hr|figure|video|table|blockquote|section|br)/i.test(trimmed)) return trimmed
+    // Don't wrap blocks that contain block-level HTML (e.g. <img> on its own line)
+    if (/<(img|div|iframe|video|figure|hr)\b/i.test(trimmed)) return trimmed
     return `<p>${trimmed}</p>`
   }).join('\n')
 
