@@ -21,6 +21,24 @@ function renderMarkdown(text) {
     .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
     .replace(/^---$/gm, '<hr style="border:none;border-top:1px solid #334155;margin:24px 0" />')
 
+  // Markdown tables
+  html = html.replace(/((?:^\|.+\|$\n?)+)/gm, (tableBlock) => {
+    const rows = tableBlock.trim().split('\n').filter(r => r.trim())
+    if (rows.length < 2) return tableBlock
+    // Check if row 2 is a separator (|---|---|)
+    const isSep = /^\|[\s\-:|]+\|$/.test(rows[1])
+    if (!isSep) return tableBlock
+    const parseRow = (row) => row.split('|').slice(1, -1).map(c => c.trim())
+    const headers = parseRow(rows[0])
+    const bodyRows = rows.slice(2)
+    const thead = '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead>'
+    const tbody = '<tbody>' + bodyRows.map(row => {
+      const cells = parseRow(row)
+      return '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>'
+    }).join('') + '</tbody>'
+    return `<table class="blog-table">${thead}${tbody}</table>\n`
+  })
+
   // Wrap remaining text in paragraphs, but preserve raw HTML blocks
   html = html.split('\n\n').map(block => {
     const trimmed = block.trim()

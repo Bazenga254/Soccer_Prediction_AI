@@ -98,6 +98,7 @@ const LeaguePredictions = lazyRetry(() => import('./pages/LeaguePredictions'))
 const BlogIndex = lazyRetry(() => import('./pages/BlogIndex'))
 const BlogArticle = lazyRetry(() => import('./pages/BlogArticle'))
 const NewsIndex = lazyRetry(() => import('./pages/NewsIndex'))
+const NewsArticle = lazyRetry(() => import('./pages/NewsArticle'))
 const BetSlip = lazyRetry(() => import('./components/BetSlip'))
 const SupportChat = lazyRetry(() => import('./components/SupportChat'))
 const AccountSetup = lazyRetry(() => import('./components/AccountSetup'))
@@ -190,6 +191,7 @@ function ProtectedApp() {
                 <Route path="/ai-assistant" element={<AIAssistant />} />
                 <Route path="/my-analysis" element={<MyAnalysis />} />
                 <Route path="/news" element={<NewsIndex />} />
+                <Route path="/news/:slug" element={<NewsArticle />} />
                 <Route path="/upgrade" element={<Upgrade />} />
                 <Route path="/creator" element={<CreatorDashboard />} />
                 <Route path="/transactions" element={<Transactions />} />

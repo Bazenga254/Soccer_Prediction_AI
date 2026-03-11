@@ -78,7 +78,7 @@ export default function NewsIndex() {
         ) : (
           <div className="news-feed">
             {articles.map(article => (
-              <Link key={article.slug} to={`/blog/${article.slug}`} className="news-card">
+              <Link key={article.slug} to={`/news/${article.slug}`} className="news-card">
                 {article.cover_image && (
                   <div className="news-card-image">
                     <img src={article.cover_image} alt={article.title} loading="lazy" />
@@ -98,9 +98,6 @@ export default function NewsIndex() {
                     </div>
                   )}
                   <p className="news-card-excerpt">{article.excerpt}</p>
-                  {article.author_name && (
-                    <span className="news-card-author">By {article.author_name}</span>
-                  )}
                 </div>
               </Link>
             ))}

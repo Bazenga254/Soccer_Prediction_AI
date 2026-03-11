@@ -150,18 +150,21 @@ def build_match_context() -> str:
         today = datetime.now().strftime("%Y-%m-%d")
         predictions = community.get_daily_free_predictions(today)
         if predictions:
-            parts.append(f"=== TODAY'S ANALYZED MATCHES ({today}) ===\n")
+            parts.append(f"=== TODAY'S ANALYZED MATCHES ({today}) ===")
+            parts.append(f"Total matches analyzed today: {len(predictions)}\n")
             for p in predictions:
                 home = p.get("team_a_name", "?")
                 away = p.get("team_b_name", "?")
                 comp = p.get("competition_code") or p.get("competition", "")
+                fixture_id = p.get("fixture_id", "")
                 result = p.get("predicted_result", "?")
                 prob = p.get("predicted_result_prob", "?")
                 over25 = p.get("predicted_over25")
                 btts = p.get("predicted_btts")
                 summary = p.get("analysis_summary", "")
 
-                match_line = f"\n{home} vs {away} ({comp})"
+                match_line = f"\nMATCH: {home} vs {away} ({comp})"
+                match_line += f"\n  FIXTURE_ID: {fixture_id}"
                 match_line += f"\n  Prediction: {result} ({prob}% confidence)"
                 if over25 is not None:
                     match_line += f"\n  Over 2.5: {'Yes' if over25 else 'No'}"
@@ -264,34 +267,71 @@ def build_match_context() -> str:
 # System prompt
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are Spark AI Assistant, an expert football/soccer analyst for the Spark AI prediction platform. You help users make informed betting decisions based on actual match analysis data from our platform.
+SYSTEM_PROMPT = """You are Spark AI Assistant, an expert football/soccer analyst for the Spark AI prediction platform. You help users make informed betting decisions using a hybrid approach: platform analysis data + live football intelligence.
+
+## HOW YOU WORK (Hybrid System)
+You have TWO data sources and must use them together:
+
+### Source 1: Platform Analysis Data (below)
+This is our backend's AI match analysis — predictions, confidence scores, H2H stats, form, and FIXTURE_IDs. Use this as your FOUNDATION for all match recommendations.
+- Prediction scores and confidence percentages come ONLY from this data
+- FIXTURE_IDs for match links come ONLY from this data
+- Do NOT invent or guess confidence scores — only quote what's in the data
+
+### Source 2: Web Search (live football news)
+Use web search to ENHANCE and CROSS-CHECK the platform data with the latest information:
+- Latest injury updates and team news (a key player ruled out can change everything)
+- Recent lineup announcements and squad rotations
+- Current form and momentum (last 3-5 matches)
+- Manager quotes, tactical changes, derby context
+- Transfer news that may affect team dynamics
+- Weather or pitch conditions if relevant
+
+### How to combine them:
+1. Start with the platform prediction and confidence score
+2. Use web search to verify if anything has changed (new injuries, suspensions, etc.)
+3. If web search reveals something significant (e.g., star striker injured after our analysis), mention it and adjust your recommendation accordingly
+4. Always be transparent: "Our platform predicts X at Y% confidence. However, recent news shows Z which could affect this."
+
+## IMPORTANT: Stick to Football Only
+- Only use web search for football/soccer related queries
+- If a user asks about non-football topics, politely redirect them: "I'm specialized in football analysis. How can I help you with today's matches?"
 
 ## Your Capabilities
-- Analyze matches using platform data (predictions, H2H records, injuries, form, standings)
-- Recommend best match combinations for accumulators/multibets
-- Report injuries and their impact on match outcomes
+- Recommend matches from today's analyzed data with confidence scores
+- Enhance recommendations with live injury/team news from web search
+- Suggest best match combinations for accumulators/multibets
 - Provide odds analysis when users share odds
-- Give honest assessments when data is limited
+- Help users find high-confidence picks for double chance, over/under, BTTS, etc.
+
+## IMPORTANT: Always Include Match Analysis Links
+When you recommend or discuss ANY specific match from the platform data, you MUST include a match card link so the user can view the full analysis. Use this exact format:
+
+[MATCH_CARD]{{"match_key":"FIXTURE_ID","home":"HOME_TEAM","away":"AWAY_TEAM","league":"LEAGUE"}}[/MATCH_CARD]
+
+- The FIXTURE_ID must EXACTLY match the FIXTURE_ID from the data below (e.g., "1338-67-20260311")
+- ALWAYS include this for every match you mention — users need these links to view detailed analysis
+- Tell the user: "Click to view the full match analysis (250 credits, free if already viewed)"
+- If a match is NOT in the platform data, do NOT create a fake MATCH_CARD — instead tell the user to go to Upcoming Matches and run the analysis themselves
 
 ## Rules
-1. ONLY reference analysis data provided in the context below. Do NOT fabricate stats or predictions.
-2. When a team has limited H2H data (fewer than 3 meetings), say: "These teams have only met [X] times in our records, so our historical data is limited, but I'll analyze based on available form, standings, and other factors."
-3. When recommending a match for the user to view, use this exact format:
-   [MATCH_CARD]{"match_key":"FIXTURE_ID","home":"HOME_TEAM","away":"AWAY_TEAM","league":"LEAGUE"}[/MATCH_CARD]
-   The FIXTURE_ID must exactly match the key from the analysis data.
-4. Injury reports MUST correlate with analysis data. Do not report injuries that aren't in the platform data.
-5. When a user provides odds, incorporate them into your analysis - calculate implied probabilities and compare with platform predictions.
-6. For accumulator suggestions, prioritize matches with high confidence and explain the reasoning for each pick.
-7. Be concise but thorough. Use bullet points for clarity.
-8. Always specify the competition/league when mentioning matches.
-9. If asked about a match not in today's data, say the match hasn't been analyzed yet and suggest checking later.
+1. Predictions and confidence scores come ONLY from platform data. Do NOT fabricate these.
+2. Use web search to verify and enhance — especially for injuries, lineups, and recent form.
+3. When recommending matches, sort by confidence level (highest first).
+4. For accumulator suggestions, pick matches with highest confidence and explain why.
+5. Be concise but thorough. Use bullet points for clarity.
+6. Always specify the competition/league when mentioning matches.
+7. When a user asks "which matches today have high confidence", list analyzed matches sorted by confidence with their MATCH_CARD links, then add any relevant news updates.
+8. For double chance questions: "Home Win" at 60%+ confidence means 1X (Home or Draw) is very strong. "Away Win" at 60%+ means X2 is strong.
+9. If a user asks about a match not in today's data, say: "That match hasn't been analyzed on our platform yet. You can analyze it by going to Upcoming Matches, selecting the match, and running a Full Match Analysis."
 
-## Available Match Data
+## Available Match Data (from our platform backend)
 {match_context}
 
 ## Credit Information
 - Each message costs 50 credits
-- Viewing a recommended match analysis costs 250 credits (free if already viewed)
+- Viewing a recommended match's full analysis costs 250 credits (free if already viewed)
+- Always mention the 250 credit cost when suggesting a user view full analysis
 """
 
 
@@ -300,6 +340,94 @@ SYSTEM_PROMPT = """You are Spark AI Assistant, an expert football/soccer analyst
 # ---------------------------------------------------------------------------
 
 MATCH_CARD_PATTERN = re.compile(r'\[MATCH_CARD\](.*?)\[/MATCH_CARD\]', re.DOTALL)
+
+
+def _build_match_lookup() -> Dict:
+    """Build a lookup of team names to fixture data for auto-injection."""
+    lookup = {}
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        predictions = community.get_daily_free_predictions(today)
+        if predictions:
+            for p in predictions:
+                home = p.get("team_a_name", "")
+                away = p.get("team_b_name", "")
+                fixture_id = p.get("fixture_id", "")
+                comp = p.get("competition_code") or p.get("competition", "")
+                if home and away and fixture_id:
+                    # Store by multiple keys for flexible matching
+                    key = f"{home.lower()} vs {away.lower()}"
+                    lookup[key] = {"fixture_id": fixture_id, "home": home, "away": away, "league": comp}
+                    # Also store by individual team names
+                    lookup[home.lower()] = {"fixture_id": fixture_id, "home": home, "away": away, "league": comp}
+                    lookup[away.lower()] = {"fixture_id": fixture_id, "home": home, "away": away, "league": comp}
+    except Exception as e:
+        print(f"[AI Assistant] Error building match lookup: {e}")
+    return lookup
+
+
+def _auto_inject_match_cards(response_text: str, match_context: str) -> tuple:
+    """Auto-inject MATCH_CARD tags for matches mentioned in the response that are missing cards.
+
+    Returns (modified_text, injected_links).
+    """
+    # Get already-present match keys
+    existing_keys = set()
+    for m in MATCH_CARD_PATTERN.finditer(response_text):
+        try:
+            data = json.loads(m.group(1))
+            if data.get("match_key"):
+                existing_keys.add(data["match_key"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Build lookup from today's matches
+    lookup = _build_match_lookup()
+    if not lookup:
+        return response_text, []
+
+    # Find team names mentioned in the response that don't have a card yet
+    injected = []
+    already_injected_fixtures = set(existing_keys)
+
+    for team_key, match_data in lookup.items():
+        if " vs " in team_key:
+            continue  # Skip "X vs Y" keys, check individual team names
+        fixture_id = match_data["fixture_id"]
+        if fixture_id in already_injected_fixtures:
+            continue
+
+        # Check if this team name appears in the response text (case-insensitive)
+        # Use word boundary-like matching to avoid partial matches
+        pattern = re.compile(r'\b' + re.escape(team_key) + r'\b', re.IGNORECASE)
+        if pattern.search(response_text):
+            # This team is mentioned but has no card — inject one
+            card_json = json.dumps({
+                "match_key": fixture_id,
+                "home": match_data["home"],
+                "away": match_data["away"],
+                "league": match_data["league"],
+            })
+            card_tag = f"\n[MATCH_CARD]{card_json}[/MATCH_CARD]"
+
+            # Inject after the line mentioning this team
+            lines = response_text.split('\n')
+            inserted = False
+            for i, line in enumerate(lines):
+                if pattern.search(line) and fixture_id not in ''.join(lines[max(0, i-2):i+3]):
+                    lines.insert(i + 1, card_tag)
+                    inserted = True
+                    break
+            if inserted:
+                response_text = '\n'.join(lines)
+            else:
+                # Fallback: append at the end
+                response_text += card_tag
+
+            already_injected_fixtures.add(fixture_id)
+            injected.append(match_data)
+
+    return response_text, injected
 
 
 def _extract_match_links(text: str) -> List[Dict]:
@@ -380,7 +508,7 @@ async def chat(user_id: int, conversation_id: str, message: str) -> Dict:
                 model="gpt-4o-mini",
                 tools=[{"type": "web_search_preview"}],
                 input=[
-                    {"role": "system", "content": "You are Spark AI Assistant, an expert football analyst. Use web search for the latest team news, injuries, and updates."},
+                    {"role": "system", "content": "You are Spark AI Assistant, a football/soccer analyst ONLY. You MUST refuse to answer any question not related to football/soccer. If the user asks about politics, science, history, coding, celebrities, or ANY non-football topic, respond ONLY with: 'I'm a football analysis assistant and can only help with football-related questions. Try asking me about today's matches, predictions, or betting strategies!' Do NOT answer the non-football question at all. For football topics: use platform match data as your foundation, use web search to cross-check injuries/lineups/news, never fabricate predictions, and include [MATCH_CARD] links."},
                 ] + messages,
             )
 
@@ -412,7 +540,10 @@ async def chat(user_id: int, conversation_id: str, message: str) -> Dict:
     if not response_text:
         response_text = "I couldn't generate a response. Please try again."
 
-    # Extract match cards from response
+    # Post-process: auto-inject match cards for any mentioned match missing a card
+    response_text, auto_links = _auto_inject_match_cards(response_text, match_context)
+
+    # Extract match cards from response (includes both AI-generated and auto-injected)
     match_links = _extract_match_links(response_text)
 
     # Save assistant response
