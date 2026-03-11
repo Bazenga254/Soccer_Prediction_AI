@@ -1,21 +1,23 @@
 User-agent: *
 Allow: /
-Allow: /today
-Allow: /blog
-Allow: /blog/
-Allow: /news
-Allow: /predictions/
-Allow: /docs
-Allow: /terms
 
-# Language-prefixed versions
-Allow: /fr/
-Allow: /es/
-Allow: /pt/
-Allow: /sw/
-Allow: /ar/
+# Allow JS/CSS assets for rendering
+Allow: /assets/
 
-Disallow: /api/
+# Allow public API endpoints needed for page rendering
+Allow: /api/blog/
+Allow: /api/news
+Allow: /api/today
+Allow: /api/predictions/
+
+# Block private API endpoints
+Disallow: /api/admin/
+Disallow: /api/user/
+Disallow: /api/auth/
+Disallow: /api/webhook/
+Disallow: /api/support/
+
+# Block private pages
 Disallow: /profile
 Disallow: /settings
 Disallow: /my-predictions

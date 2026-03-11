@@ -6209,6 +6209,88 @@ async def sitemap_xml():
     return Response(content=xml, media_type="application/xml")
 
 
+# ── RSS Feed ─────────────────────────────────────────────────────────
+@app.get("/feed.xml")
+@app.get("/rss.xml")
+async def rss_feed():
+    """Generate RSS 2.0 feed for blog and news articles."""
+    from fastapi.responses import Response
+    import blog as blog_mod
+    import blog_content as bc
+    from xml.sax.saxutils import escape
+
+    base = "https://spark-ai-prediction.com"
+    now = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
+
+    items = []
+
+    # Database blog/news posts
+    try:
+        for post in blog_mod.list_published():
+            # Fetch full body for the feed
+            full = blog_mod.get_post_by_slug(post["slug"])
+            body_text = full.get("body", "") if full else ""
+            # Strip markdown images and HTML tags for description
+            import re
+            clean = re.sub(r'<[^>]+>', '', re.sub(r'!\[[^\]]*\]\([^)]+\)', '', body_text))
+            description = escape(clean[:500].strip())
+            pub_date = post.get("published_at", "")
+            try:
+                dt = datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
+                pub_rfc = dt.strftime("%a, %d %b %Y %H:%M:%S +0000")
+            except Exception:
+                pub_rfc = now
+
+            items.append(f"""    <item>
+      <title>{escape(post.get('title', ''))}</title>
+      <link>{base}/blog/{escape(post['slug'])}</link>
+      <guid isPermaLink="true">{base}/blog/{escape(post['slug'])}</guid>
+      <description>{description}</description>
+      <pubDate>{pub_rfc}</pubDate>
+      <category>{escape(post.get('category', 'general'))}</category>
+    </item>""")
+    except Exception:
+        pass
+
+    # Hardcoded blog articles
+    try:
+        for article in bc.get_all_articles():
+            slug = article["slug"]
+            # Skip if already added from DB
+            if any(f"/blog/{slug}</link>" in item for item in items):
+                continue
+            description = escape(article.get("excerpt", article["title"])[:500])
+            items.append(f"""    <item>
+      <title>{escape(article['title'])}</title>
+      <link>{base}/blog/{escape(slug)}</link>
+      <guid isPermaLink="true">{base}/blog/{escape(slug)}</guid>
+      <description>{description}</description>
+      <pubDate>{now}</pubDate>
+    </item>""")
+    except Exception:
+        pass
+
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Spark AI Prediction — Soccer Betting Blog</title>
+    <link>{base}/blog</link>
+    <description>AI-powered soccer predictions, betting tips, strategies, and football news from Spark AI.</description>
+    <language>en</language>
+    <lastBuildDate>{now}</lastBuildDate>
+    <atom:link href="{base}/feed.xml" rel="self" type="application/rss+xml" />
+    <image>
+      <url>{base}/pwa-512x512.png</url>
+      <title>Spark AI Prediction</title>
+      <link>{base}</link>
+    </image>
+{chr(10).join(items)}
+  </channel>
+</rss>"""
+
+    return Response(content=xml, media_type="application/rss+xml")
+
+
 # ── SEO Pre-rendering: Serve index.html with injected meta tags ──────
 @app.get("/seo-page/{path:path}")
 async def seo_prerender_page(path: str):
