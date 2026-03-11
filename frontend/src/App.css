@@ -25428,6 +25428,31 @@ html, body {
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
+.upgrade-v2-balance-section {
+  margin-bottom: 12px;
+  padding: 12px;
+  background: rgba(250, 204, 21, 0.08);
+  border: 1px solid rgba(250, 204, 21, 0.2);
+  border-radius: 12px;
+}
+
+.upgrade-v2-balance-info {
+  font-size: 14px;
+  color: #facc15;
+  margin: 0 0 10px 0;
+  text-align: center;
+}
+
+.upgrade-v2-balance-btn {
+  background: linear-gradient(135deg, #facc15, #eab308);
+  color: #0f172a;
+}
+
+.upgrade-v2-balance-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(250, 204, 21, 0.3);
+}
+
 .upgrade-v2-active-btn {
   background: #334155;
   color: #4ade80;

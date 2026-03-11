@@ -30,6 +30,8 @@ export default function Upgrade() {
   const [creditCosts, setCreditCosts] = useState(null)
   const [activeSub, setActiveSub] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [userBalance, setUserBalance] = useState({ balance_usd: 0, balance_kes: 0 })
+  const [balanceConverting, setBalanceConverting] = useState(false)
 
   // Modal state
   const [mpesaModal, setMpesaModal] = useState({ open: false, amountKes: 0, amountUsd: 0, txType: 'balance_topup', refId: '', title: '' })
@@ -52,6 +54,10 @@ export default function Upgrade() {
       setLoading(false)
     }
     load()
+    // Fetch user balance
+    axios.get('/api/user/balance').then(res => {
+      setUserBalance(res.data.balance || { balance_usd: 0, balance_kes: 0 })
+    }).catch(() => {})
   }, [])
 
   // Credit calculation
@@ -142,6 +148,43 @@ export default function Upgrade() {
     })
   }
 
+  const balanceUsd = userBalance.balance_usd || 0
+  const balanceKes = userBalance.balance_kes || 0
+  const hasAnyBalance = balanceUsd > 0 || balanceKes > 0
+  // Determine which currency balance to use: prefer the one matching user's locale, fallback to other
+  const primaryCurrency = isKenyan ? 'KES' : 'USD'
+  const primaryBalance = isKenyan ? balanceKes : balanceUsd
+  const altCurrency = isKenyan ? 'USD' : 'KES'
+  const altBalance = isKenyan ? balanceUsd : balanceKes
+  // Use primary if positive, otherwise check alt balance
+  const useAltBalance = primaryBalance <= 0 && altBalance > 0
+  const activeCurrency = useAltBalance ? altCurrency : primaryCurrency
+  const availableBalance = useAltBalance ? altBalance : (primaryBalance > 0 ? primaryBalance : 0)
+  const canPayWithBalance = availableBalance > 0
+  const balanceCredits = Math.floor(availableBalance * (activeCurrency === 'KES' ? (creditCosts?.credit_rate_kes || 10) : (creditCosts?.credit_rate_usd || 1300)))
+
+  const payWithBalance = async () => {
+    if (!canPayWithBalance || balanceConverting) return
+    // Convert entire available balance (or up to what makes sense)
+    const payAmount = availableBalance
+    setBalanceConverting(true)
+    try {
+      const res = await axios.post('/api/balance/convert-to-credits', {
+        amount: payAmount,
+        currency: activeCurrency,
+      })
+      if (res.data.success) {
+        setUserBalance({ balance_usd: res.data.new_balance_usd, balance_kes: res.data.new_balance_kes })
+        await refreshCredits()
+        setDepositAmount('')
+        alert(`${res.data.credits_added.toLocaleString()} credits added to your account!`)
+      }
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to convert balance')
+    }
+    setBalanceConverting(false)
+  }
+
   const handlePaymentSuccess = useCallback(async () => {
     setMpesaModal(prev => ({ ...prev, open: false }))
     setWhopModal(prev => ({ ...prev, open: false }))
@@ -151,6 +194,11 @@ export default function Upgrade() {
     try {
       const res = await axios.get('/api/subscription/status')
       setActiveSub(res.data)
+    } catch {}
+    // Refresh balance after external payment
+    try {
+      const balRes = await axios.get('/api/user/balance')
+      setUserBalance(balRes.data.balance || { balance_usd: 0, balance_kes: 0 })
     } catch {}
     // Track purchase conversion
     if (typeof window.gtag === 'function') {
@@ -241,6 +289,28 @@ export default function Upgrade() {
               <span>{costAnalysis} cr = 1 full analysis</span>
             </div>
           </div>
+
+          {/* Pay with Balance (if user has any positive balance) */}
+          {hasAnyBalance && (
+            <div className="upgrade-v2-balance-section">
+              <p className="upgrade-v2-balance-info">
+                Account balance:{' '}
+                {balanceUsd > 0 && <strong>${balanceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>}
+                {balanceUsd > 0 && balanceKes > 0 && ' / '}
+                {balanceKes > 0 && <strong>KES {balanceKes.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>}
+              </p>
+              <p className="upgrade-v2-credit-result" style={{ fontSize: '0.85rem', margin: '4px 0 8px' }}>
+                Convert to: {"\u26A1"} <strong>{balanceCredits.toLocaleString()}</strong> credits
+              </p>
+              <button
+                className="upgrade-v2-pay-btn upgrade-v2-balance-btn"
+                disabled={!canPayWithBalance || balanceConverting}
+                onClick={payWithBalance}
+              >
+                {balanceConverting ? 'Converting...' : `Convert ${activeCurrency === 'USD' ? '$' : 'KES '}${availableBalance.toFixed(2)} to Credits`}
+              </button>
+            </div>
+          )}
 
           {/* Primary Payment Button */}
           {isKenyan ? (

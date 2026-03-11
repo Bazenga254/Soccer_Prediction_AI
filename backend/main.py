@@ -2976,6 +2976,69 @@ async def get_user_balance(authorization: str = Header(None)):
     return {"balance": balance}
 
 
+@app.post("/api/balance/convert-to-credits")
+async def convert_balance_to_credits(request: Request, authorization: str = Header(None)):
+    """Convert account balance (USD/KES) into credits."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = payload["user_id"]
+
+    data = await request.json()
+    amount = float(data.get("amount", 0))
+    currency_type = data.get("currency", "USD").upper()
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+
+    # Get current balance
+    balance = community.get_user_balance(user_id)
+    balance_usd = balance.get("balance_usd", 0)
+    balance_kes = balance.get("balance_kes", 0)
+
+    # Get credit rates from pricing config
+    pricing_config = community.get_pricing_config() if hasattr(community, 'get_pricing_config') else {}
+    rate_kes = int(pricing_config.get("credit_rate_kes", 10))
+    rate_usd = int(pricing_config.get("credit_rate_usd", 1300))
+
+    if currency_type == "KES":
+        if amount > balance_kes:
+            raise HTTPException(status_code=400, detail=f"Insufficient KES balance. Available: {balance_kes:.2f}")
+        credits_earned = int(amount * rate_kes)
+        community.adjust_user_balance(
+            user_id=user_id,
+            amount_usd=0,
+            amount_kes=-amount,
+            reason=f"Converted KES {amount:.2f} to {credits_earned} credits",
+            adjustment_type="credit_conversion",
+        )
+    else:
+        if amount > balance_usd:
+            raise HTTPException(status_code=400, detail=f"Insufficient USD balance. Available: ${balance_usd:.2f}")
+        credits_earned = int(amount * rate_usd)
+        community.adjust_user_balance(
+            user_id=user_id,
+            amount_usd=-amount,
+            amount_kes=0,
+            reason=f"Converted ${amount:.2f} to {credits_earned} credits",
+            adjustment_type="credit_conversion",
+        )
+
+    # Add credits
+    community.add_credits(user_id, credits_earned, f"Converted from {currency_type} balance", "purchased")
+
+    new_balance = community.get_user_balance(user_id)
+    new_credits = community.get_user_credits(user_id)
+
+    return {
+        "success": True,
+        "credits_added": credits_earned,
+        "new_balance_usd": new_balance.get("balance_usd", 0),
+        "new_balance_kes": new_balance.get("balance_kes", 0),
+        "total_credits": new_credits.get("total", 0),
+    }
+
+
 # Balance admin endpoints moved to admin_routes.py
 
 
