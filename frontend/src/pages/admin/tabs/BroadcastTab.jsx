@@ -300,7 +300,8 @@ export default function BroadcastTab() {
     if (targetType === 'inactive') {
       return isSuperAdmin ? 'Send to Inactive Users' : 'Submit for Approval'
     }
-    if (targetType === 'specific' && selectedUsers.length > 0) {
+    if (targetType === 'specific') {
+      if (selectedUsers.length === 0) return 'Select Users First'
       return isSuperAdmin
         ? `Send to ${selectedUsers.length} User${selectedUsers.length !== 1 ? 's' : ''}`
         : 'Submit for Approval'
@@ -328,14 +329,14 @@ export default function BroadcastTab() {
             <button
               type="button"
               className={`bc-target-btn ${targetType === 'all' ? 'active' : ''}`}
-              onClick={() => { setTargetType('all'); setSelectedUsers([]) }}
+              onClick={() => { setTargetType('all'); setSelectedUsers([]); setStatusMsg('') }}
             >
               All Users
             </button>
             <button
               type="button"
               className={`bc-target-btn ${targetType === 'inactive' ? 'active' : ''}`}
-              onClick={() => { setTargetType('inactive'); setSelectedUsers([]) }}
+              onClick={() => { setTargetType('inactive'); setSelectedUsers([]); setStatusMsg('') }}
               title="Users who haven't logged in for 7+ days"
             >
               Inactive Users
@@ -343,7 +344,7 @@ export default function BroadcastTab() {
             <button
               type="button"
               className={`bc-target-btn ${targetType === 'unverified' ? 'active' : ''}`}
-              onClick={() => { setTargetType('unverified'); setSelectedUsers([]) }}
+              onClick={() => { setTargetType('unverified'); setSelectedUsers([]); setStatusMsg('') }}
               title="Users who haven't verified their email"
             >
               Unverified
@@ -351,7 +352,7 @@ export default function BroadcastTab() {
             <button
               type="button"
               className={`bc-target-btn ${targetType === 'specific' ? 'active' : ''}`}
-              onClick={() => setTargetType('specific')}
+              onClick={() => { setTargetType('specific'); setStatusMsg('') }}
             >
               Specific User(s)
             </button>

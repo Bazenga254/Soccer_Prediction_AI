@@ -3940,18 +3940,23 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
         users = [{"id": u["id"], "whatsapp_number": None, "whatsapp_verified": 0} for u in inactive_users]
         auth_conn.close()
         auth_conn = None  # Already closed
-    elif target_type == "specific" and target_user_ids_raw:
-        try:
-            specific_ids = _json.loads(target_user_ids_raw)
-        except (ValueError, TypeError):
-            specific_ids = []
-        if specific_ids:
-            placeholders = ",".join("?" for _ in specific_ids)
-            users = auth_conn.execute(
-                f"SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1 AND id IN ({placeholders})",
-                specific_ids
-            ).fetchall()
+    elif target_type == "specific":
+        if target_user_ids_raw:
+            try:
+                specific_ids = _json.loads(target_user_ids_raw)
+            except (ValueError, TypeError):
+                specific_ids = []
+            if specific_ids:
+                placeholders = ",".join("?" for _ in specific_ids)
+                users = auth_conn.execute(
+                    f"SELECT id, whatsapp_number, whatsapp_verified FROM users WHERE is_active = 1 AND id IN ({placeholders})",
+                    specific_ids
+                ).fetchall()
+            else:
+                users = []
         else:
+            # Safety: target_type is specific but no user IDs stored — send to nobody
+            print(f"[WARN] Broadcast {broadcast_id}: target_type=specific but no target_user_ids — aborting")
             users = []
     else:
         users = auth_conn.execute(

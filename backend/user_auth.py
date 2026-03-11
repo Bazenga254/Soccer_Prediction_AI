@@ -1361,8 +1361,8 @@ def send_notification_email(to_email: str, display_name: str, notif_type: str, t
         <div style="background: rgba({_hex_to_rgb(style['color'])},0.1);
                     border: 1px solid rgba({_hex_to_rgb(style['color'])},0.3);
                     border-radius: 8px; padding: 16px; margin: 20px 0;">
-            <p style="color: {style['color']}; margin: 0; font-size: 14px;">
-                {message}
+            <p style="color: {style['color']}; margin: 0; font-size: 14px; line-height: 1.6;">
+                {message.replace(chr(10), '<br>')}
             </p>
         </div>
         <div style="text-align: center; margin: 28px 0;">
