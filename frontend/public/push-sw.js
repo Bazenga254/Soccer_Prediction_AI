@@ -18,14 +18,18 @@ self.addEventListener('push', function(event) {
     };
   }
 
+  var isMatch = payload.data && (payload.data.type === 'goal_scored' || payload.data.type === 'match_ended');
+
   var options = {
     body: payload.body || '',
     icon: payload.icon || '/pwa-192x192.png',
-    badge: payload.badge || '/pwa-64x64.png',
+    badge: payload.badge || '/badge-96x96.png',
     tag: payload.tag || 'spark-notification',
     renotify: true,
-    vibrate: [200, 100, 200],
+    vibrate: isMatch ? [300, 100, 300, 100, 300] : [200, 100, 200],
     data: payload.data || {},
+    requireInteraction: isMatch,
+    silent: false,
   };
 
   // Add large image if provided (shows as rich preview like news notifications)

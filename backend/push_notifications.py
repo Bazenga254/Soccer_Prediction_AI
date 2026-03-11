@@ -30,6 +30,7 @@ NOTIFICATION_URL_MAP = {
     "suspension": "/",
     "goal_scored": "/live",
     "match_ended": "/live",
+    "news_published": "/news",
 }
 
 # Notification types that should NOT trigger push
@@ -136,7 +137,7 @@ def send_push_notification(
                 "title": title,
                 "body": message,
                 "icon": "/pwa-192x192.png",
-                "badge": "/pwa-64x64.png",
+                "badge": "/badge-96x96.png",
                 "tag": tag,
                 "data": {
                     "url": click_url,
@@ -169,7 +170,12 @@ def send_push_notification(
                     # Update last_used_at on success
                     _update_last_used(sub["endpoint"])
                 except WebPushException as e:
-                    if e.response and e.response.status_code in (404, 410):
+                    is_gone = False
+                    if e.response and hasattr(e.response, 'status_code'):
+                        is_gone = e.response.status_code in (404, 410)
+                    elif '410' in str(e) or '404' in str(e) or 'unsubscribed' in str(e).lower() or 'expired' in str(e).lower():
+                        is_gone = True
+                    if is_gone:
                         stale_endpoints.append(sub["endpoint"])
                     else:
                         print(f"[WARN] Push failed for user {user_id}: {e}")
@@ -212,3 +218,44 @@ def _remove_stale_subscriptions(endpoints: List[str]):
         conn.close()
     except Exception:
         pass
+
+
+def send_news_push_to_all(post_title: str, post_excerpt: str,
+                           post_slug: str = "", cover_image: str = None):
+    """Send push notification to ALL subscribed users when news is published."""
+    def _broadcast():
+        try:
+            conn = _get_db()
+            rows = conn.execute("SELECT DISTINCT user_id FROM push_subscriptions").fetchall()
+            conn.close()
+
+            user_ids = [r["user_id"] for r in rows]
+            print(f"[Push] Broadcasting news to {len(user_ids)} users: {post_title[:50]}")
+
+            # Build image URL (make absolute if relative)
+            image = None
+            if cover_image:
+                if cover_image.startswith("/"):
+                    image = f"https://spark-ai-prediction.com{cover_image}"
+                else:
+                    image = cover_image
+
+            for uid in user_ids:
+                try:
+                    send_push_notification(
+                        user_id=uid,
+                        notif_type="news_published",
+                        title=f"📰 {post_title[:60]}",
+                        message=post_excerpt[:120] if post_excerpt else "New update posted!",
+                        metadata={"slug": post_slug},
+                        image=image,
+                    )
+                except Exception:
+                    pass
+
+            print(f"[Push] News broadcast complete ({len(user_ids)} users)")
+        except Exception as e:
+            print(f"[Push] News broadcast error: {e}")
+
+    thread = threading.Thread(target=_broadcast, daemon=True)
+    thread.start()

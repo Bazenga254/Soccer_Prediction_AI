@@ -34,6 +34,7 @@ const ALL_TABS = [
   { id: 'bots', icon: '🤖', label: 'Bot Accounts', module: 'bots' },
   { id: 'analytics', icon: '📈', label: 'Creator Analytics', module: 'analytics' },
   { id: 'blog', icon: '✍️', label: 'Blog', module: 'blog' },
+  { id: 'news', icon: '📰', label: 'News', module: 'blog' },
   { id: 'docs', icon: '📚', label: 'Documentation', module: 'documentation' },
   { id: 'extension', icon: '🧩', label: 'Chrome Extension', module: 'extension' },
   { id: 'social', icon: '📱', label: 'Social Media', module: 'social_media' },

@@ -3389,6 +3389,7 @@ async def social_analytics(
 async def admin_list_blog_posts(
     status: str = Query(None),
     category: str = Query(None),
+    post_type: str = Query(None),
     limit: int = Query(50),
     offset: int = Query(0),
     x_admin_password: str = Header(None),
@@ -3398,7 +3399,7 @@ async def admin_list_blog_posts(
                              required_module="blog", required_action="read")
     if not auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    posts = blog.list_posts(status=status, category=category, limit=limit, offset=offset)
+    posts = blog.list_posts(status=status, category=category, limit=limit, offset=offset, post_type=post_type)
     return {"posts": posts}
 
 
@@ -3452,6 +3453,8 @@ async def admin_create_blog_post(
         video_url=body.get("video_url", ""),
         status=body.get("status", "draft"),
         author_name=body.get("author_name", "Spark AI"),
+        post_type=body.get("post_type", "blog"),
+        teams=body.get("teams", []),
     )
     _log_action(auth, "create_blog_post", "blog", request, details={"post_id": result.get("id")})
     return result
@@ -3469,9 +3472,32 @@ async def admin_update_blog_post(
     if not auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+    # Check if this is a new publish (was not published before)
+    existing = blog.get_post(post_id)
+    was_published = existing and existing.get("status") == "published" if existing else False
+
     body = await request.json()
+    send_push = body.pop("send_push", True)
     result = blog.update_post(post_id, **body)
     _log_action(auth, "update_blog_post", "blog", request, details={"post_id": post_id})
+
+    # Send push notification if newly published
+    if (result.get("success") and body.get("status") == "published"
+            and not was_published and send_push):
+        try:
+            import push_notifications
+            post = blog.get_post(post_id)
+            if post:
+                push_notifications.send_news_push_to_all(
+                    post_title=post.get("title", "News Update"),
+                    post_excerpt=post.get("excerpt", ""),
+                    post_slug=post.get("slug", ""),
+                    cover_image=post.get("cover_image"),
+                )
+                print(f"[Admin] Push notification sent for news: {post.get('title', '')[:50]}")
+        except Exception as e:
+            print(f"[Admin] Push notification error: {e}")
+
     return result
 
 
@@ -3490,6 +3516,33 @@ async def admin_delete_blog_post(
     result = blog.delete_post(post_id)
     _log_action(auth, "delete_blog_post", "blog", request, details={"post_id": post_id})
     return result
+
+
+@admin_router.post("/blog/scrape-now")
+async def admin_scrape_telegram(
+    request: Request,
+    x_admin_password: str = Header(None),
+    authorization: str = Header(None),
+):
+    """Trigger immediate Telegram channel scrape."""
+    auth = _check_admin_auth(x_admin_password, authorization,
+                             required_module="blog", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        import telegram_scraper
+        results = []
+        for channel in telegram_scraper.SCRAPE_CHANNELS:
+            result = await telegram_scraper.async_channel_to_blog(channel)
+            results.append(result)
+        total_new = sum(r["new_posts"] for r in results)
+        total_skipped = sum(r["skipped"] for r in results)
+        _log_action(auth, "scrape_telegram", "blog", request,
+                    details={"new": total_new, "skipped": total_skipped})
+        return {"success": True, "new_posts": total_new, "skipped": total_skipped, "details": results}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 @admin_router.post("/blog/upload-image")

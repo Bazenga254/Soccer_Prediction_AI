@@ -50,7 +50,7 @@ export default function BlogTab() {
   const fetchPosts = useCallback(async () => {
     setLoading(true)
     try {
-      const params = {}
+      const params = { post_type: 'blog' }
       if (filterStatus) params.status = filterStatus
       if (filterCategory) params.category = filterCategory
       const res = await axios.get('/api/admin/blog', { headers: getAuthHeaders(), params })
@@ -244,6 +244,7 @@ export default function BlogTab() {
       ...form,
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       status: publishOverride || form.status,
+      post_type: 'blog',
     }
     try {
       if (editPost) {
@@ -272,7 +273,7 @@ export default function BlogTab() {
     }
   }
 
-  // ── Analytics View ──
+  // -- Analytics View --
   const renderAnalytics = () => {
     if (analyticsLoading) return <div style={s.center}><div className="spinner" style={{ width: 28, height: 28 }} /></div>
     if (!analytics) return <div style={s.center}><p style={s.muted}>No analytics data</p></div>
@@ -350,7 +351,7 @@ export default function BlogTab() {
     )
   }
 
-  // ── Editor View ──
+  // -- Editor View --
   const renderEditor = () => (
     <div style={s.editorWrap}>
       <div style={s.editorHeader}>
@@ -552,7 +553,7 @@ export default function BlogTab() {
     </div>
   )
 
-  // ── List View ──
+  // -- List View --
   const renderList = () => (
     <div>
       {/* Header bar */}
@@ -654,7 +655,7 @@ export default function BlogTab() {
   )
 }
 
-// ── Styles ──
+// -- Styles --
 const s = {
   container: { padding: 0 },
   tabNav: { display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #1e293b', paddingBottom: 8 },

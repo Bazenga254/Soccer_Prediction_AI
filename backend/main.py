@@ -240,6 +240,15 @@ async def startup():
     asyncio.create_task(_reengagement_task())
     asyncio.create_task(_pro_expiry_checker())
     asyncio.create_task(_subscription_reminder_task())
+
+    # Start Telegram news scraper
+    try:
+        import telegram_scraper
+        asyncio.create_task(telegram_scraper.auto_scrape_loop())
+        print("[OK] Telegram news scraper started (10-min interval)")
+    except Exception as e:
+        print(f"[--] Telegram scraper failed to start: {e}")
+
     print("[OK] Support keep-alive checker started (30-min idle, 3-min response)")
     print("[OK] Social Media Hub scheduled post checker started")
     print("[OK] Pro tier expiry checker started (runs every 5 min)")
@@ -6163,6 +6172,7 @@ async def sitemap_xml():
         ("/", "daily", "1.0"),
         ("/today", "daily", "0.9"),
         ("/blog", "daily", "0.8"),
+        ("/news", "hourly", "0.8"),
         ("/docs", "monthly", "0.6"),
         ("/terms", "yearly", "0.3"),
     ]
@@ -6173,9 +6183,17 @@ async def sitemap_xml():
     for code, data in LEAGUE_SEO.items():
         urls.extend(make_url_entry(f"/predictions/{data['slug']}", "daily", "0.8"))
 
-    # Blog articles (with all language variants)
+    # Blog articles from hardcoded content
     for article in bc.get_all_articles():
         urls.extend(make_url_entry(f"/blog/{article['slug']}", "weekly", "0.7"))
+
+    # Dynamic blog/news articles from database
+    try:
+        import blog as blog_mod
+        for post in blog_mod.list_published():
+            urls.extend(make_url_entry(f"/blog/{post['slug']}", "weekly", "0.7"))
+    except Exception:
+        pass
 
     # Doc sections (with all language variants)
     from docs_content import DOCS_SECTIONS
@@ -6303,7 +6321,14 @@ async def get_all_league_slugs():
 @app.get("/api/blog")
 async def get_blog_articles(category: str = None, lang: str = "en"):
     """Return published blog articles, optionally filtered by category. No auth required."""
-    articles = blog.list_published(category=category)
+    articles = blog.list_published(category=category, post_type="blog")
+    return {"articles": articles, "total": len(articles)}
+
+
+@app.get("/api/news")
+async def get_news_articles(category: str = None):
+    """Return published news posts, optionally filtered by category. No auth required."""
+    articles = blog.list_published(category=category, post_type="news")
     return {"articles": articles, "total": len(articles)}
 
 

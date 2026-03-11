@@ -170,6 +170,7 @@ export default function Header({ user, logout }) {
   const isJackpot = location.pathname === '/jackpot'
   const isAIAssistant = location.pathname === '/ai-assistant'
   const isMyAnalysis = location.pathname === '/my-analysis'
+  const isNews = location.pathname === '/news' || location.pathname.startsWith('/news/')
 
   return (
     <header className="header">
@@ -206,43 +207,54 @@ export default function Header({ user, logout }) {
         )}
       </div>
 
-      {/* Main navigation - static items */}
+      {/* Main navigation - 2 rows on mobile, single row on desktop */}
       <nav className="competition-nav">
-        <Link
-          to="/live"
-          className={`competition-tab live-tab ${isLivePage ? 'active' : ''}`}
-        >
-          <span className="live-indicator"></span>
-          <span className="comp-name">{t('nav.liveScores')}</span>
-        </Link>
-        <Link
-          to="/predictions"
-          className={`competition-tab ${isPredictions ? 'active' : ''}`}
-        >
-          <span className="comp-flag">{'\u{1F465}'}</span>
-          <span className="comp-name">{t('nav.predictions')}</span>
-        </Link>
-        <Link
-          to="/jackpot"
-          className={`competition-tab jackpot-tab ${isJackpot ? 'active' : ''}`}
-        >
-          <span className="comp-flag">{'\u{1F3AF}'}</span>
-          <span className="comp-name">{t('nav.jackpot')}</span>
-        </Link>
-        <Link
-          to="/ai-assistant"
-          className={`competition-tab ${isAIAssistant ? 'active' : ''}`}
-        >
-          <span className="comp-flag">{'\u{1F916}'}</span>
-          <span className="comp-name">{t('nav.aiAssistant', 'AI Assistant')}</span>
-        </Link>
-        <Link
-          to="/my-analysis"
-          className={`competition-tab ${isMyAnalysis ? 'active' : ''}`}
-        >
-          <span className="comp-flag">{'\u{1F4CA}'}</span>
-          <span className="comp-name">{t('nav.myAnalysis')}</span>
-        </Link>
+        <div className="competition-nav-row">
+          <Link
+            to="/live"
+            className={`competition-tab live-tab ${isLivePage ? 'active' : ''}`}
+          >
+            <span className="live-indicator"></span>
+            <span className="comp-name">{t('nav.liveScores')}</span>
+          </Link>
+          <Link
+            to="/predictions"
+            className={`competition-tab ${isPredictions ? 'active' : ''}`}
+          >
+            <span className="comp-flag">{'\u{1F465}'}</span>
+            <span className="comp-name">{t('nav.predictions')}</span>
+          </Link>
+          <Link
+            to="/jackpot"
+            className={`competition-tab jackpot-tab ${isJackpot ? 'active' : ''}`}
+          >
+            <span className="comp-flag">{'\u{1F3AF}'}</span>
+            <span className="comp-name">{t('nav.jackpot')}</span>
+          </Link>
+        </div>
+        <div className="competition-nav-row">
+          <Link
+            to="/ai-assistant"
+            className={`competition-tab ${isAIAssistant ? 'active' : ''}`}
+          >
+            <span className="comp-flag">{'\u{1F916}'}</span>
+            <span className="comp-name">{t('nav.aiAssistant', 'AI Assistant')}</span>
+          </Link>
+          <Link
+            to="/my-analysis"
+            className={`competition-tab ${isMyAnalysis ? 'active' : ''}`}
+          >
+            <span className="comp-flag">{'\u{1F4CA}'}</span>
+            <span className="comp-name">{t('nav.myAnalysis')}</span>
+          </Link>
+          <Link
+            to="/news"
+            className={`competition-tab news-tab ${isNews ? 'active' : ''}`}
+          >
+            <span className="comp-flag">{'\u{1F4F0}'}</span>
+            <span className="comp-name">{t('nav.news', 'News')}</span>
+          </Link>
+        </div>
       </nav>
 
       {/* League ticker - scrolling marquee with search */}

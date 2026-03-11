@@ -65,6 +65,15 @@ def init_blog_db():
         CREATE INDEX IF NOT EXISTS idx_blog_views_date ON blog_views(viewed_at);
     """)
     conn.commit()
+
+    # Add source columns for Telegram scraper integration
+    for col, default in [("source", "'manual'"), ("source_id", "''"), ("source_url", "''"), ("post_type", "'blog'"), ("teams", "'[]'")]:
+        try:
+            conn.execute(f"ALTER TABLE blog_posts ADD COLUMN {col} TEXT DEFAULT {default}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
     conn.close()
     print("[OK] Blog DB initialized")
 
@@ -84,7 +93,10 @@ def _slugify(text: str) -> str:
 def create_post(title: str, excerpt: str = "", body: str = "",
                 category: str = "general", tags: list = None,
                 cover_image: str = "", video_url: str = "",
-                status: str = "draft", author_name: str = "Spark AI") -> Dict:
+                status: str = "draft", author_name: str = "Spark AI",
+                source: str = "manual", source_id: str = "",
+                source_url: str = "", post_type: str = "blog",
+                teams: list = None) -> Dict:
     """Create a new blog post."""
     now = datetime.now(EAT).isoformat()
     slug = _slugify(title)
@@ -95,15 +107,24 @@ def create_post(title: str, excerpt: str = "", body: str = "",
     if existing:
         slug = f"{slug}-{uuid.uuid4().hex[:6]}"
 
+    # Dedup by source_id (for Telegram scraper)
+    if source_id:
+        dup = conn.execute("SELECT id FROM blog_posts WHERE source_id = ?", (source_id,)).fetchone()
+        if dup:
+            conn.close()
+            return {"success": False, "error": "duplicate", "id": dup["id"]}
+
     published_at = now if status == "published" else None
 
     conn.execute("""
         INSERT INTO blog_posts (slug, title, excerpt, body, category, tags,
-            cover_image, video_url, status, author_name, created_at, updated_at, published_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            cover_image, video_url, status, author_name, created_at, updated_at,
+            published_at, source, source_id, source_url, post_type, teams)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (slug, title.strip(), excerpt.strip(), body, category,
           str(tags or []), cover_image, video_url, status, author_name,
-          now, now, published_at))
+          now, now, published_at, source, source_id, source_url, post_type,
+          str(teams or [])))
     conn.commit()
     post_id = conn.execute("SELECT id FROM blog_posts WHERE slug = ?", (slug,)).fetchone()["id"]
     conn.close()
@@ -124,11 +145,11 @@ def update_post(post_id: int, **fields) -> Dict:
     params = []
 
     allowed = ["title", "excerpt", "body", "category", "tags", "cover_image",
-               "video_url", "status", "author_name", "slug"]
+               "video_url", "status", "author_name", "slug", "teams"]
 
     for key, value in fields.items():
         if key in allowed and value is not None:
-            if key == "tags" and isinstance(value, list):
+            if key in ("tags", "teams") and isinstance(value, list):
                 value = str(value)
             updates.append(f"{key} = ?")
             params.append(value)
@@ -178,6 +199,7 @@ def get_post(post_id: int) -> Optional[Dict]:
         return None
     d = dict(row)
     d["tags"] = _parse_tags(d.get("tags", ""))
+    d["teams"] = _parse_tags(d.get("teams", ""))
     return d
 
 
@@ -192,15 +214,19 @@ def get_post_by_slug(slug: str) -> Optional[Dict]:
         return None
     d = dict(row)
     d["tags"] = _parse_tags(d.get("tags", ""))
+    d["teams"] = _parse_tags(d.get("teams", ""))
     return d
 
 
-def list_posts(status: str = None, category: str = None, limit: int = 50, offset: int = 0) -> List[Dict]:
+def list_posts(status: str = None, category: str = None, limit: int = 50, offset: int = 0, post_type: str = None) -> List[Dict]:
     """List posts with optional filters."""
     conn = _get_db()
     query = "SELECT * FROM blog_posts WHERE 1=1"
     params = []
 
+    if post_type:
+        query += " AND COALESCE(post_type, 'blog') = ?"
+        params.append(post_type)
     if status:
         query += " AND status = ?"
         params.append(status)
@@ -233,18 +259,19 @@ def _parse_tags(tags_str):
     return [t.strip().strip("'\"") for t in tags_str.strip("[]").split(",") if t.strip()]
 
 
-def list_published(category: str = None) -> List[Dict]:
+def list_published(category: str = None, post_type: str = None) -> List[Dict]:
     """List published posts (public API)."""
     conn = _get_db()
+    query = "SELECT * FROM blog_posts WHERE status = 'published'"
+    params = []
+    if post_type:
+        query += " AND COALESCE(post_type, 'blog') = ?"
+        params.append(post_type)
     if category:
-        rows = conn.execute(
-            "SELECT * FROM blog_posts WHERE status = 'published' AND category = ? ORDER BY published_at DESC",
-            (category,)
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM blog_posts WHERE status = 'published' ORDER BY published_at DESC"
-        ).fetchall()
+        query += " AND category = ?"
+        params.append(category)
+    query += " ORDER BY published_at DESC"
+    rows = conn.execute(query, params).fetchall()
     conn.close()
 
     results = []
@@ -252,6 +279,7 @@ def list_published(category: str = None) -> List[Dict]:
         d = dict(r)
         d.pop("body", None)  # Don't send body in list
         d["tags"] = _parse_tags(d.get("tags", ""))
+        d["teams"] = _parse_tags(d.get("teams", ""))
         results.append(d)
     return results
 

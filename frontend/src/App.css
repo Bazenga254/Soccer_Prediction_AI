@@ -449,6 +449,11 @@ html, body {
   flex-wrap: wrap;
 }
 
+/* On desktop, rows are transparent wrappers */
+.competition-nav-row {
+  display: contents;
+}
+
 .competition-tab {
   display: flex;
   align-items: center;
@@ -725,35 +730,6 @@ html, body {
 }
 
 @media (max-width: 768px) {
-  .competition-nav {
-    justify-content: flex-start;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    gap: 6px;
-    padding: 8px 12px;
-  }
-  .competition-nav::-webkit-scrollbar { display: none; }
-
-  .competition-tab {
-    padding: 6px 12px;
-    font-size: 12px;
-    white-space: nowrap;
-    flex-shrink: 0;
-    border-radius: 20px;
-    gap: 4px;
-    border: 1px solid #334155;
-  }
-
-  .competition-tab.active {
-    border-color: rgba(34, 197, 94, 0.5);
-  }
-
-  .competition-tab.live-tab {
-    border-color: rgba(239, 68, 68, 0.4);
-  }
-
   .comp-flag {
     font-size: 14px;
   }
@@ -15727,6 +15703,12 @@ html, body {
   position: relative;
   margin: auto 0;
   flex-shrink: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.auth-modal-container::-webkit-scrollbar {
+  display: none;
 }
 
 .auth-form-wrapper {
@@ -15734,6 +15716,12 @@ html, body {
   max-height: 82vh;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.auth-form-wrapper::-webkit-scrollbar {
+  display: none;
 }
 
 .auth-form-compact-header {
@@ -24254,17 +24242,25 @@ html, body {
     flex-shrink: 0;
   }
 
-  /* --- TAB BAR: icon above label, bottom bar indicator --- */
+  /* --- TAB BAR: 2-row grid layout, icon above label --- */
   .competition-nav {
     display: flex !important;
-    flex-wrap: nowrap !important;
+    flex-direction: column !important;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     border-bottom: none !important;
     background: transparent;
     padding: 0 !important;
     gap: 0 !important;
     overflow: visible !important;
-    justify-content: stretch !important;
+  }
+
+  .competition-nav-row {
+    display: flex !important;
+    width: 100%;
+  }
+
+  .competition-nav-row:first-child {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   }
 
   .competition-tab {
@@ -24274,7 +24270,7 @@ html, body {
     align-items: center !important;
     justify-content: center !important;
     gap: 4px !important;
-    padding: 12px 4px 14px !important;
+    padding: 10px 4px 12px !important;
     border-radius: 0 !important;
     border: none !important;
     background: transparent !important;

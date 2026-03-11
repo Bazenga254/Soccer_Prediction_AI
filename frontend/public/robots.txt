@@ -3,6 +3,7 @@ Allow: /
 Allow: /today
 Allow: /blog
 Allow: /blog/
+Allow: /news
 Allow: /predictions/
 Allow: /docs
 Allow: /terms

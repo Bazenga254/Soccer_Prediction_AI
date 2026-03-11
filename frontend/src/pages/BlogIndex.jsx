@@ -9,9 +9,11 @@ import './Blog.css'
 
 const CATEGORIES = [
   { key: null, label: 'All' },
-  { key: 'guides', label: 'Guides' },
+  { key: 'general', label: 'General' },
+  { key: 'predictions', label: 'Predictions' },
   { key: 'tips', label: 'Tips' },
-  { key: 'analysis', label: 'Analysis' },
+  { key: 'tutorials', label: 'Tutorials' },
+  { key: 'updates', label: 'Updates' },
 ]
 
 export default function BlogIndex() {
@@ -90,6 +92,11 @@ export default function BlogIndex() {
               <div className="blog-grid">
                 {articles.map(article => (
                   <Link key={article.slug} to={`/blog/${article.slug}`} className="blog-card">
+                    {article.cover_image && (
+                      <div className="blog-card-image">
+                        <img src={article.cover_image} alt={article.title} loading="lazy" />
+                      </div>
+                    )}
                     <div className="blog-card-content">
                       <span className="blog-card-category">{article.category}</span>
                       <h2 className="blog-card-title">{article.title}</h2>

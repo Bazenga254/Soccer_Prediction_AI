@@ -45,6 +45,7 @@ const MODULE_LABELS = {
   extension: 'Chrome Extension',
   social_media: 'Social Media',
   blog: 'Blog',
+  news: 'News',
   finance: 'Finance',
   technical: 'Technical',
 }

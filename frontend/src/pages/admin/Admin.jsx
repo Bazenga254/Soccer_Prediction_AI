@@ -26,6 +26,7 @@ import ExtensionTab from './tabs/ExtensionTab'
 import TransactionsTab from './tabs/TransactionsTab'
 import SocialMediaTab from './tabs/SocialMediaTab'
 import BlogTab from './tabs/BlogTab'
+import NewsTab from './tabs/NewsTab'
 import './styles/admin.css'
 
 class AdminErrorBoundary extends Component {
@@ -83,6 +84,7 @@ const TAB_COMPONENTS = {
   extension: ExtensionTab,
   social: SocialMediaTab,
   blog: BlogTab,
+  news: NewsTab,
 }
 
 function AdminShell() {

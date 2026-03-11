@@ -24,6 +24,23 @@ FINISHED_STATUSES = {"FT", "AET", "PEN"}
 LIVE_STATUSES = {"1H", "2H", "HT", "ET", "LIVE", "BT", "P", "INT"}
 
 
+BASE_URL = "https://spark-ai-prediction.com"
+
+# Pre-made notification images for each event type
+GOAL_IMAGES = {
+    "celebration": f"{BASE_URL}/notif-images/goal_celebration.png",
+    "big_lead": f"{BASE_URL}/notif-images/goal_big_lead.png",
+    "worried": f"{BASE_URL}/notif-images/goal_conceded_level.png",
+    "sad": f"{BASE_URL}/notif-images/goal_conceded.png",
+}
+
+END_IMAGES = {
+    "match_won": f"{BASE_URL}/notif-images/match_won.png",
+    "match_lost": f"{BASE_URL}/notif-images/match_lost.png",
+    "match_draw": f"{BASE_URL}/notif-images/match_draw.png",
+}
+
+
 def _get_all_tracked_matches() -> Dict[int, Dict]:
     """Query all users who have tracked_matches in their preferences.
     Returns: { user_id: { match_id_str: {teamId, teamName, isHome, ...}, ... } }
@@ -112,19 +129,19 @@ def _format_goal_notification(match: dict, tracked_info: dict, goal_type: str,
     score_line = f"{home_name} {new_home} - {new_away} {away_name}"
 
     if goal_type == "celebration":
-        title = f"GOAL! {team_name} scores!{elapsed_str}"
+        title = f"⚽ GOAL! {team_name} scores!{elapsed_str}"
     elif goal_type == "big_lead":
-        title = f"GOAL! {team_name} extends the lead!{elapsed_str}"
+        title = f"🔥 GOAL! {team_name} extends the lead!{elapsed_str}"
     elif goal_type == "worried":
-        title = f"Goal conceded - It's level now{elapsed_str}"
+        title = f"😰 Goal conceded - It's level now{elapsed_str}"
     elif goal_type == "sad":
-        title = f"Goal conceded{elapsed_str}"
+        title = f"😞 Goal conceded{elapsed_str}"
     else:
-        title = f"Goal scored{elapsed_str}"
+        title = f"⚽ Goal scored{elapsed_str}"
 
     last_goal = match.get("last_goal")
     if last_goal and last_goal.get("player"):
-        message = f"{score_line}\nScorer: {last_goal['player']}"
+        message = f"{score_line}\n⚡ Scorer: {last_goal['player']}"
     else:
         message = score_line
 
@@ -142,11 +159,11 @@ def _format_end_notification(match: dict, tracked_info: dict,
     score_line = f"{home_name} {home_goals} - {away_goals} {away_name}"
 
     if end_type == "match_won":
-        title = f"Full Time - {team_name} wins!"
+        title = f"🏆 Full Time - {team_name} wins!"
     elif end_type == "match_lost":
-        title = f"Full Time - {team_name} loses"
+        title = f"😔 Full Time - {team_name} loses"
     else:
-        title = f"Full Time - It's a draw"
+        title = f"🤝 Full Time - It's a draw"
 
     return title, score_line
 
@@ -218,8 +235,7 @@ async def goal_score_monitor():
                             match, tracked_info, goal_type,
                             current_home, current_away,
                         )
-                        # Use competition emblem as notification image
-                        notif_image = match.get("competition", {}).get("emblem") or None
+                        notif_image = GOAL_IMAGES.get(goal_type, GOAL_IMAGES["celebration"])
                         push_notifications.send_push_notification(
                             user_id=user_id,
                             notif_type="goal_scored",
@@ -234,6 +250,7 @@ async def goal_score_monitor():
                             image=notif_image,
                             actions=[
                                 {"action": "view", "title": "View Match"},
+                                {"action": "dismiss", "title": "Dismiss"},
                             ],
                         )
 
@@ -255,7 +272,7 @@ async def goal_score_monitor():
                         title, message = _format_end_notification(
                             match, tracked_info, end_type,
                         )
-                        notif_image = match.get("competition", {}).get("emblem") or None
+                        notif_image = END_IMAGES.get(end_type, END_IMAGES["match_draw"])
                         push_notifications.send_push_notification(
                             user_id=user_id,
                             notif_type="match_ended",
@@ -268,6 +285,10 @@ async def goal_score_monitor():
                                 "end_type": end_type,
                             },
                             image=notif_image,
+                            actions=[
+                                {"action": "view", "title": "View Results"},
+                                {"action": "dismiss", "title": "Dismiss"},
+                            ],
                         )
 
                     print(f"[GoalMonitor] Match ended {fixture_id}: "
