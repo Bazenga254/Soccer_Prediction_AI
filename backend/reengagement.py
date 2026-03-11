@@ -249,19 +249,85 @@ TEMPLATE_META = [
 # ═══════════════════════════════════════════════════════
 
 async def get_big_league_fixtures(days=3):
-    """Fetch upcoming fixtures from big leagues only."""
+    """Fetch upcoming fixtures from big leagues. Falls back to daily predictions if API is rate-limited."""
     import football_api
     all_fixtures = await football_api.fetch_all_upcoming_fixtures(days=days)
     # Filter to big leagues and not-started matches only
     big_matches = [
         f for f in all_fixtures
         if f.get("competition", {}).get("id") in BIG_LEAGUE_IDS
-        or f.get("status") in ("NS", "TBD")
+        and f.get("status") in ("NS", "TBD")
     ]
     # Sort by league priority: PL first, then La Liga, etc.
     priority = {39: 1, 140: 2, 78: 3, 135: 4, 61: 5, 2: 0, 3: 6}
     big_matches.sort(key=lambda m: priority.get(m.get("competition", {}).get("id", 999), 99))
-    return big_matches
+
+    if big_matches:
+        return big_matches
+
+    # Fallback: use daily predictions from our database (always available)
+    return _get_matches_from_predictions()
+
+
+# Big league competition codes from API-Football
+BIG_LEAGUE_CODES = {"PL", "PD", "BL1", "SA", "FL1", "CL", "EL", "EPL", "LL", "BL", "SER"}
+
+def _get_matches_from_predictions():
+    """Get match data from today's daily predictions, formatted like API fixtures."""
+    import community
+    today = datetime.now().strftime("%Y-%m-%d")
+    predictions = community.get_daily_free_predictions(today)
+    if not predictions:
+        return []
+
+    # Prioritize big leagues, then fill with other matches
+    big_league_matches = []
+    other_matches = []
+    seen_fixtures = set()
+
+    for p in predictions:
+        fixture_id = p.get("fixture_id", "")
+        if fixture_id in seen_fixtures:
+            continue
+        seen_fixtures.add(fixture_id)
+
+        comp_code = p.get("competition_code") or p.get("competition", "")
+        match_data = {
+            "home_team": {"name": p.get("team_a_name", "Home")},
+            "away_team": {"name": p.get("team_b_name", "Away")},
+            "competition": {"name": _expand_league_code(comp_code), "id": 0},
+            "date": datetime.now().isoformat(),
+            "status": "NS",
+            "fixture_id": fixture_id,
+        }
+
+        if comp_code.upper() in BIG_LEAGUE_CODES:
+            big_league_matches.append(match_data)
+        else:
+            other_matches.append(match_data)
+
+    # Return big leagues first, then fill up to at least 5
+    result = big_league_matches + other_matches
+    return result[:10]
+
+
+def _expand_league_code(code):
+    """Convert short league codes to readable names."""
+    code_map = {
+        "PL": "Premier League", "EPL": "Premier League",
+        "PD": "La Liga", "LL": "La Liga",
+        "BL1": "Bundesliga", "BL": "Bundesliga",
+        "SA": "Serie A", "SER": "Serie A",
+        "FL1": "Ligue 1",
+        "CL": "Champions League",
+        "EL": "Europa League",
+        "ELC": "Championship",
+        "BSA": "Brasileirão",
+        "ALP": "Argentine Liga",
+        "DED": "Eredivisie",
+        "PPL": "Primeira Liga",
+    }
+    return code_map.get(code.upper(), code) if code else "League"
 
 
 async def generate_reengagement_broadcast():

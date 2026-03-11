@@ -242,14 +242,33 @@ export default function BroadcastTab() {
     setReGenerating(false)
   }
 
-  const handleUseTemplate = (template) => {
-    // Populate the compose form with template data and scroll to top
-    setTitle(template.sample_subject || template.name)
-    setMessage(template.description || '')
+  const handleUseTemplate = async (template) => {
+    // Fetch preview to get rendered subject with real match data
+    setReStatusMsg(`Loading "${template.name}" with today's match data...`)
+    try {
+      const res = await axios.get(`/api/admin/reengagement/preview/${template.index}`, { headers: getAuthHeaders() })
+      const realSubject = res.data.subject || template.sample_subject || template.name
+      const matches = res.data.matches || []
+      // Build message body with real match info
+      let body = template.description + '\n\n'
+      if (matches.length > 0) {
+        body += "Featured Matches:\n"
+        matches.forEach(m => {
+          body += `⚽ ${m.home} vs ${m.away} (${m.league})\n`
+        })
+        body += '\nLog in to Spark AI and run your analysis before kickoff!'
+      }
+      setTitle(realSubject)
+      setMessage(body.trim())
+    } catch {
+      // Fallback to static template data if preview fails
+      setTitle(template.sample_subject || template.name)
+      setMessage(template.description || '')
+    }
     setTargetType('all')
     setSelectedUsers([])
-    setReStatusMsg(`Template "${template.name}" loaded into compose form. Choose your audience and channel, then send.`)
-    // Scroll to compose form
+    setChannel('email_push')
+    setReStatusMsg(`Template "${template.name}" loaded with real match data. Choose your audience and send.`)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
