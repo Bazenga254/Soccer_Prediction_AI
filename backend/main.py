@@ -6209,6 +6209,17 @@ async def sitemap_xml():
     return Response(content=xml, media_type="application/xml")
 
 
+# ── SEO Pre-rendering: Serve index.html with injected meta tags ──────
+@app.get("/seo-page/{path:path}")
+async def seo_prerender_page(path: str):
+    """Serve index.html with unique title, description, H1 per page."""
+    from fastapi.responses import HTMLResponse
+    import seo_prerender
+    request_path = f"/{path}" if path else "/"
+    html = seo_prerender.render_page(request_path)
+    return HTMLResponse(content=html)
+
+
 @app.get("/api/today")
 async def get_today_overview():
     """Get today's fixtures + daily predictions for the Today SEO page. No auth required."""
