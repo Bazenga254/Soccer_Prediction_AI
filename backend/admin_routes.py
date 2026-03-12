@@ -1586,6 +1586,12 @@ class B2CTestRequest(BaseModel):
     phone: str       # e.g. "254712345678"
     amount_kes: int  # small amount like 10
 
+class AdminDirectPayoutRequest(BaseModel):
+    user_id: int
+    method: str          # "mpesa" or "whop"
+    phone: str = ""      # required if mpesa
+    amount_usd: float = 0  # 0 = pay full balance
+
 @admin_router.post("/b2c/test")
 async def admin_test_b2c(request: Request, body: B2CTestRequest,
                           x_admin_password: str = Header(None), authorization: str = Header(None)):
@@ -1734,6 +1740,219 @@ async def get_disbursement_history(limit: int = Query(20, ge=1, le=100),
     if not auth:
         raise HTTPException(status_code=403, detail="Admin access required")
     return daraja_payment.get_disbursement_history(limit)
+
+
+# ═══════════════════════════════════════════════════════════
+#  USER BALANCES & DIRECT PAYOUTS
+# ═══════════════════════════════════════════════════════════
+
+@admin_router.get("/user-balances")
+async def get_all_user_balances(x_admin_password: str = Header(None),
+                                 authorization: str = Header(None)):
+    """Get all users with wallet balances > 0, including their phone and Whop info."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin', 'admin'},
+                             required_module="withdrawals", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    import sqlite3 as _sq
+
+    # Get all wallets with balance > 0
+    comm_conn = _sq.connect(os.path.join(os.path.dirname(__file__), "community.db"), timeout=10)
+    comm_conn.row_factory = _sq.Row
+    wallets = comm_conn.execute("""
+        SELECT user_id, balance_usd, balance_kes, total_earned_usd, total_earned_kes, total_sales
+        FROM creator_wallets WHERE balance_usd > 0.001 OR balance_kes > 0.5
+        ORDER BY balance_usd DESC
+    """).fetchall()
+    comm_conn.close()
+
+    if not wallets:
+        return {"users": []}
+
+    # Get user info (name, phone, whop)
+    users_conn = _sq.connect(os.path.join(os.path.dirname(__file__), "users.db"), timeout=10)
+    users_conn.row_factory = _sq.Row
+
+    result = []
+    for w in wallets:
+        uid = w["user_id"]
+        u = users_conn.execute(
+            "SELECT id, username, display_name, email, mpesa_phone, whop_user_id FROM users WHERE id = ?",
+            (uid,)
+        ).fetchone()
+        if not u:
+            continue
+
+        result.append({
+            "user_id": uid,
+            "username": u["username"] or "",
+            "display_name": u["display_name"] or "",
+            "email": u["email"] or "",
+            "mpesa_phone": u["mpesa_phone"] or "",
+            "whop_user_id": u["whop_user_id"] or "",
+            "balance_usd": round(w["balance_usd"], 2),
+            "balance_kes": round(w["balance_kes"], 2),
+            "total_earned_usd": round(w["total_earned_usd"], 2),
+            "total_sales": w["total_sales"],
+        })
+
+    users_conn.close()
+    return {"users": result}
+
+
+@admin_router.post("/direct-payout")
+async def admin_direct_payout(request: Request, body: AdminDirectPayoutRequest,
+                               x_admin_password: str = Header(None),
+                               authorization: str = Header(None)):
+    """Admin sends direct M-Pesa or Whop payout to a user. No threshold required."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'},
+                             required_module="withdrawals", required_action="approve")
+    if not auth:
+        raise HTTPException(status_code=403, detail="Owner access required")
+
+    import sqlite3 as _sq
+
+    # Get user wallet
+    comm_conn = _sq.connect(os.path.join(os.path.dirname(__file__), "community.db"), timeout=10)
+    comm_conn.row_factory = _sq.Row
+    wallet = comm_conn.execute(
+        "SELECT balance_usd FROM creator_wallets WHERE user_id = ?", (body.user_id,)
+    ).fetchone()
+    comm_conn.close()
+
+    if not wallet or wallet["balance_usd"] < 0.01:
+        raise HTTPException(status_code=400, detail="User has no balance")
+
+    payout_usd = body.amount_usd if body.amount_usd > 0 else wallet["balance_usd"]
+    if payout_usd > wallet["balance_usd"]:
+        raise HTTPException(status_code=400, detail=f"Amount ${payout_usd:.2f} exceeds balance ${wallet['balance_usd']:.2f}")
+
+    if body.method == "mpesa":
+        phone = body.phone.strip()
+        if not phone:
+            # Try to get from user profile
+            users_conn = _sq.connect(os.path.join(os.path.dirname(__file__), "users.db"), timeout=10)
+            users_conn.row_factory = _sq.Row
+            u = users_conn.execute("SELECT mpesa_phone FROM users WHERE id = ?", (body.user_id,)).fetchone()
+            users_conn.close()
+            phone = (u["mpesa_phone"] or "") if u else ""
+
+        if not phone or not phone.startswith("254") or len(phone) != 12:
+            raise HTTPException(status_code=400, detail="Valid M-Pesa phone required (254XXXXXXXXX)")
+
+        # Get exchange rate
+        rate_result = await daraja_payment.get_usd_to_kes_quote(payout_usd)
+        if not rate_result["success"]:
+            raise HTTPException(status_code=500, detail="Cannot fetch exchange rate")
+
+        amount_kes = int(round(rate_result["amount_kes"]))
+        rate = rate_result["exchange_rate"]
+
+        if amount_kes < 10:
+            raise HTTPException(status_code=400, detail=f"Amount too small: KES {amount_kes}")
+
+        # Deduct balance first
+        now = datetime.now().isoformat()
+        comm_conn = _sq.connect(os.path.join(os.path.dirname(__file__), "community.db"), timeout=10)
+        comm_conn.row_factory = _sq.Row
+        comm_conn.execute("""
+            UPDATE creator_wallets SET balance_usd = balance_usd - ?, updated_at = ?
+            WHERE user_id = ? AND balance_usd >= ?
+        """, (payout_usd, now, body.user_id, payout_usd))
+        comm_conn.commit()
+
+        # Create disbursement item for tracking
+        comm_conn.execute("""
+            INSERT INTO disbursement_items
+                (batch_id, user_id, phone, amount_usd, amount_kes, exchange_rate,
+                 withdrawal_method, status, created_at)
+            VALUES (0, ?, ?, ?, ?, ?, 'mpesa', 'pending', ?)
+        """, (body.user_id, phone, payout_usd, amount_kes, rate, now))
+        comm_conn.commit()
+        item_id = comm_conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        comm_conn.close()
+
+        # Fire B2C
+        result = await daraja_payment.initiate_b2c_payment(
+            phone=phone, amount_kes=amount_kes,
+            disbursement_item_id=item_id,
+            remarks="SparkAI earnings payout",
+            occasion=f"Direct-{body.user_id}",
+        )
+
+        if not result["success"]:
+            # Refund balance
+            refund_conn = _sq.connect(os.path.join(os.path.dirname(__file__), "community.db"), timeout=10)
+            refund_conn.execute("""
+                UPDATE creator_wallets SET balance_usd = balance_usd + ?, updated_at = ?
+                WHERE user_id = ?
+            """, (payout_usd, now, body.user_id))
+            refund_conn.commit()
+            refund_conn.close()
+            raise HTTPException(status_code=500, detail=f"B2C failed: {result.get('error', 'Unknown')}")
+
+        _log_action(auth, "direct_payout_mpesa", "withdrawals", request, "payout", item_id,
+                    {"user_id": body.user_id, "amount_usd": payout_usd, "amount_kes": amount_kes,
+                     "phone": f"254***{phone[-4:]}"})
+
+        return {
+            "success": True, "method": "mpesa",
+            "amount_usd": payout_usd, "amount_kes": amount_kes,
+            "phone": f"254***{phone[-4:]}", "item_id": item_id,
+            "message": f"KES {amount_kes} sent to {phone}. Check M-Pesa confirmation.",
+        }
+
+    elif body.method == "whop":
+        users_conn = _sq.connect(os.path.join(os.path.dirname(__file__), "users.db"), timeout=10)
+        users_conn.row_factory = _sq.Row
+        u = users_conn.execute("SELECT whop_user_id FROM users WHERE id = ?", (body.user_id,)).fetchone()
+        users_conn.close()
+
+        whop_uid = (u["whop_user_id"] or "") if u else ""
+        if not whop_uid:
+            raise HTTPException(status_code=400, detail="User has no linked Whop account")
+
+        # Deduct balance
+        now = datetime.now().isoformat()
+        comm_conn = _sq.connect(os.path.join(os.path.dirname(__file__), "community.db"), timeout=10)
+        comm_conn.execute("""
+            UPDATE creator_wallets SET balance_usd = balance_usd - ?, updated_at = ?
+            WHERE user_id = ? AND balance_usd >= ?
+        """, (payout_usd, now, body.user_id, payout_usd))
+        comm_conn.commit()
+        comm_conn.close()
+
+        import whop_payment
+        transfer_result = whop_payment.create_transfer(
+            destination_id=whop_uid, amount_usd=payout_usd,
+            notes=f"Earnings payout for user #{body.user_id}",
+            idempotence_key=f"direct_{body.user_id}_{now}",
+        )
+
+        if not transfer_result.get("success"):
+            # Refund
+            refund_conn = _sq.connect(os.path.join(os.path.dirname(__file__), "community.db"), timeout=10)
+            refund_conn.execute("""
+                UPDATE creator_wallets SET balance_usd = balance_usd + ?, updated_at = ?
+                WHERE user_id = ?
+            """, (payout_usd, now, body.user_id))
+            refund_conn.commit()
+            refund_conn.close()
+            raise HTTPException(status_code=500,
+                                detail=f"Whop transfer failed: {transfer_result.get('error', 'Unknown')}")
+
+        _log_action(auth, "direct_payout_whop", "withdrawals", request, "payout", body.user_id,
+                    {"amount_usd": payout_usd, "whop_user_id": whop_uid})
+
+        return {
+            "success": True, "method": "whop",
+            "amount_usd": payout_usd,
+            "transfer_id": transfer_result.get("transfer_id", ""),
+            "message": f"${payout_usd:.2f} sent via Whop",
+        }
+    else:
+        raise HTTPException(status_code=400, detail="Method must be 'mpesa' or 'whop'")
 
 
 # ═══════════════════════════════════════════════════════════

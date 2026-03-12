@@ -128,6 +128,66 @@ function ProtectedApp() {
   }
 
   if (!isAuthenticated) {
+    // Allow public access to news, blog, and docs pages for SEO
+    const path = window.location.pathname
+    if (path.startsWith('/news/') || path.startsWith('/blog/') || path.startsWith('/docs')) {
+      return (
+        <div className="app">
+          <div style={{
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+            padding: '12px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+          }}>
+            <a href="/" style={{ color: '#fff', fontWeight: 700, fontSize: 20, textDecoration: 'none' }}>
+              Spark AI
+            </a>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <a href="/" style={{
+                padding: '8px 20px', borderRadius: 8, background: '#6366f1', color: '#fff',
+                fontWeight: 600, fontSize: 14, textDecoration: 'none',
+              }}>Sign Up Free</a>
+              <a href="/" style={{
+                padding: '8px 20px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)',
+                color: '#fff', fontWeight: 500, fontSize: 14, textDecoration: 'none',
+              }}>Log In</a>
+            </div>
+          </div>
+          <main className="main-content">
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/news" element={<NewsIndex />} />
+                <Route path="/news/:slug" element={<NewsArticle />} />
+                <Route path="/blog" element={<BlogIndex />} />
+                <Route path="/blog/:slug" element={<BlogArticle />} />
+                <Route path="/docs" element={<DocsPage />} />
+                <Route path="/docs/:sectionId" element={<DocsPage />} />
+                <Route path="*" element={<LandingPage />} />
+              </Routes>
+            </Suspense>
+          </main>
+          {/* CTA banner at bottom */}
+          <div style={{
+            position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 999,
+            background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+            padding: '14px 24px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
+            boxShadow: '0 -4px 20px rgba(0,0,0,0.3)',
+          }}>
+            <span style={{ color: '#fff', fontWeight: 500, fontSize: 15 }}>
+              Get AI-powered football predictions, live scores & match analysis
+            </span>
+            <a href="/" style={{
+              padding: '8px 24px', borderRadius: 8, background: '#fff', color: '#4f46e5',
+              fontWeight: 700, fontSize: 14, textDecoration: 'none', whiteSpace: 'nowrap',
+            }}>Join Spark AI - It's Free</a>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <Suspense fallback={<PageLoader />}>
         <LandingPage />

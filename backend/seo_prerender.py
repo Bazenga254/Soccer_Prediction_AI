@@ -216,6 +216,22 @@ def render_page(request_path: str) -> str:
         except Exception:
             pass
 
+    # 3b. News article pages: /news/<slug>
+    news_match = re.match(r"^/news/([a-z0-9-]+)$", clean_path)
+    if news_match:
+        slug = news_match.group(1)
+        try:
+            import blog as blog_mod
+            post = blog_mod.get_post_by_slug(slug)
+            if post:
+                title = f"{post['title']} | Spark AI Football News"
+                desc = post.get("excerpt", post["title"])[:160]
+                h1 = post["title"]
+                canonical = f"{BASE_URL}{path}"
+                return _inject_seo(html, title, desc, h1, canonical)
+        except Exception:
+            pass
+
     # 4. Docs section pages: /docs/<sectionId>
     docs_match = re.match(r"^/docs/([a-z0-9-]+)$", clean_path)
     if docs_match:

@@ -1906,7 +1906,7 @@ async def initiate_b2c_payment(phone: str, amount_kes: int, disbursement_item_id
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"{DARAJA_BASE_URL}/mpesa/b2c/v1/paymentrequest",
+                f"{DARAJA_BASE_URL}/mpesa/b2c/v3/paymentrequest",
                 json=payload,
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             ) as resp:

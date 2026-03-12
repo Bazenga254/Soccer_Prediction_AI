@@ -238,6 +238,8 @@ async def startup():
     asyncio.create_task(goal_monitor.goal_score_monitor())
     asyncio.create_task(social_media_hub.check_scheduled_posts())
     asyncio.create_task(_reengagement_task())
+    asyncio.create_task(_daily_match_reminders())
+    asyncio.create_task(_weekly_unverified_reminder())
     asyncio.create_task(_pro_expiry_checker())
     asyncio.create_task(_subscription_reminder_task())
 
@@ -258,6 +260,8 @@ async def startup():
     print("[OK] Bot heartbeat system started")
     print("[OK] Prediction result checker started (5-min interval)")
     print("[OK] Weekly disbursement generator started (Fridays 10:00 EAT)")
+    print("[OK] Auto match reminders started (daily 3pm & 6pm EAT)")
+    print("[OK] Unverified user reminder started (Fridays 10am EAT)")
     print("[OK] Daily free predictions generator started (30-min check interval)")
     print("[OK] Goal score monitor started (45-sec interval)")
     print("[OK] Re-engagement email generator started (daily 9:00 AM EAT)")
@@ -2182,6 +2186,94 @@ async def _reengagement_task():
         except Exception as e:
             print(f"[RE-ENGAGEMENT] Error: {e}")
         await asyncio.sleep(300)  # Check every 5 minutes
+
+
+async def _daily_match_reminders():
+    """Background task: send automated match reminder broadcasts at 3pm and 6pm EAT daily.
+    Picks a random re-engagement template, fetches real match data, and sends via email+push."""
+    await asyncio.sleep(90)
+    sent_today = set()  # Track which hours we've already sent for today
+    while True:
+        try:
+            now = datetime.now()
+            eat_hour = (now.hour + 3) % 24
+            today_key = now.strftime("%Y-%m-%d")
+
+            # Send at 3pm EAT (12:00 UTC) and 6pm EAT (15:00 UTC)
+            target_hours = {15, 18}
+            hour_key = f"{today_key}-{eat_hour}"
+
+            if eat_hour in target_hours and now.minute < 5 and hour_key not in sent_today:
+                print(f"[AUTO-BROADCAST] Sending {eat_hour}:00 EAT match reminder...")
+                import reengagement
+                import random as _rnd
+
+                matches = await reengagement.get_big_league_fixtures(days=2)
+                if matches:
+                    template_fn = _rnd.choice(reengagement.ALL_TEMPLATES)
+                    template_idx = reengagement.ALL_TEMPLATES.index(template_fn)
+                    result = template_fn("there", matches)
+
+                    # Build match lines for message body
+                    match_lines = []
+                    for m in matches[:3]:
+                        league = m.get("competition", {}).get("name", "")
+                        home = m.get("home_team", {}).get("name", "")
+                        away = m.get("away_team", {}).get("name", "")
+                        match_lines.append(f"{home} vs {away} ({league})")
+
+                    broadcast_result = community.create_broadcast(
+                        sender_id=0,
+                        sender_name="System (Auto)",
+                        title=result["subject"],
+                        message=f"[TEMPLATE:{template_idx}]\n---\nFeatured Matches:\n" + "\n".join(match_lines),
+                        auto_approve=True,
+                        channel="email_push",
+                        target_type="all",
+                    )
+                    sent_today.add(hour_key)
+                    print(f"[AUTO-BROADCAST] Sent to all users: {broadcast_result.get('recipient_count', '?')} recipients")
+                else:
+                    print("[AUTO-BROADCAST] No matches found, skipping")
+                    sent_today.add(hour_key)
+
+            # Reset tracking at midnight
+            if eat_hour == 0 and now.minute < 5:
+                sent_today.clear()
+
+        except Exception as e:
+            print(f"[AUTO-BROADCAST] Error: {e}")
+        await asyncio.sleep(300)
+
+
+async def _weekly_unverified_reminder():
+    """Background task: send registration reminder to unverified users every Friday at 10am EAT."""
+    await asyncio.sleep(150)
+    last_sent_week = None
+    while True:
+        try:
+            now = datetime.now()
+            eat_hour = (now.hour + 3) % 24
+            # Friday = weekday 4, at 10am EAT (7:00 UTC)
+            current_week = now.strftime("%Y-W%U")
+
+            if now.weekday() == 4 and eat_hour == 10 and now.minute < 5 and current_week != last_sent_week:
+                print("[UNVERIFIED-REMINDER] Sending weekly reminder to unverified users...")
+
+                broadcast_result = community.create_broadcast(
+                    sender_id=0,
+                    sender_name="System (Auto)",
+                    title="Complete Your Spark AI Registration",
+                    message="You're almost there! Complete your email verification to unlock AI match predictions, live scores, and community features. It only takes a minute.",
+                    auto_approve=True,
+                    channel="email",
+                    target_type="unverified",
+                )
+                last_sent_week = current_week
+                print(f"[UNVERIFIED-REMINDER] Sent: {broadcast_result.get('recipient_count', '?')} unverified users")
+        except Exception as e:
+            print(f"[UNVERIFIED-REMINDER] Error: {e}")
+        await asyncio.sleep(300)
 
 
 async def _pro_expiry_checker():

@@ -14,6 +14,7 @@ const CATEGORIES = [
   { key: 'tips', label: 'Tips' },
   { key: 'tutorials', label: 'Tutorials' },
   { key: 'updates', label: 'Updates' },
+  { key: 'documentation', label: 'Documentation' },
 ]
 
 export default function BlogIndex() {

@@ -3,6 +3,7 @@ import axios from 'axios'
 import { useAdmin } from '../context/AdminContext'
 
 const SUB_TABS = [
+  { key: 'balances', label: 'User Balances', icon: '\u{1F4B0}' },
   { key: 'batch', label: 'Batch Disbursements', icon: '\u{1F4E6}' },
   { key: 'pending', label: 'Individual Requests', icon: '\u{23F3}' },
   { key: 'options', label: 'Withdrawal Methods', icon: '\u{1F4B3}' },
@@ -23,7 +24,7 @@ const STATUS_COLORS = {
 
 export default function WithdrawalsTab() {
   const { getAuthHeaders } = useAdmin()
-  const [activeSubTab, setActiveSubTab] = useState('batch')
+  const [activeSubTab, setActiveSubTab] = useState('balances')
 
   // Batch state
   const [pendingBatch, setPendingBatch] = useState(null)
@@ -45,6 +46,13 @@ export default function WithdrawalsTab() {
   const [history, setHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [expandedBatchId, setExpandedBatchId] = useState(null)
+
+  // User balances state
+  const [balanceUsers, setBalanceUsers] = useState([])
+  const [balancesLoading, setBalancesLoading] = useState(false)
+  const [payingUser, setPayingUser] = useState(null)
+  const [phoneInput, setPhoneInput] = useState('')
+  const [payingInProgress, setPayingInProgress] = useState(false)
 
   // Shared messages
   const [statusMsg, setStatusMsg] = useState('')
@@ -89,13 +97,23 @@ export default function WithdrawalsTab() {
     setHistoryLoading(false)
   }, [getAuthHeaders])
 
+  const fetchBalances = useCallback(async () => {
+    setBalancesLoading(true)
+    try {
+      const res = await axios.get('/api/admin/user-balances', { headers: getAuthHeaders() })
+      setBalanceUsers(res.data.users || [])
+    } catch { /* ignore */ }
+    setBalancesLoading(false)
+  }, [getAuthHeaders])
+
   // Lazy load on tab switch
   useEffect(() => {
-    if (activeSubTab === 'batch') fetchBatch()
+    if (activeSubTab === 'balances') fetchBalances()
+    else if (activeSubTab === 'batch') fetchBatch()
     else if (activeSubTab === 'pending') fetchWithdrawals()
     else if (activeSubTab === 'options') fetchOptions()
     else if (activeSubTab === 'history') fetchHistory()
-  }, [activeSubTab, fetchBatch, fetchWithdrawals, fetchOptions, fetchHistory])
+  }, [activeSubTab, fetchBalances, fetchBatch, fetchWithdrawals, fetchOptions, fetchHistory])
 
   // ── Batch Actions ──
 
@@ -170,6 +188,141 @@ export default function WithdrawalsTab() {
     } catch (err) {
       alert(err.response?.data?.detail || 'Retry failed')
     }
+  }
+
+  // ── Direct Payout Handler ──
+
+  const handleDirectPayout = async (user, method) => {
+    const phone = method === 'mpesa' ? (phoneInput || user.mpesa_phone) : ''
+    if (method === 'mpesa' && (!phone || !phone.startsWith('254') || phone.length !== 12)) {
+      setErrorMsg(`Enter a valid M-Pesa phone for ${user.display_name || user.username} (254XXXXXXXXX)`)
+      return
+    }
+    if (!confirm(`Send $${user.balance_usd.toFixed(2)} to ${user.display_name || user.username} via ${method === 'mpesa' ? 'M-Pesa' : 'Whop'}?`)) return
+
+    setPayingInProgress(true)
+    setErrorMsg('')
+    setStatusMsg('')
+    try {
+      const res = await axios.post('/api/admin/direct-payout', {
+        user_id: user.user_id, method, phone,
+      }, { headers: getAuthHeaders() })
+      setStatusMsg(res.data.message)
+      setPayingUser(null)
+      setPhoneInput('')
+      fetchBalances()
+    } catch (err) {
+      setErrorMsg(err.response?.data?.detail || `Payout failed for ${user.display_name}`)
+    }
+    setPayingInProgress(false)
+  }
+
+  // ── Render: User Balances ──
+
+  const renderBalancesSection = () => {
+    if (balancesLoading) return <div className="admin-loading">Loading user balances...</div>
+
+    return (
+      <div className="wd-section">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <h4 style={{ margin: 0 }}>Users with Pending Balances ({balanceUsers.length})</h4>
+          <button className="admin-btn admin-btn-sm admin-btn-outline" onClick={fetchBalances}>Refresh</button>
+        </div>
+
+        {balanceUsers.length === 0 ? (
+          <div className="admin-empty">
+            <div className="admin-empty-icon">{'\u{1F4B0}'}</div>
+            <div className="admin-empty-title">No Pending Balances</div>
+            <p style={{ color: 'var(--admin-text-muted)', fontSize: 13 }}>No users have earnings to withdraw.</p>
+          </div>
+        ) : (
+          <div className="admin-withdrawal-list">
+            {balanceUsers.map(user => {
+              const isExpanded = payingUser === user.user_id
+              const phone = phoneInput || user.mpesa_phone || ''
+              return (
+                <div key={user.user_id} className="admin-withdrawal-card">
+                  <div className="admin-withdrawal-header">
+                    <span className="admin-withdrawal-user">
+                      {user.display_name || user.username || `User #${user.user_id}`}
+                      <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--admin-text-muted)' }}>
+                        ID: {user.user_id}
+                      </span>
+                    </span>
+                    <span className="admin-withdrawal-amount" style={{ color: '#22c55e', fontWeight: 700, fontSize: 18 }}>
+                      ${user.balance_usd.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="admin-withdrawal-details">
+                    <span>Earned: ${user.total_earned_usd.toFixed(2)}</span>
+                    <span>Sales: {user.total_sales}</span>
+                    {user.mpesa_phone && <span>M-Pesa: {user.mpesa_phone}</span>}
+                    {user.whop_user_id && <span>Whop: Linked</span>}
+                    {user.email && <span>{user.email}</span>}
+                  </div>
+                  <div className="admin-withdrawal-actions" style={{ gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      className="admin-btn admin-btn-sm"
+                      style={{ background: '#22c55e', color: '#fff', fontWeight: 600 }}
+                      disabled={payingInProgress}
+                      onClick={() => {
+                        if (isExpanded) {
+                          setPayingUser(null); setPhoneInput('')
+                        } else {
+                          setPayingUser(user.user_id)
+                          setPhoneInput(user.mpesa_phone || '')
+                        }
+                      }}
+                    >
+                      Pay via M-Pesa
+                    </button>
+                    {user.whop_user_id && (
+                      <button
+                        className="admin-btn admin-btn-sm"
+                        style={{ background: '#8b5cf6', color: '#fff', fontWeight: 600 }}
+                        disabled={payingInProgress}
+                        onClick={() => handleDirectPayout(user, 'whop')}
+                      >
+                        Pay via Whop
+                      </button>
+                    )}
+                  </div>
+                  {isExpanded && (
+                    <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input
+                        type="text"
+                        placeholder="254XXXXXXXXX"
+                        value={phone}
+                        onChange={e => setPhoneInput(e.target.value)}
+                        style={{
+                          padding: '8px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)',
+                          background: 'rgba(255,255,255,0.05)', color: '#fff', fontFamily: 'monospace',
+                          fontSize: 14, width: 180,
+                        }}
+                      />
+                      <button
+                        className="admin-btn admin-btn-sm"
+                        style={{ background: '#22c55e', color: '#fff', fontWeight: 600 }}
+                        disabled={payingInProgress}
+                        onClick={() => handleDirectPayout(user, 'mpesa')}
+                      >
+                        {payingInProgress ? 'Sending...' : `Send KES to ${phone.slice(-4) || '...'}`}
+                      </button>
+                      <button
+                        className="admin-btn admin-btn-sm admin-btn-outline"
+                        onClick={() => { setPayingUser(null); setPhoneInput('') }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
   }
 
   // ── Render: Batch Disbursements ──
@@ -620,6 +773,7 @@ export default function WithdrawalsTab() {
       {statusMsg && <div className="wd-status-msg success">{statusMsg}</div>}
       {errorMsg && <div className="wd-status-msg error">{errorMsg}</div>}
 
+      {activeSubTab === 'balances' && renderBalancesSection()}
       {activeSubTab === 'batch' && renderBatchSection()}
       {activeSubTab === 'pending' && renderPendingSection()}
       {activeSubTab === 'options' && renderOptionsSection()}

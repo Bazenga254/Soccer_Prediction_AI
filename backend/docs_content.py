@@ -232,17 +232,17 @@ DOCS_SECTIONS = [
         ]
     },
     {
-        "id": "jackpot",
-        "title": "Jackpot Analyzer",
+        "id": "multimatch",
+        "title": "MultiMatch Analyzer",
         "icon": "trophy",
         "content": [
             {
-                "heading": "What is the Jackpot Analyzer",
-                "body": "The Jackpot Analyzer helps you build multi-bet accumulators by analyzing multiple matches together. It uses AI to evaluate the combined probability of your selections and suggest optimal combinations."
+                "heading": "What is the MultiMatch Analyzer",
+                "body": "The MultiMatch Analyzer helps you build multi-bet accumulators by analyzing multiple matches together. It uses AI to evaluate the combined probability of your selections and suggest optimal combinations."
             },
             {
-                "heading": "Free vs Pro Jackpot Access",
-                "body": "Free users get 2 jackpot analyses initially, then 1 per 72 hours. Pro subscribers enjoy unlimited jackpot analyses with no waiting period."
+                "heading": "Free vs Pro MultiMatch Access",
+                "body": "Free users get 2 MultiMatch analyses initially, then 1 per 72 hours. Pro subscribers enjoy unlimited MultiMatch analyses with no waiting period."
             },
             {
                 "heading": "Using the Analyzer",
