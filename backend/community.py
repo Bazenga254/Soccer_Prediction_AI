@@ -4027,6 +4027,34 @@ def _execute_broadcast(broadcast_id: int) -> Dict:
                                 subject=personalized["subject"],
                                 html_body=personalized["html_body"],
                             )
+                        elif (broadcast.get("message") or "").startswith("[TEMPLATE:"):
+                            # Auto-broadcast with re-engagement template
+                            import reengagement
+                            msg_text = broadcast["message"] or ""
+                            template_idx = 0
+                            try:
+                                template_idx = int(msg_text.split("]")[0].split(":")[1])
+                            except (ValueError, IndexError):
+                                template_idx = 0
+                            template_fn = reengagement.ALL_TEMPLATES[template_idx % len(reengagement.ALL_TEMPLATES)]
+                            first_name = (user_info.get("full_name") or user_info.get("display_name") or "there").split()[0].capitalize()
+                            import asyncio as _aio
+                            try:
+                                loop = _aio.get_event_loop()
+                                if loop.is_running():
+                                    import concurrent.futures
+                                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                                        _matches = pool.submit(lambda: _aio.run(reengagement.get_big_league_fixtures(days=3))).result(timeout=30)
+                                else:
+                                    _matches = loop.run_until_complete(reengagement.get_big_league_fixtures(days=3))
+                            except Exception:
+                                _matches = []
+                            personalized = template_fn(first_name, _matches)
+                            ok = user_auth.send_reengagement_email(
+                                to_email=user_info["email"],
+                                subject=personalized["subject"],
+                                html_body=personalized["html_body"],
+                            )
                         else:
                             ok = user_auth.send_notification_email(
                                 to_email=user_info["email"],
