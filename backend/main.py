@@ -185,6 +185,10 @@ async def startup():
     # Initialize promotional packages
     promotional_packages.init_promo_db()
 
+    # Initialize super referee system
+    import super_referee
+    super_referee.init_super_referee_db()
+
     # Initialize blog
     blog.init_blog_db()
     blog.seed_from_blog_content()
@@ -2940,6 +2944,43 @@ async def get_referral_earnings(authorization: str = Header(None)):
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return whop_payment.get_referral_earnings(payload["user_id"])
+
+
+# ==================== SUPER REFEREE ENDPOINTS ====================
+
+class SuperRefereeApplyRequest(BaseModel):
+    reason: str = ""
+
+@app.post("/api/user/super-referee/apply")
+async def apply_super_referee(body: SuperRefereeApplyRequest, authorization: str = Header(None)):
+    """Apply to become a super referee."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    import super_referee
+    result = super_referee.apply_for_super_referee(payload["user_id"], body.reason)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.get("/api/user/super-referee/status")
+async def get_super_referee_status(authorization: str = Header(None)):
+    """Get user's super referee application status."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    import super_referee
+    status = super_referee.get_application_status(payload["user_id"])
+    return status or {"is_super_referee": False, "application": None}
+
+@app.get("/api/user/super-referee/dashboard")
+async def get_super_referee_dashboard(authorization: str = Header(None)):
+    """Get super referee dashboard data (level 1 & 2 referrals, earnings)."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    import super_referee
+    return super_referee.get_super_referee_dashboard(payload["user_id"])
 
 
 # ==================== COINBASE COMMERCE ENDPOINTS ====================

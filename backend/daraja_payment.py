@@ -967,6 +967,31 @@ def _complete_transaction(transaction_id: int) -> Dict:
     except Exception as e:
         logger.error(f"Failed to send invoice email for tx {transaction_id}: {e}")
 
+    # Send in-app + push notification to user about their purchase
+    try:
+        import community
+        amount_kes = tx["amount_kes"] or 0
+        amount_usd = tx["amount_usd"] or 0
+        t_type = tx["transaction_type"]
+        if t_type == "subscription":
+            notif_title = "Subscription Activated!"
+            notif_msg = f"Your subscription is now active via M-Pesa (KES {amount_kes:,.0f}). Enjoy Spark AI!"
+        elif t_type in ("balance_topup", "deposit"):
+            notif_title = "Credits Added!"
+            notif_msg = f"KES {amount_kes:,.0f} has been added to your account via M-Pesa. Your credits are ready to use."
+        else:
+            notif_title = "Payment Confirmed!"
+            notif_msg = f"Your M-Pesa payment of KES {amount_kes:,.0f} has been processed successfully."
+        community.create_notification(
+            user_id=tx["user_id"],
+            notif_type="payment_confirmed",
+            title=notif_title,
+            message=notif_msg,
+            metadata={"amount_kes": amount_kes, "amount_usd": amount_usd, "transaction_type": t_type, "payment_method": "mpesa"},
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send M-Pesa payment notification: {e}")
+
     return {"success": True, "transaction": _tx_to_dict(updated_tx)}
 
 

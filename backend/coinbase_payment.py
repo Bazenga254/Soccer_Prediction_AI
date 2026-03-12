@@ -356,20 +356,24 @@ def _fulfill_payment(user_id: int, transaction_type: str, reference_id: str,
     except Exception as e:
         logger.error(f"[NOWPayments] Failed to send invoice email: {e}")
 
-    # Send push notification
+    # Send in-app + push notification
     try:
-        import push_notifications
         type_labels = {
-            "subscription": "Subscription activated",
-            "balance_topup": "Credits purchased",
-            "prediction_purchase": "Prediction unlocked",
+            "subscription": "Subscription Activated!",
+            "balance_topup": "Credits Added!",
+            "prediction_purchase": "Prediction Unlocked!",
         }
-        push_notifications.send_push_notification(
+        type_msgs = {
+            "subscription": f"Your subscription is now active via crypto. Enjoy unlimited access!",
+            "balance_topup": f"${amount_usd:.2f} in credits added via {crypto_currency or 'crypto'}. Ready to use!",
+            "prediction_purchase": f"Your prediction purchase of ${amount_usd:.2f} via crypto is confirmed.",
+        }
+        community.create_notification(
             user_id=user_id,
-            notif_type="withdrawal",
-            title="Crypto Payment Confirmed",
-            message=f"{type_labels.get(transaction_type, 'Payment')} - ${amount_usd:.2f} via {crypto_currency or 'crypto'}",
-            metadata={"charge_code": charge_code},
+            notif_type="payment_confirmed",
+            title=type_labels.get(transaction_type, "Payment Confirmed!"),
+            message=type_msgs.get(transaction_type, f"Payment of ${amount_usd:.2f} via crypto confirmed."),
+            metadata={"amount_usd": amount_usd, "transaction_type": transaction_type, "payment_method": "crypto"},
         )
     except Exception as e:
         logger.error(f"[NOWPayments] Failed to send notification: {e}")
@@ -503,6 +507,27 @@ def _process_referral_commission(user_id: int, reference_id: str, payment_method
             adjustment_type="referral",
         )
         logger.info(f"[NOWPayments] Referral commission: ${commission} to user {referrer_id}")
+
+        # Process super referee cut (level 2)
+        try:
+            import super_referee
+            sr_result = super_referee.process_super_referee_cut(
+                referee_id=referrer_id,
+                referred_id=user_id,
+                commission_amount=commission,
+                payment_method=payment_method,
+            )
+            if sr_result:
+                community.adjust_user_balance(
+                    user_id=referrer_id,
+                    amount_usd=-sr_result["super_amount"],
+                    amount_kes=0,
+                    reason=f"Super referee cut deducted",
+                    adjustment_type="super_referee_deduction",
+                )
+                logger.info(f"[NOWPayments] Super referee cut: ${sr_result['super_amount']}")
+        except Exception as e:
+            logger.warning(f"[NOWPayments] Super referee error: {e}")
 
     except Exception as e:
         logger.error(f"[NOWPayments] Referral commission error: {e}")

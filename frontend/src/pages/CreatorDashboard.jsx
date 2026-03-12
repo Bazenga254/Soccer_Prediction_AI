@@ -17,6 +17,11 @@ export default function CreatorDashboard() {
   const [hidden, setHidden] = useState(() => localStorage.getItem('earnings_hidden') === 'true')
   const [activeTab, setActiveTab] = useState('analytics')
   const [referralEarnings, setReferralEarnings] = useState({ total_earned: 0, earnings: [] })
+  const [srStatus, setSrStatus] = useState({ is_super_referee: false, application: null })
+  const [srDashboard, setSrDashboard] = useState(null)
+  const [srApplyReason, setSrApplyReason] = useState('')
+  const [srApplying, setSrApplying] = useState(false)
+  const [srMsg, setSrMsg] = useState('')
   const refreshRef = useRef(null)
 
   // Withdrawal methods state
@@ -34,16 +39,24 @@ export default function CreatorDashboard() {
 
   const fetchData = async () => {
     try {
-      const [dashRes, wdRes, refRes, whopRes] = await Promise.all([
+      const [dashRes, wdRes, refRes, whopRes, srStatusRes] = await Promise.all([
         axios.get('/api/creator/dashboard'),
         axios.get('/api/withdrawal/history'),
         axios.get('/api/user/referral-earnings').catch(() => ({ data: { total_earned: 0, earnings: [] } })),
         axios.get('/api/withdrawal/whop-available').catch(() => ({ data: { available: false } })),
+        axios.get('/api/user/super-referee/status').catch(() => ({ data: { is_super_referee: false, application: null } })),
       ])
       setData(dashRes.data)
       setWithdrawals(wdRes.data.withdrawals || [])
       setReferralEarnings(refRes.data)
       setWhopAvailable(whopRes.data.available)
+      setSrStatus(srStatusRes.data)
+      if (srStatusRes.data.is_super_referee) {
+        try {
+          const srDash = await axios.get('/api/user/super-referee/dashboard')
+          setSrDashboard(srDash.data)
+        } catch {}
+      }
     } catch { /* ignore */ }
     setLoading(false)
   }
@@ -288,6 +301,9 @@ export default function CreatorDashboard() {
         </button>
         <button style={{...styles.tab, ...(activeTab === 'referrals' ? styles.tabActive : {})}} onClick={() => setActiveTab('referrals')}>
           {t('creator.referralEarnings')} ({referralEarnings.earnings.length})
+        </button>
+        <button style={{...styles.tab, ...(activeTab === 'super_referee' ? styles.tabActive : {}), ...(srStatus.is_super_referee ? {borderColor: '#f59e0b'} : {})}} onClick={() => setActiveTab('super_referee')}>
+          Super Referee {srStatus.is_super_referee ? '★' : ''}
         </button>
       </div>
 
@@ -784,6 +800,213 @@ export default function CreatorDashboard() {
         </>
       )}
 
+      {/* Super Referee Tab */}
+      {activeTab === 'super_referee' && (
+        <>
+          {srStatus.is_super_referee ? (
+            /* ── Super Referee Dashboard ── */
+            <>
+              <div className="creator-section">
+                <h3 style={{color: '#f59e0b', marginBottom: 16}}>Super Referee Dashboard</h3>
+                <div style={styles.analyticsGrid}>
+                  <div style={styles.analyticsCard}>
+                    <div style={styles.analyticsIcon}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                    </div>
+                    <div style={styles.analyticsValue}>{srDashboard?.total_direct || 0}</div>
+                    <div style={styles.analyticsLabel}>Direct Referrals (L1)</div>
+                  </div>
+                  <div style={styles.analyticsCard}>
+                    <div style={styles.analyticsIcon}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </div>
+                    <div style={styles.analyticsValue}>{srDashboard?.total_sub || 0}</div>
+                    <div style={styles.analyticsLabel}>Sub-Referrals (L2)</div>
+                  </div>
+                  <div style={styles.analyticsCard}>
+                    <div style={styles.analyticsIcon}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    </div>
+                    <div style={styles.analyticsValue}>{hidden ? '****' : `$${(srDashboard?.total_earnings || 0).toFixed(2)}`}</div>
+                    <div style={styles.analyticsLabel}>Super Referee Earnings</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Top Performer */}
+              {srDashboard?.top_performer && (
+                <div className="creator-section" style={{background: 'linear-gradient(135deg, rgba(245,158,11,0.1), rgba(245,158,11,0.02))', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 12, padding: 16, marginBottom: 16}}>
+                  <h4 style={{color: '#f59e0b', margin: '0 0 8px'}}>Top Performer</h4>
+                  <div style={{display: 'flex', alignItems: 'center', gap: 12}}>
+                    <span style={{width: 36, height: 36, borderRadius: '50%', background: srDashboard.top_performer.avatar_color || '#6c5ce7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 14}}>
+                      {(srDashboard.top_performer.display_name || '?')[0].toUpperCase()}
+                    </span>
+                    <div>
+                      <div style={{fontWeight: 600, color: '#e2e8f0'}}>{srDashboard.top_performer.display_name}</div>
+                      <div style={{fontSize: 12, color: '#94a3b8'}}>@{srDashboard.top_performer.username} — {srDashboard.top_performer.their_referrals} referrals — {hidden ? '***' : `$${(srDashboard.top_performer.earnings_from || 0).toFixed(2)}`} earned for you</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Direct Referrals (Level 1) */}
+              <div className="creator-section">
+                <h3>Your Referrals (Level 1)</h3>
+                {(srDashboard?.direct_referrals || []).length === 0 ? (
+                  <p className="creator-empty-text">No referrals yet</p>
+                ) : (
+                  <div className="creator-sales-list">
+                    {srDashboard.direct_referrals.map((r, i) => (
+                      <div key={i} className="creator-sale-row" style={{alignItems: 'center'}}>
+                        <span style={{display: 'flex', alignItems: 'center', gap: 8, flex: 1}}>
+                          <span style={{width: 28, height: 28, borderRadius: '50%', background: r.avatar_color || '#6c5ce7', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 11, flexShrink: 0}}>
+                            {(r.display_name || '?')[0].toUpperCase()}
+                          </span>
+                          <span>
+                            <span style={{fontWeight: 600, color: '#e2e8f0', fontSize: 13}}>{r.display_name}</span>
+                            <br/>
+                            <span style={{fontSize: 11, color: '#94a3b8'}}>@{r.username} — {r.their_referrals} sub-referrals</span>
+                          </span>
+                        </span>
+                        <span className={`tier-tag ${r.tier}`} style={{fontSize: 10, padding: '2px 8px'}}>{r.tier?.toUpperCase()}</span>
+                        <span className="sale-amount" style={{color: '#22c55e', minWidth: 70, textAlign: 'right'}}>
+                          {hidden ? '***' : `$${(r.earnings_from || 0).toFixed(2)}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Sub-Referrals (Level 2) */}
+              <div className="creator-section">
+                <h3>Sub-Referrals (Level 2)</h3>
+                <p style={{fontSize: 12, color: '#94a3b8', marginBottom: 12}}>People referred by your referrals — you earn 30% of their referral commissions</p>
+                {(srDashboard?.sub_referrals || []).length === 0 ? (
+                  <p className="creator-empty-text">No sub-referrals yet</p>
+                ) : (
+                  <div className="creator-sales-list">
+                    {srDashboard.sub_referrals.map((r, i) => (
+                      <div key={i} className="creator-sale-row" style={{alignItems: 'center'}}>
+                        <span style={{display: 'flex', alignItems: 'center', gap: 8, flex: 1}}>
+                          <span style={{width: 28, height: 28, borderRadius: '50%', background: r.avatar_color || '#6c5ce7', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 11, flexShrink: 0}}>
+                            {(r.display_name || '?')[0].toUpperCase()}
+                          </span>
+                          <span>
+                            <span style={{fontWeight: 600, color: '#e2e8f0', fontSize: 13}}>{r.display_name}</span>
+                            <br/>
+                            <span style={{fontSize: 11, color: '#94a3b8'}}>via @{r.referred_by_username}</span>
+                          </span>
+                        </span>
+                        <span className={`tier-tag ${r.tier}`} style={{fontSize: 10, padding: '2px 8px'}}>{r.tier?.toUpperCase()}</span>
+                        <span className="sale-date">{new Date(r.created_at).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Earnings */}
+              {(srDashboard?.recent_earnings || []).length > 0 && (
+                <div className="creator-section">
+                  <h3>Recent Super Referee Earnings</h3>
+                  <div className="creator-sales-list">
+                    {srDashboard.recent_earnings.map((e, i) => (
+                      <div key={i} className="creator-sale-row">
+                        <span className="sale-match">
+                          <span style={{fontSize: 12, color: '#94a3b8'}}>@{e.referee_username} referred @{e.referred_username}</span>
+                        </span>
+                        <span className="sale-amount" style={{color: '#22c55e'}}>
+                          {hidden ? '***' : `+$${e.super_amount.toFixed(2)}`}
+                        </span>
+                        <span className="sale-date">{new Date(e.created_at).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            /* ── Apply Section ── */
+            <div className="creator-section" style={{textAlign: 'center', padding: '40px 20px'}}>
+              <div style={{fontSize: 48, marginBottom: 16}}>&#9733;</div>
+              <h3 style={{color: '#f59e0b', marginBottom: 8}}>Become a Super Referee</h3>
+              <p style={{color: '#94a3b8', maxWidth: 500, margin: '0 auto 24px', lineHeight: 1.6}}>
+                Super Referees earn <strong style={{color: '#22c55e'}}>30%</strong> of the referral commissions earned by their direct referrals.
+                When someone you referred brings in a new paying user, you automatically get a cut of their commission.
+              </p>
+              <p style={{color: '#94a3b8', fontSize: 13, marginBottom: 24}}>
+                Build your team, grow your network, and earn passively from two levels of referrals.
+              </p>
+
+              {srStatus.application?.status === 'pending' ? (
+                <div style={{background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 12, padding: 20, maxWidth: 400, margin: '0 auto'}}>
+                  <div style={{color: '#f59e0b', fontWeight: 600, fontSize: 16, marginBottom: 8}}>Application Pending</div>
+                  <p style={{color: '#94a3b8', fontSize: 13}}>Your application is being reviewed by our team. We'll notify you once a decision is made.</p>
+                  <p style={{color: '#64748b', fontSize: 12, marginTop: 8}}>Applied: {new Date(srStatus.application.applied_at).toLocaleDateString()}</p>
+                </div>
+              ) : srStatus.application?.status === 'rejected' ? (
+                <div style={{marginBottom: 24}}>
+                  <div style={{background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, padding: 16, maxWidth: 400, margin: '0 auto 20px'}}>
+                    <div style={{color: '#ef4444', fontWeight: 600, marginBottom: 4}}>Previous Application Rejected</div>
+                    {srStatus.application.rejection_reason && <p style={{color: '#94a3b8', fontSize: 13}}>Reason: {srStatus.application.rejection_reason}</p>}
+                  </div>
+                  <textarea
+                    value={srApplyReason}
+                    onChange={e => setSrApplyReason(e.target.value)}
+                    placeholder="Tell us why you'd like to become a Super Referee..."
+                    style={{width: '100%', maxWidth: 400, minHeight: 80, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e2e8f0', padding: 12, fontSize: 14, resize: 'vertical', marginBottom: 12}}
+                  />
+                  <br/>
+                  <button
+                    onClick={async () => {
+                      setSrApplying(true); setSrMsg('')
+                      try {
+                        await axios.post('/api/user/super-referee/apply', { reason: srApplyReason })
+                        setSrMsg('Application re-submitted!')
+                        fetchData()
+                      } catch(e) { setSrMsg(e.response?.data?.detail || 'Failed') }
+                      setSrApplying(false)
+                    }}
+                    disabled={srApplying}
+                    style={{background: '#f59e0b', color: '#000', border: 'none', borderRadius: 8, padding: '10px 28px', fontWeight: 600, cursor: 'pointer', fontSize: 14}}
+                  >
+                    {srApplying ? 'Submitting...' : 'Re-Apply'}
+                  </button>
+                  {srMsg && <p style={{color: '#22c55e', marginTop: 12}}>{srMsg}</p>}
+                </div>
+              ) : (
+                <div>
+                  <textarea
+                    value={srApplyReason}
+                    onChange={e => setSrApplyReason(e.target.value)}
+                    placeholder="Tell us why you'd like to become a Super Referee..."
+                    style={{width: '100%', maxWidth: 400, minHeight: 80, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e2e8f0', padding: 12, fontSize: 14, resize: 'vertical', marginBottom: 12}}
+                  />
+                  <br/>
+                  <button
+                    onClick={async () => {
+                      setSrApplying(true); setSrMsg('')
+                      try {
+                        await axios.post('/api/user/super-referee/apply', { reason: srApplyReason })
+                        setSrMsg('Application submitted! We will review it shortly.')
+                        fetchData()
+                      } catch(e) { setSrMsg(e.response?.data?.detail || 'Failed to submit') }
+                      setSrApplying(false)
+                    }}
+                    disabled={srApplying}
+                    style={{background: '#f59e0b', color: '#000', border: 'none', borderRadius: 8, padding: '12px 32px', fontWeight: 600, cursor: 'pointer', fontSize: 15}}
+                  >
+                    {srApplying ? 'Submitting...' : 'Apply to Become Super Referee'}
+                  </button>
+                  {srMsg && <p style={{color: '#22c55e', marginTop: 12}}>{srMsg}</p>}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
       {/* Withdraw Modal */}
       {showWithdraw && (
         <div className="withdraw-modal-overlay" onClick={() => setShowWithdraw(false)}>
@@ -925,11 +1148,12 @@ const styles = {
     marginBottom: 20,
     overflowX: 'auto',
     WebkitOverflowScrolling: 'touch',
-    scrollbarWidth: 'none',
+    scrollbarWidth: 'thin',
+    scrollbarColor: '#334155 transparent',
   },
   tab: {
     flex: 'none',
-    padding: '10px 14px',
+    padding: '10px 12px',
     background: 'none',
     border: 'none',
     borderRadius: 8,

@@ -404,6 +404,27 @@ def _fulfill_payment(user_id: int, transaction_type: str, reference_id: str,
     except Exception as e:
         logger.error(f"Failed to send invoice email for Whop payment {payment_id}: {e}")
 
+    # Send in-app + push notification to user about their purchase
+    try:
+        if transaction_type == "subscription":
+            notif_title = "Subscription Activated!"
+            notif_msg = f"Your {reference_id} subscription is now active. Enjoy unlimited access to Spark AI!"
+        elif transaction_type == "balance_topup":
+            notif_title = "Credits Added!"
+            notif_msg = f"${amount_usd:.2f} has been added to your account. Your credits are ready to use."
+        else:
+            notif_title = "Payment Confirmed!"
+            notif_msg = f"Your payment of ${amount_usd:.2f} has been processed successfully."
+        community.create_notification(
+            user_id=user_id,
+            notif_type="payment_confirmed",
+            title=notif_title,
+            message=notif_msg,
+            metadata={"amount_usd": amount_usd, "transaction_type": transaction_type, "payment_method": "card"},
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send payment notification: {e}")
+
 
 def _save_whop_user_id(spark_user_id: int, whop_user_id: str):
     """Save Whop user ID to users table for future payouts (only if not already set)."""
@@ -977,6 +998,31 @@ def _process_referral_commission(user_id: int, plan_id: str, payment_method: str
             )
         except Exception as e:
             logger.warning(f"Failed to send referral commission email: {e}")
+
+        # Process super referee cut (level 2)
+        try:
+            import super_referee
+            sr_result = super_referee.process_super_referee_cut(
+                referee_id=referrer_id,
+                referred_id=user_id,
+                commission_amount=commission_amount,
+                payment_method=payment_method,
+            )
+            if sr_result:
+                # Deduct super referee's cut from the normal referee's wallet
+                deduct_conn = _get_db()
+                deduct_conn.execute(
+                    "UPDATE creator_wallets SET balance_usd = balance_usd - ? WHERE user_id = ?",
+                    (sr_result["super_amount"], referrer_id),
+                )
+                deduct_conn.commit()
+                deduct_conn.close()
+                logger.info(
+                    f"Super referee {sr_result['super_referee_id']} earned ${sr_result['super_amount']:.2f} "
+                    f"from referee {referrer_id}'s commission of ${commission_amount:.2f}"
+                )
+        except Exception as e:
+            logger.warning(f"Super referee processing error: {e}")
 
     except Exception as e:
         logger.error(f"Referral commission error: {e}")

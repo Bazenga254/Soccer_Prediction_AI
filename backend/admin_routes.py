@@ -940,6 +940,69 @@ async def admin_referred_users(referrer_id: int, x_admin_password: str = Header(
 
 
 # ═══════════════════════════════════════════════════════════
+#  SUPER REFEREE MANAGEMENT
+# ═══════════════════════════════════════════════════════════
+
+@admin_router.get("/super-referee/applications")
+async def admin_super_referee_applications(status: str = "all", x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """List super referee applications."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="referrals", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    import super_referee
+    return {"applications": super_referee.list_applications(status)}
+
+
+@admin_router.post("/super-referee/approve/{user_id}")
+async def admin_approve_super_referee(user_id: int, x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Approve a super referee application."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="referrals", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    import super_referee
+    result = super_referee.approve_application(user_id, admin_name="admin")
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@admin_router.post("/super-referee/reject/{user_id}")
+async def admin_reject_super_referee(user_id: int, reason: str = "", x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Reject a super referee application."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="referrals", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    import super_referee
+    result = super_referee.reject_application(user_id, reason=reason, admin_name="admin")
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@admin_router.post("/super-referee/revoke/{user_id}")
+async def admin_revoke_super_referee(user_id: int, x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """Revoke super referee status."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="referrals", required_action="write")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    import super_referee
+    result = super_referee.revoke_super_referee(user_id)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@admin_router.get("/super-referee/list")
+async def admin_list_super_referees(x_admin_password: str = Header(None), authorization: str = Header(None)):
+    """List all active super referees with stats."""
+    auth = _check_admin_auth(x_admin_password, authorization, {'super_admin'}, required_module="referrals", required_action="read")
+    if not auth:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    import super_referee
+    return {"super_referees": super_referee.list_super_referees()}
+
+
+# ═══════════════════════════════════════════════════════════
 #  USER MANAGEMENT
 # ═══════════════════════════════════════════════════════════
 

@@ -89,6 +89,11 @@ export default function ReferralsTab() {
   const [referredUsers, setReferredUsers] = useState({})
   const [loadingReferred, setLoadingReferred] = useState(null)
   const [referredPage, setReferredPage] = useState({})
+  const [subTab, setSubTab] = useState('leaderboard') // 'leaderboard' | 'sr_applications' | 'sr_active'
+  const [srApplications, setSrApplications] = useState([])
+  const [srActive, setSrActive] = useState([])
+  const [srLoading, setSrLoading] = useState(false)
+  const [srActionLoading, setSrActionLoading] = useState(null)
 
   const fetchReferrals = useCallback(async () => {
     setLoading(true)
@@ -98,6 +103,40 @@ export default function ReferralsTab() {
     } catch { /* ignore */ }
     setLoading(false)
   }, [getAuthHeaders])
+
+  const fetchSrApplications = async () => {
+    setSrLoading(true)
+    try {
+      const res = await axios.get('/api/admin/super-referee/applications', { headers: getAuthHeaders() })
+      setSrApplications(res.data.applications || [])
+    } catch {}
+    setSrLoading(false)
+  }
+
+  const fetchSrActive = async () => {
+    setSrLoading(true)
+    try {
+      const res = await axios.get('/api/admin/super-referee/list', { headers: getAuthHeaders() })
+      setSrActive(res.data.super_referees || [])
+    } catch {}
+    setSrLoading(false)
+  }
+
+  const handleSrAction = async (userId, action, reason = '') => {
+    setSrActionLoading(userId)
+    try {
+      if (action === 'approve') {
+        await axios.post(`/api/admin/super-referee/approve/${userId}`, {}, { headers: getAuthHeaders() })
+      } else if (action === 'reject') {
+        await axios.post(`/api/admin/super-referee/reject/${userId}?reason=${encodeURIComponent(reason)}`, {}, { headers: getAuthHeaders() })
+      } else if (action === 'revoke') {
+        await axios.post(`/api/admin/super-referee/revoke/${userId}`, {}, { headers: getAuthHeaders() })
+      }
+      fetchSrApplications()
+      fetchSrActive()
+    } catch {}
+    setSrActionLoading(null)
+  }
 
   useEffect(() => { fetchReferrals() }, [fetchReferrals])
 
@@ -126,6 +165,138 @@ export default function ReferralsTab() {
 
   return (
     <div className="admin-tab-content">
+      {/* Sub-tab navigation */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        <button
+          className={`admin-action-btn ${subTab === 'leaderboard' ? 'view-detail' : ''}`}
+          style={subTab === 'leaderboard' ? { background: '#3b82f6', color: '#fff' } : { background: 'rgba(255,255,255,0.06)', color: '#94a3b8' }}
+          onClick={() => setSubTab('leaderboard')}
+        >Referral Leaderboard</button>
+        <button
+          className={`admin-action-btn ${subTab === 'sr_applications' ? 'view-detail' : ''}`}
+          style={subTab === 'sr_applications' ? { background: '#f59e0b', color: '#000' } : { background: 'rgba(255,255,255,0.06)', color: '#94a3b8' }}
+          onClick={() => { setSubTab('sr_applications'); fetchSrApplications() }}
+        >Super Referee Applications</button>
+        <button
+          className={`admin-action-btn ${subTab === 'sr_active' ? 'view-detail' : ''}`}
+          style={subTab === 'sr_active' ? { background: '#22c55e', color: '#000' } : { background: 'rgba(255,255,255,0.06)', color: '#94a3b8' }}
+          onClick={() => { setSubTab('sr_active'); fetchSrActive() }}
+        >Active Super Referees</button>
+      </div>
+
+      {/* Super Referee Applications */}
+      {subTab === 'sr_applications' && (
+        <>
+          <h3 style={{ color: '#f59e0b' }}>Super Referee Applications</h3>
+          {srLoading ? (
+            <div className="admin-loading">Loading applications...</div>
+          ) : srApplications.length === 0 ? (
+            <p className="admin-empty-row">No applications.</p>
+          ) : (
+            <div className="admin-users-table">
+              {srApplications.map(app => (
+                <div key={app.user_id} style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                }}>
+                  <span className="admin-user-avatar" style={{ background: app.avatar_color || '#6c5ce7', width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                    {(app.display_name || '?')[0].toUpperCase()}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{app.display_name} <span style={{ color: '#64748b', fontWeight: 400, fontSize: 12 }}>@{app.username}</span></div>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>{app.email} — {app.referral_count} referrals</div>
+                    {app.reason && <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 4, fontStyle: 'italic' }}>"{app.reason}"</div>}
+                  </div>
+                  <div style={{ textAlign: 'right', minWidth: 120 }}>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                      background: app.status === 'pending' ? '#f59e0b22' : app.status === 'approved' ? '#22c55e22' : '#ef444422',
+                      color: app.status === 'pending' ? '#f59e0b' : app.status === 'approved' ? '#22c55e' : '#ef4444',
+                      border: `1px solid ${app.status === 'pending' ? '#f59e0b44' : app.status === 'approved' ? '#22c55e44' : '#ef444444'}`,
+                    }}>
+                      {app.status.toUpperCase()}
+                    </span>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{formatDate(app.applied_at)}</div>
+                  </div>
+                  {app.status === 'pending' && (
+                    <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
+                      <button
+                        className="admin-action-btn upgrade"
+                        onClick={() => handleSrAction(app.user_id, 'approve')}
+                        disabled={srActionLoading === app.user_id}
+                        style={{ padding: '6px 14px', fontSize: 12 }}
+                      >{srActionLoading === app.user_id ? '...' : 'Approve'}</button>
+                      <button
+                        className="admin-action-btn suspend"
+                        onClick={() => {
+                          const reason = prompt('Rejection reason (optional):')
+                          if (reason !== null) handleSrAction(app.user_id, 'reject', reason)
+                        }}
+                        disabled={srActionLoading === app.user_id}
+                        style={{ padding: '6px 14px', fontSize: 12 }}
+                      >Reject</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Active Super Referees */}
+      {subTab === 'sr_active' && (
+        <>
+          <h3 style={{ color: '#22c55e' }}>Active Super Referees</h3>
+          {srLoading ? (
+            <div className="admin-loading">Loading...</div>
+          ) : srActive.length === 0 ? (
+            <p className="admin-empty-row">No active super referees.</p>
+          ) : (
+            <div className="admin-users-table">
+              <div style={{
+                display: 'grid', gridTemplateColumns: '36px 2fr 1fr 1fr 1fr 100px',
+                gap: 8, padding: '8px 16px', fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px',
+                background: 'rgba(255,255,255,0.03)',
+              }}>
+                <span></span>
+                <span>User</span>
+                <span>Direct Referrals</span>
+                <span>Sub-Referrals</span>
+                <span>Super Earnings</span>
+                <span>Actions</span>
+              </div>
+              {srActive.map(sr => (
+                <div key={sr.id} style={{
+                  display: 'grid', gridTemplateColumns: '36px 2fr 1fr 1fr 1fr 100px',
+                  gap: 8, padding: '12px 16px', alignItems: 'center',
+                  borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: 13,
+                }}>
+                  <span className="admin-user-avatar" style={{ background: sr.avatar_color || '#6c5ce7', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13 }}>
+                    {(sr.display_name || '?')[0].toUpperCase()}
+                  </span>
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{sr.display_name}</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>@{sr.username}</div>
+                  </div>
+                  <span style={{ color: '#3b82f6', fontWeight: 600 }}>{sr.direct_referrals}</span>
+                  <span style={{ color: '#8b5cf6', fontWeight: 600 }}>{sr.sub_referrals}</span>
+                  <span style={{ color: '#22c55e', fontWeight: 600 }}>${(sr.total_super_earnings || 0).toFixed(2)}</span>
+                  <button
+                    className="admin-action-btn suspend"
+                    onClick={() => { if (confirm(`Revoke Super Referee status for ${sr.display_name}?`)) handleSrAction(sr.id, 'revoke') }}
+                    disabled={srActionLoading === sr.id}
+                    style={{ padding: '4px 10px', fontSize: 11 }}
+                  >Revoke</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Referral Leaderboard */}
+      {subTab === 'leaderboard' && <>
       <h3>Referral Leaderboard</h3>
       {referrals.length === 0 ? (
         <p className="admin-empty-row">No referrals yet.</p>
@@ -241,6 +412,7 @@ export default function ReferralsTab() {
           })}
         </div>
       )}
+      </>}
     </div>
   )
 }
