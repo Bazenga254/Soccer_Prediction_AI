@@ -3017,6 +3017,8 @@ def list_all_users() -> List[Dict]:
         "country": r["country"],
         "is_bot": bool(r["is_bot"]) if r["is_bot"] else False,
         "email_verified": bool(r["email_verified"]),
+        "account_activated": _get_account_activated(r["id"]),
+        "last_known_ip": r["last_known_ip"] if "last_known_ip" in r.keys() else None,
     } for r in rows]
 
 

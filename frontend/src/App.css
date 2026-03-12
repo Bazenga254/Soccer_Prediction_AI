@@ -9588,6 +9588,10 @@ html, body {
   background: #ef4444;
 }
 
+.status-dot.not-activated {
+  background: #f59e0b;
+}
+
 .col-actions {
   display: flex;
   gap: 6px;

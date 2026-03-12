@@ -22,6 +22,7 @@ export default function UsersTab() {
   const [filterTier, setFilterTier] = useState('all')
   const [filterDevice, setFilterDevice] = useState('all')
   const [filterSource, setFilterSource] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
   const [userType, setUserType] = useState('real')   // 'real' | 'bot'
   const [resetModal, setResetModal] = useState(null)
   const [newPassword, setNewPassword] = useState('')
@@ -173,7 +174,11 @@ export default function UsersTab() {
       (filterSource === 'other'
         ? !['Direct','Google','YouTube','TikTok','X (Twitter)','Facebook','Instagram'].includes(u.source || 'Direct')
         : (u.source || 'Direct') === filterSource)
-    return matchesSearch && matchesTier && matchesDevice && matchesSource
+    const matchesStatus = filterStatus === 'all' ||
+      (filterStatus === 'activated' ? (u.is_active && u.account_activated) :
+       filterStatus === 'not_activated' ? (u.is_active && !u.account_activated) :
+       filterStatus === 'suspended' ? !u.is_active : true)
+    return matchesSearch && matchesTier && matchesDevice && matchesSource && matchesStatus
   })
 
   if (loading) return <div className="admin-loading">Loading users...</div>
@@ -233,6 +238,12 @@ export default function UsersTab() {
           <option value="LinkedIn">LinkedIn</option>
           <option value="other">Other</option>
         </select>
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="admin-filter-select">
+          <option value="all">All Statuses</option>
+          <option value="activated">Activated</option>
+          <option value="not_activated">Not Activated</option>
+          <option value="suspended">Suspended</option>
+        </select>
         <span className="admin-user-count">{filtered.length} users</span>
       </div>
 
@@ -281,8 +292,22 @@ export default function UsersTab() {
               <span className={`tier-tag ${u.tier}`}>{u.tier?.toUpperCase()}</span>
             </span>
             <span className="col-status">
-              <span className={`status-dot ${u.is_active ? 'active' : 'suspended'}`}></span>
-              {u.is_active ? 'Active' : 'Suspended'}
+              {!u.is_active ? (
+                <>
+                  <span className="status-dot suspended"></span>
+                  Suspended
+                </>
+              ) : u.account_activated ? (
+                <>
+                  <span className="status-dot active"></span>
+                  Activated
+                </>
+              ) : (
+                <>
+                  <span className="status-dot not-activated"></span>
+                  Not Activated
+                </>
+              )}
               {!u.email_verified && <span className="unverified-badge">Unverified</span>}
             </span>
             <span className="col-joined">{u.created_at ? new Date(u.created_at).toLocaleDateString() : '-'}</span>
