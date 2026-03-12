@@ -2222,13 +2222,14 @@ async def _daily_match_reminders():
                         away = m.get("away_team", {}).get("name", "")
                         match_lines.append(f"{home} vs {away} ({league})")
 
+                    push_message = "Featured Matches:\n" + "\n".join(match_lines)
                     broadcast_result = community.create_broadcast(
                         sender_id=0,
                         sender_name="System (Auto)",
                         title=result["subject"],
-                        message=f"[TEMPLATE:{template_idx}]\n---\nFeatured Matches:\n" + "\n".join(match_lines),
+                        message=push_message,
                         auto_approve=True,
-                        channel="email_push",
+                        channel="push",
                         target_type="all",
                     )
                     sent_today.add(hour_key)
