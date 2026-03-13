@@ -114,7 +114,7 @@ export default function AccountActivation() {
               className="activation-btn activation-btn-alt"
               onClick={() => setShowWhop(true)}
             >
-              Pay with Card instead
+              Pay with Card ($1 min)
             </button>
           )}
           <button
@@ -145,7 +145,7 @@ export default function AccountActivation() {
           isOpen={true}
           onClose={() => setShowWhop(false)}
           transactionType="balance_topup"
-          amount={minUsd}
+          amount={Math.max(minUsd, 1)}
           onSuccess={handlePaymentSuccess}
         />
       )}
@@ -155,7 +155,7 @@ export default function AccountActivation() {
           isOpen={true}
           onClose={() => setShowCrypto(false)}
           transactionType="balance_topup"
-          amountUsd={minUsd}
+          amountUsd={Math.max(minUsd, 10)}
           title="Activate with Crypto"
           onSuccess={handlePaymentSuccess}
         />
