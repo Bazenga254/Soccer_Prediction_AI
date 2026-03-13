@@ -56,19 +56,19 @@ def _get_db():
     return conn
 
 
-HCAPTCHA_SECRET = None
+TURNSTILE_SECRET = None
 
 
-def _get_hcaptcha_secret():
-    global HCAPTCHA_SECRET
-    if HCAPTCHA_SECRET is None:
-        HCAPTCHA_SECRET = os.environ.get("HCAPTCHA_SECRET", "")
-    return HCAPTCHA_SECRET
+def _get_turnstile_secret():
+    global TURNSTILE_SECRET
+    if TURNSTILE_SECRET is None:
+        TURNSTILE_SECRET = os.environ.get("TURNSTILE_SECRET", os.environ.get("HCAPTCHA_SECRET", ""))
+    return TURNSTILE_SECRET
 
 
 def verify_hcaptcha(token: str) -> bool:
-    """Verify an hCaptcha response token server-side."""
-    secret = _get_hcaptcha_secret()
+    """Verify a Cloudflare Turnstile response token server-side."""
+    secret = _get_turnstile_secret()
     if not secret:
         return True  # Skip in dev if not configured
 
@@ -78,7 +78,7 @@ def verify_hcaptcha(token: str) -> bool:
             "response": token,
         }).encode()
         req = urllib.request.Request(
-            "https://api.hcaptcha.com/siteverify",
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
             data=data,
             method="POST",
         )
@@ -86,7 +86,7 @@ def verify_hcaptcha(token: str) -> bool:
             result = _json.loads(resp.read().decode())
             return result.get("success", False)
     except Exception as e:
-        print(f"[ERROR] hCaptcha verification failed: {e}")
+        print(f"[ERROR] Turnstile verification failed: {e}")
         return False
 
 

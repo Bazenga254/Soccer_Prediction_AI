@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import HCaptcha from '@hcaptcha/react-hcaptcha'
+import Turnstile from './Turnstile'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import CountryPicker from './CountryPicker'
 
 const GOOGLE_CLIENT_ID = '905871526482-4i8pfv8435p4eq10226j0agks7j007ag.apps.googleusercontent.com'
-const HCAPTCHA_SITE_KEY = '93726ad0-1700-48aa-8aa6-77825d4cfbee'
+// Turnstile site key is inside Turnstile component
 const TOTAL_SIGNUP_STEPS = 6
 
 export default function AuthForm({ initialMode = 'login', onClose = null, compact = false }) {
@@ -722,7 +722,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
                   Please accept the terms and verify to create your account:
                 </p>
                 <div className="captcha-container" style={{ marginBottom: '12px' }}>
-                  <HCaptcha ref={captchaRef} sitekey={HCAPTCHA_SITE_KEY} onVerify={handleCaptchaVerify}
+                  <Turnstile ref={captchaRef} onVerify={handleCaptchaVerify}
                     onExpire={handleCaptchaExpire} onError={handleCaptchaError} theme="dark" size="compact" />
                 </div>
                 <div className="terms-checkbox-section" style={{ marginBottom: '12px' }}>
@@ -810,7 +810,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
               </div>
 
               <div className="captcha-container">
-                <HCaptcha ref={captchaRef} sitekey={HCAPTCHA_SITE_KEY} onVerify={handleCaptchaVerify}
+                <Turnstile ref={captchaRef} onVerify={handleCaptchaVerify}
                   onExpire={handleCaptchaExpire} onError={handleCaptchaError} theme="dark" size="normal" />
               </div>
 
@@ -1068,7 +1068,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
               This Google account is not registered yet. Please accept the terms and verify to create your account:
             </p>
             <div className="captcha-container" style={{ marginBottom: '12px' }}>
-              <HCaptcha ref={captchaRef} sitekey={HCAPTCHA_SITE_KEY} onVerify={handleCaptchaVerify}
+              <Turnstile ref={captchaRef} onVerify={handleCaptchaVerify}
                 onExpire={handleCaptchaExpire} onError={handleCaptchaError} theme="dark" size="normal" />
             </div>
             <div className="terms-checkbox-section" style={{ marginBottom: '12px' }}>
@@ -1127,7 +1127,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
 
           {showCaptcha && (
             <div className="captcha-container">
-              <HCaptcha ref={captchaRef} sitekey={HCAPTCHA_SITE_KEY} onVerify={handleCaptchaVerify}
+              <Turnstile ref={captchaRef} onVerify={handleCaptchaVerify}
                 onExpire={handleCaptchaExpire} onError={handleCaptchaError} theme="dark" size="normal" />
             </div>
           )}
