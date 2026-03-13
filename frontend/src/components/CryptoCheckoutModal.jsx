@@ -11,6 +11,10 @@ export default function CryptoCheckoutModal({
   amountUsd = 0,
   title = 'Crypto Payment',
 }) {
+  // NOWPayments requires ~$10 minimum per transaction
+  const CRYPTO_MIN_USD = 10
+  const effectiveAmount = Math.max(amountUsd, CRYPTO_MIN_USD)
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [waitingForPayment, setWaitingForPayment] = useState(false)
@@ -41,7 +45,7 @@ export default function CryptoCheckoutModal({
           transaction_type: transactionType,
           plan_id: planId,
           prediction_id: predictionId,
-          amount_usd: amountUsd,
+          amount_usd: effectiveAmount,
         })
 
         const { hosted_url, charge_code } = response.data
@@ -91,7 +95,7 @@ export default function CryptoCheckoutModal({
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
     }
-  }, [isOpen, transactionType, planId, predictionId, amountUsd])
+  }, [isOpen, transactionType, planId, predictionId, effectiveAmount])
 
   if (!isOpen) return null
 
@@ -194,7 +198,7 @@ export default function CryptoCheckoutModal({
 
             {/* Amount display */}
             <div style={styles.amountBadge}>
-              ${amountUsd.toFixed(2)} USD
+              ${effectiveAmount.toFixed(2)} USD
             </div>
 
             {/* Supported coins */}
@@ -212,7 +216,7 @@ export default function CryptoCheckoutModal({
 
             {/* Disclaimer */}
             <p style={styles.disclaimer}>
-              Note: Crypto payments have minimum amounts per coin due to network fees. If your deposit is too small, select a coin with lower fees (e.g. USDT TRC20, LTC, or TRX) or increase your deposit amount.
+              Minimum crypto payment is ${CRYPTO_MIN_USD} USD due to network fees. Select a coin with lower fees (e.g. USDT TRC20, LTC, or TRX) for the best rates.
             </p>
 
             <div style={styles.waitingDots}>

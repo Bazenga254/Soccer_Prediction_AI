@@ -155,7 +155,7 @@ export default function AccountActivation() {
           isOpen={true}
           onClose={() => setShowCrypto(false)}
           transactionType="balance_topup"
-          amountUsd={Math.max(minUsd, 10)}
+          amountUsd={minUsd}
           title="Activate with Crypto"
           onSuccess={handlePaymentSuccess}
         />
