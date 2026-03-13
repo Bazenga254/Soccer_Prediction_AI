@@ -283,6 +283,17 @@ def check_and_fulfill_payment(checkout_id: str, user_id: int) -> str:
                 status = getattr(payment, 'status', '')
                 if status == 'paid':
                     payment_id = getattr(payment, 'id', '')
+                    # CRITICAL: Check if this payment_id was already used for another transaction
+                    # This prevents reusing old completed payments for new checkouts
+                    dup_conn = _get_db()
+                    already_used = dup_conn.execute(
+                        "SELECT id FROM whop_transactions WHERE whop_payment_id = ? AND payment_status = 'completed'",
+                        (payment_id,)
+                    ).fetchone()
+                    dup_conn.close()
+                    if already_used:
+                        logger.info(f"Skipping already-used payment {payment_id} for checkout {checkout_id}")
+                        continue
                     logger.info(f"Found paid payment via API polling: {payment_id} for user {user_id}")
                     # Capture Whop user ID for future payouts
                     whop_uid = getattr(payment, 'user_id', '') or ''
