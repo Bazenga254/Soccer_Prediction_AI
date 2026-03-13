@@ -969,7 +969,6 @@ def _complete_transaction(transaction_id: int) -> Dict:
 
     # Send in-app + push notification to user about their purchase
     try:
-        import community
         amount_kes = tx["amount_kes"] or 0
         amount_usd = tx["amount_usd"] or 0
         t_type = tx["transaction_type"]
