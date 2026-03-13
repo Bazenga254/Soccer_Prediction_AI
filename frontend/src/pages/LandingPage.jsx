@@ -128,7 +128,7 @@ export default function LandingPage() {
 
   // Credit calculator values
   const creditRate = isKenyan ? (creditCosts?.credit_rate_kes || 10) : (creditCosts?.credit_rate_usd || 1300)
-  const minDeposit = isKenyan ? (creditCosts?.min_deposit_kes || 35) : (creditCosts?.min_deposit_usd || 1)
+  const minDeposit = isKenyan ? (creditCosts?.min_deposit_kes || 35) : (creditCosts?.min_deposit_usd || 2)
   const numericAmount = parseFloat(depositAmount) || 0
   const calculatedCredits = Math.floor(numericAmount * creditRate)
   const costPrediction = creditCosts?.prediction || 50
@@ -296,7 +296,7 @@ Get Started
               <div className="landing-plan-header">
                 <h3 className="landing-plan-name">Pay on the Go</h3>
                 <div className="landing-plan-price">
-                  <span className="landing-price-amount">{currencySymbol}{isKenyan ? '10' : '1'}</span>
+                  <span className="landing-price-amount">{currencySymbol}{isKenyan ? '10' : '2'}</span>
                   <span className="landing-price-period">minimum</span>
                 </div>
                 <p className="landing-plan-daily-credits">{isKenyan ? 'KES 1' : '$0.1'} = {isKenyan ? creditRate.toLocaleString() : Math.round(creditRate / 10).toLocaleString()} credits</p>

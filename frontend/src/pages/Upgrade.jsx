@@ -62,7 +62,7 @@ export default function Upgrade() {
 
   // Credit calculation
   const creditRate = isKenyan ? (creditCosts?.credit_rate_kes || 10) : (creditCosts?.credit_rate_usd || 1300)
-  const minDeposit = isKenyan ? 10 : 1
+  const minDeposit = isKenyan ? 10 : 2
   const numericAmount = parseFloat(depositAmount) || 0
   const calculatedCredits = Math.floor(numericAmount * creditRate)
   const isValidAmount = numericAmount >= minDeposit

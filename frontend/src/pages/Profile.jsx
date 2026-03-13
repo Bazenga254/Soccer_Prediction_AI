@@ -39,6 +39,7 @@ export default function Profile() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [accountBalance, setAccountBalance] = useState(null)
 
   useEffect(() => {
     const fetchReferralStats = async () => {
@@ -50,6 +51,9 @@ export default function Profile() {
     fetchReferralStats()
     axios.get('/api/pricing').then(res => {
       setCommissionRate(res.data?.commissions?.referral_rate)
+    }).catch(() => {})
+    axios.get('/api/user/balance').then(res => {
+      setAccountBalance(res.data?.balance)
     }).catch(() => {})
   }, [])
 
@@ -308,9 +312,11 @@ export default function Profile() {
             </svg>
             Account Balance
           </h3>
+
+          {/* Monetary Balance */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            gridTemplateColumns: '1fr 1fr',
             gap: '12px',
             marginTop: '12px',
           }}>
@@ -321,28 +327,57 @@ export default function Profile() {
               padding: '16px',
               textAlign: 'center',
             }}>
-              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Total Credits</div>
-              <div style={{ color: '#22c55e', fontSize: '28px', fontWeight: 700 }}>{credits?.total_credits ?? 0}</div>
+              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>USD Balance</div>
+              <div style={{ color: '#22c55e', fontSize: '28px', fontWeight: 700 }}>${(accountBalance?.balance_usd ?? 0).toFixed(2)}</div>
             </div>
             <div style={{
-              background: 'rgba(59, 130, 246, 0.08)',
-              border: '1px solid rgba(59, 130, 246, 0.2)',
+              background: 'rgba(34, 197, 94, 0.08)',
+              border: '1px solid rgba(34, 197, 94, 0.2)',
               borderRadius: '12px',
               padding: '16px',
               textAlign: 'center',
             }}>
-              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Purchased</div>
-              <div style={{ color: '#3b82f6', fontSize: '28px', fontWeight: 700 }}>{credits?.purchased_credits ?? 0}</div>
+              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>KES Balance</div>
+              <div style={{ color: '#22c55e', fontSize: '28px', fontWeight: 700 }}>KES {(accountBalance?.balance_kes ?? 0).toFixed(0)}</div>
+            </div>
+          </div>
+
+          {/* Credits */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '12px',
+            marginTop: '12px',
+          }}>
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '12px',
+              padding: '14px 8px',
+              textAlign: 'center',
+            }}>
+              <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Total Credits</div>
+              <div style={{ color: '#3b82f6', fontSize: '24px', fontWeight: 700 }}>{credits?.total_credits ?? 0}</div>
+            </div>
+            <div style={{
+              background: 'rgba(99, 102, 241, 0.08)',
+              border: '1px solid rgba(99, 102, 241, 0.2)',
+              borderRadius: '12px',
+              padding: '14px 8px',
+              textAlign: 'center',
+            }}>
+              <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Purchased</div>
+              <div style={{ color: '#6366f1', fontSize: '24px', fontWeight: 700 }}>{credits?.purchased_credits ?? 0}</div>
             </div>
             <div style={{
               background: 'rgba(168, 85, 247, 0.08)',
               border: '1px solid rgba(168, 85, 247, 0.2)',
               borderRadius: '12px',
-              padding: '16px',
+              padding: '14px 8px',
               textAlign: 'center',
             }}>
-              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Daily Free</div>
-              <div style={{ color: '#a855f7', fontSize: '28px', fontWeight: 700 }}>{credits?.daily_credits ?? 0}</div>
+              <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Daily Free</div>
+              <div style={{ color: '#a855f7', fontSize: '24px', fontWeight: 700 }}>{credits?.daily_credits ?? 0}</div>
             </div>
           </div>
         </div>
