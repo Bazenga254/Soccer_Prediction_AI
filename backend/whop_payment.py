@@ -311,16 +311,21 @@ def _fulfill_payment(user_id: int, transaction_type: str, reference_id: str,
     """Fulfill a payment: activate subscription, credit balance, or unlock prediction."""
     now = datetime.now().isoformat()
 
-    # Update our transaction record
+    # Atomically update status — only fulfills if still pending (prevents double-credit)
     conn = _get_db()
-    conn.execute("""
+    cur = conn.execute("""
         UPDATE whop_transactions
         SET whop_payment_id = ?, payment_status = 'completed',
             updated_at = ?, completed_at = ?
         WHERE whop_checkout_id = ? AND user_id = ? AND payment_status = 'pending'
     """, (payment_id, now, now, checkout_id, user_id))
+    rows_changed = cur.rowcount
     conn.commit()
     conn.close()
+
+    if rows_changed == 0:
+        logger.info(f"Payment already fulfilled (polling): checkout={checkout_id}, user={user_id}")
+        return
 
     if transaction_type == "account_link":
         # Account linked — auto-add Whop withdrawal method
@@ -624,9 +629,9 @@ def process_payment_webhook(event_data: dict) -> Dict:
         if whop_uid:
             _save_whop_user_id(user_id, whop_uid)
 
-        # Update our transaction record
+        # Atomically update status — only fulfills if still pending (prevents double-credit)
         conn = _get_db()
-        conn.execute("""
+        cur = conn.execute("""
             UPDATE whop_transactions
             SET whop_payment_id = ?, payment_status = 'completed',
                 updated_at = ?, completed_at = ?
@@ -634,8 +639,13 @@ def process_payment_webhook(event_data: dict) -> Dict:
                 AND payment_status = 'pending'
             ORDER BY created_at DESC LIMIT 1
         """, (payment_id, now, now, user_id, transaction_type, reference_id))
+        rows_changed = cur.rowcount
         conn.commit()
         conn.close()
+
+        if rows_changed == 0:
+            logger.info(f"Payment already fulfilled (webhook): payment={payment_id}, user={user_id}")
+            return {"success": True, "message": "Already processed"}
 
         # Fulfill the order
         if transaction_type == "subscription":
@@ -672,6 +682,16 @@ def process_payment_webhook(event_data: dict) -> Dict:
                 reason="Pay on the Go deposit via Whop",
                 adjustment_type="topup",
             )
+            # Convert payment to credits
+            try:
+                import pricing_config as _pc
+                usd_rate = int(_pc.get("credit_rate_usd", 1300))
+                credit_amount = int(float(total) * usd_rate) if float(total) > 0 else 0
+                if credit_amount > 0:
+                    community.add_credits(user_id, credit_amount, f"Card deposit ${float(total):.2f}")
+                    print(f"[Credits] User {user_id} credited {credit_amount} credits from card deposit (webhook)")
+            except Exception as e:
+                print(f"[Credits] Error adding credits for card deposit (webhook): {e}")
             _process_referral_commission(user_id, "balance_topup", "whop",
                                          amount_usd=float(total),
                                          transaction_type="balance_topup")

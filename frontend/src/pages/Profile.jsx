@@ -4,10 +4,12 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
 import axios from 'axios'
 import { isSoundEnabled, setSoundEnabled } from '../sounds'
+import { useCredits } from '../context/CreditContext'
 
 export default function Profile() {
   const { t } = useTranslation()
   const { user, updateUser, refreshProfile, logout } = useAuth()
+  const { credits } = useCredits()
   const navigate = useNavigate()
   const [editingUsername, setEditingUsername] = useState(false)
   const [newUsername, setNewUsername] = useState(user?.username || '')
@@ -294,6 +296,54 @@ export default function Profile() {
           <label>{t('profile.email')}</label>
           <div className="profile-value-row">
             <span>{user.email}</span>
+          </div>
+        </div>
+
+        {/* Account Balance */}
+        <div className="profile-balance-section">
+          <h3 className="profile-section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 8, verticalAlign: 'middle' }}>
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+              <path d="M2 10h20" />
+            </svg>
+            Account Balance
+          </h3>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            gap: '12px',
+            marginTop: '12px',
+          }}>
+            <div style={{
+              background: 'rgba(34, 197, 94, 0.08)',
+              border: '1px solid rgba(34, 197, 94, 0.2)',
+              borderRadius: '12px',
+              padding: '16px',
+              textAlign: 'center',
+            }}>
+              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Total Credits</div>
+              <div style={{ color: '#22c55e', fontSize: '28px', fontWeight: 700 }}>{credits?.total_credits ?? 0}</div>
+            </div>
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: '12px',
+              padding: '16px',
+              textAlign: 'center',
+            }}>
+              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Purchased</div>
+              <div style={{ color: '#3b82f6', fontSize: '28px', fontWeight: 700 }}>{credits?.purchased_credits ?? 0}</div>
+            </div>
+            <div style={{
+              background: 'rgba(168, 85, 247, 0.08)',
+              border: '1px solid rgba(168, 85, 247, 0.2)',
+              borderRadius: '12px',
+              padding: '16px',
+              textAlign: 'center',
+            }}>
+              <div style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Daily Free</div>
+              <div style={{ color: '#a855f7', fontSize: '28px', fontWeight: 700 }}>{credits?.daily_credits ?? 0}</div>
+            </div>
           </div>
         </div>
 
