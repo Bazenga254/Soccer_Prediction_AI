@@ -121,7 +121,7 @@ export default function AccountActivation() {
             className="activation-btn activation-btn-alt"
             onClick={() => setShowCrypto(true)}
           >
-            Pay with Crypto
+            Pay with Crypto ($10 min)
           </button>
         </div>
 
@@ -155,7 +155,7 @@ export default function AccountActivation() {
           isOpen={true}
           onClose={() => setShowCrypto(false)}
           transactionType="balance_topup"
-          amountUsd={minUsd}
+          amountUsd={Math.max(minUsd, 10)}
           title="Activate with Crypto"
           onSuccess={handlePaymentSuccess}
         />
