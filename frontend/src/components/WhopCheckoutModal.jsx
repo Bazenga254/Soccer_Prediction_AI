@@ -13,6 +13,10 @@ export default function WhopCheckoutModal({
   amountUsd = 0,
   title = 'Payment',
 }) {
+  // Whop requires $2 minimum per transaction
+  const WHOP_MIN_USD = 2
+  const effectiveAmount = Math.max(amountUsd, WHOP_MIN_USD)
+
   const { t } = useTranslation()
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -42,7 +46,7 @@ export default function WhopCheckoutModal({
           transaction_type: transactionType,
           plan_id: planId,
           prediction_id: predictionId,
-          amount_usd: amountUsd,
+          amount_usd: effectiveAmount,
         })
 
         const { purchase_url, checkout_id } = response.data
@@ -84,7 +88,7 @@ export default function WhopCheckoutModal({
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
     }
-  }, [isOpen, transactionType, planId, predictionId, amountUsd])
+  }, [isOpen, transactionType, planId, predictionId, effectiveAmount])
 
   if (!isOpen) return null
 
@@ -159,7 +163,7 @@ export default function WhopCheckoutModal({
                       transaction_type: transactionType,
                       plan_id: planId,
                       prediction_id: predictionId,
-                      amount_usd: amountUsd,
+                      amount_usd: effectiveAmount,
                     })
                     const { purchase_url, checkout_id } = response.data
                     txIdRef.current = checkout_id

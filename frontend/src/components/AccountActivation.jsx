@@ -106,7 +106,7 @@ export default function AccountActivation() {
               className="activation-btn activation-btn-card"
               onClick={() => setShowWhop(true)}
             >
-              Activate with Card (${minUsd}+)
+              Activate with Card ($2+)
             </button>
           )}
           {isKenyan && (
@@ -114,7 +114,7 @@ export default function AccountActivation() {
               className="activation-btn activation-btn-alt"
               onClick={() => setShowWhop(true)}
             >
-              Pay with Card ($1 min)
+              Pay with Card ($2 min)
             </button>
           )}
           <button
@@ -145,7 +145,7 @@ export default function AccountActivation() {
           isOpen={true}
           onClose={() => setShowWhop(false)}
           transactionType="balance_topup"
-          amount={Math.max(minUsd, 1)}
+          amount={Math.max(minUsd, 2)}
           onSuccess={handlePaymentSuccess}
         />
       )}
