@@ -3191,11 +3191,11 @@ async def get_credits_balance(authorization: str = Header(None)):
 
     credits = community.get_user_credits(payload["user_id"])
 
-    # Check if user has active subscription or is a promo pro user
+    # Check if user has active subscription or is a PRO user
     sub = subscriptions.get_active_subscription(payload["user_id"])
-    is_promo_pro = False
+    is_pro_user = False
     if not sub:
-        # Check if user is a promo pro user (tier=pro with promo_code_used)
+        # Check if user has tier=pro (via subscription, promo, or manual assignment)
         try:
             _uconn = __import__("sqlite3").connect("users.db")
             _uconn.row_factory = __import__("sqlite3").Row
@@ -3204,14 +3204,19 @@ async def get_credits_balance(authorization: str = Header(None)):
                 (payload["user_id"],)
             ).fetchone()
             _uconn.close()
-            if _prow and _prow["tier"] == "pro" and _prow["promo_code_used"]:
-                from datetime import datetime as _dt2
-                if _prow["pro_expires_at"] and _prow["pro_expires_at"] > _dt2.now().isoformat():
-                    is_promo_pro = True
+            if _prow and _prow["tier"] == "pro":
+                # PRO via promo: check expiry
+                if _prow["promo_code_used"] and _prow["pro_expires_at"]:
+                    from datetime import datetime as _dt2
+                    if _prow["pro_expires_at"] > _dt2.now().isoformat():
+                        is_pro_user = True
+                # PRO without promo (manual or subscription-based): always valid
+                elif not _prow["promo_code_used"]:
+                    is_pro_user = True
         except Exception:
             pass
 
-    if sub or is_promo_pro:
+    if sub or is_pro_user:
         daily_expires = credits.get("daily_expires_at")
         from datetime import datetime as _dt
         now = _dt.now().isoformat()
@@ -3220,7 +3225,7 @@ async def get_credits_balance(authorization: str = Header(None)):
             daily_amount = int(pricing_config.get("daily_credits_subscriber", 2000))
             credits = community.refresh_daily_credits(payload["user_id"], daily_amount)
 
-    credits["has_subscription"] = sub is not None or is_promo_pro
+    credits["has_subscription"] = sub is not None or is_pro_user
     return credits
 
 
