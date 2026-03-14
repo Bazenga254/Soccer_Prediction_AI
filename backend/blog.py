@@ -90,6 +90,18 @@ def _slugify(text: str) -> str:
     return slug[:100]
 
 
+def _clean_social_text(text: str) -> str:
+    """Remove tweet attribution, t.co links, and @username references from text."""
+    import re
+    if not text:
+        return text
+    cleaned = re.sub(r'https?://t\.co/\S+', '', text)
+    cleaned = re.sub(r'\s*—\s*Fabrizio Romano\s*\(@FabrizioRomano\).*$', '', cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r'\s*—\s*@?\w+\s*\(@\w+\)\s*\w{3}\s+\d{1,2},?\s*\d{4}.*$', '', cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r'\n\s*\n', '\n', cleaned).strip()
+    return cleaned
+
+
 def create_post(title: str, excerpt: str = "", body: str = "",
                 category: str = "general", tags: list = None,
                 cover_image: str = "", video_url: str = "",
@@ -121,7 +133,7 @@ def create_post(title: str, excerpt: str = "", body: str = "",
             cover_image, video_url, status, author_name, created_at, updated_at,
             published_at, source, source_id, source_url, post_type, teams)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (slug, title.strip(), excerpt.strip(), body, category,
+    """, (slug, _clean_social_text(title.strip()), _clean_social_text(excerpt.strip()), body, category,
           str(tags or []), cover_image, video_url, status, author_name,
           now, now, published_at, source, source_id, source_url, post_type,
           str(teams or [])))
