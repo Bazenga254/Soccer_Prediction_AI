@@ -528,7 +528,16 @@ export default function Profile() {
                   {pageRefs.map(r => (
                     <div key={r.id} className="referral-list-item">
                       <span className="referral-list-name">{r.display_name}</span>
-                      <span className={`tier-tag ${r.tier}`}>{r.tier.toUpperCase()}</span>
+                      <span style={{
+                        fontSize: 11,
+                        padding: '2px 8px',
+                        borderRadius: 10,
+                        fontWeight: 600,
+                        background: r.account_activated ? 'rgba(34,197,94,0.15)' : 'rgba(234,179,8,0.15)',
+                        color: r.account_activated ? '#22c55e' : '#eab308',
+                      }}>
+                        {r.account_activated ? 'ACTIVATED' : 'NOT ACTIVATED'}
+                      </span>
                       <span className="referral-list-date">{new Date(r.joined).toLocaleDateString()}</span>
                     </div>
                   ))}

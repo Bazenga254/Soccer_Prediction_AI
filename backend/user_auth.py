@@ -3615,6 +3615,7 @@ def get_referral_stats(user_id: int) -> Dict:
             "username": r["username"],
             "tier": r["tier"],
             "joined": r["created_at"],
+            "account_activated": _get_account_activated(r["id"]),
         } for r in referrals[:20]],  # Cap at 20 for API response
     }
 
