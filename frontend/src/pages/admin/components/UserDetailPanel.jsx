@@ -125,6 +125,12 @@ export default function UserDetailPanel({ userProfile, onBack, onTierChange, onT
             <div className="user-detail-row"><span>Joined</span><strong>{userProfile.created_at ? new Date(userProfile.created_at).toLocaleDateString() : 'N/A'}</strong></div>
             <div className="user-detail-row"><span>Logins</span><strong>{userProfile.login_count || 0}</strong></div>
             <div className="user-detail-row"><span>Last Login</span><strong>{userProfile.last_login ? new Date(userProfile.last_login).toLocaleDateString() : 'Never'}</strong></div>
+            <div className="user-detail-row"><span>Phone Number</span><strong>{userProfile.whatsapp_number ? (
+              <span>
+                {userProfile.whatsapp_number}
+                {userProfile.whatsapp_verified && <span style={{ color: '#22c55e', marginLeft: 6, fontSize: 11 }}>VERIFIED</span>}
+              </span>
+            ) : 'Not set'}</strong></div>
             <div className="user-detail-row"><span>Referral Code</span><strong>{userProfile.referral_code || 'None'}</strong></div>
             <div className="user-detail-row"><span>Referred By</span><strong>{referrer ? (
               <span className="referrer-link" onClick={() => onViewUser && onViewUser(referrer.id)} style={{ cursor: 'pointer', color: '#60a5fa' }}>
