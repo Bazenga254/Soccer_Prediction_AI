@@ -5,7 +5,10 @@ import { useCredits } from '../context/CreditContext'
 import axios from 'axios'
 import './CreditBalanceDropdown.css'
 
-const AD_DIRECT_LINK = 'https://omg10.com/4/10735990'
+const AD_LINKS = [
+  'https://omg10.com/4/10735990',
+  'https://www.effectivegatecpm.com/px35t7j6x1?key=3126c4ab3a7178585b0fc92972a24690'
+]
 
 export default function CreditBalanceDropdown() {
   const [isOpen, setIsOpen] = useState(false)
@@ -117,7 +120,7 @@ export default function CreditBalanceDropdown() {
               onClick={async () => {
                 setAdLoading(true)
                 setAdMessage('')
-                window.open(AD_DIRECT_LINK, '_blank')
+                window.open(AD_LINKS[Math.floor(Math.random() * AD_LINKS.length)], '_blank')
                 // Wait a few seconds for the ad to register, then claim reward
                 setTimeout(async () => {
                   try {
