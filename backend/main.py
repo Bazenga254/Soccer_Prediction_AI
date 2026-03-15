@@ -3216,14 +3216,19 @@ async def get_credits_balance(authorization: str = Header(None)):
         except Exception:
             pass
 
+    from datetime import datetime as _dt
+    now = _dt.now().isoformat()
+    daily_expires = credits.get("daily_expires_at")
+
     if sub or is_pro_user:
-        daily_expires = credits.get("daily_expires_at")
-        from datetime import datetime as _dt
-        now = _dt.now().isoformat()
         if not daily_expires or daily_expires < now:
-            # Refresh daily credits
+            # Refresh daily credits for PRO users (2000/day)
             daily_amount = int(pricing_config.get("daily_credits_subscriber", 2000))
             credits = community.refresh_daily_credits(payload["user_id"], daily_amount)
+    else:
+        # Free tier: 100 daily credits
+        if not daily_expires or daily_expires < now:
+            credits = community.refresh_daily_credits(payload["user_id"], 100)
 
     credits["has_subscription"] = sub is not None or is_pro_user
     return credits
