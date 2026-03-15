@@ -475,6 +475,22 @@ html, body {
   color: #e2e8f0;
 }
 
+.competition-tab.earn-credits-tab {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.2));
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  cursor: pointer;
+  animation: earnPulse 2s ease-in-out infinite;
+}
+.competition-tab.earn-credits-tab:hover {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(217, 119, 6, 0.3));
+  color: #fcd34d;
+}
+@keyframes earnPulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 8px rgba(245, 158, 11, 0.3); }
+}
+
 .competition-tab.active {
   background: rgba(34, 197, 94, 0.15);
   border-color: rgba(34, 197, 94, 0.4);

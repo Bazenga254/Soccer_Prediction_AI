@@ -254,6 +254,31 @@ export default function Header({ user, logout }) {
             <span className="comp-flag">{'\u{1F4F0}'}</span>
             <span className="comp-name">{t('nav.news', 'News')}</span>
           </Link>
+          {user && user.tier !== 'pro' && (
+            <button
+              className="competition-tab earn-credits-tab"
+              onClick={async () => {
+                const adLinks = [
+                  'https://omg10.com/4/10735990',
+                  'https://www.effectivegatecpm.com/px35t7j6x1?key=3126c4ab3a7178585b0fc92972a24690'
+                ]
+                window.open(adLinks[Math.floor(Math.random() * adLinks.length)], '_blank')
+                setTimeout(async () => {
+                  try {
+                    const res = await axios.post('/api/credits/ad-reward')
+                    if (res.data.success) {
+                      alert(`+${res.data.reward} credits earned! (${res.data.remaining_today} rewards left this hour)`)
+                    }
+                  } catch (err) {
+                    alert(err.response?.data?.detail || 'Try again later')
+                  }
+                }, 3000)
+              }}
+            >
+              <span className="comp-flag">{'\u{1F3AC}'}</span>
+              <span className="comp-name">Earn Credits</span>
+            </button>
+          )}
         </div>
       </nav>
 
