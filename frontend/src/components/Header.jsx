@@ -254,7 +254,7 @@ export default function Header({ user, logout }) {
             <span className="comp-flag">{'\u{1F4F0}'}</span>
             <span className="comp-name">{t('nav.news', 'News')}</span>
           </Link>
-          {user && user.tier !== 'pro' && (
+          {user && !user.is_admin && (
             <button
               className="competition-tab earn-credits-tab"
               onClick={async () => {
