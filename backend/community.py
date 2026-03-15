@@ -4554,3 +4554,25 @@ def is_account_activated(user_id: int) -> bool:
         return True
 
     return False
+
+
+def grant_starter_credits(user_id: int, amount: int = 200):
+    """Give free starter credits to a new user. Only grants once (skips if balance exists)."""
+    conn = _get_db()
+    existing = conn.execute("SELECT id FROM user_balances WHERE user_id = ?", (user_id,)).fetchone()
+    if existing:
+        conn.close()
+        return  # Already has a balance record — don't double-grant
+    now = __import__('datetime').datetime.now().isoformat()
+    conn.execute("""
+        INSERT INTO user_balances (user_id, credits, balance_usd, balance_kes,
+            total_deposited_usd, total_deposited_kes, updated_at)
+        VALUES (?, ?, 0, 0, 0, 0, ?)
+    """, (user_id, amount, now))
+    conn.execute("""
+        INSERT INTO balance_adjustments (user_id, amount_usd, credits_amount, type, reason, admin_id, created_at)
+        VALUES (?, 0, ?, 'credit', 'Welcome bonus: 200 free starter credits', 0, ?)
+    """, (user_id, amount, now))
+    conn.commit()
+    conn.close()
+    print(f"[Starter Credits] Granted {amount} free credits to user {user_id}")

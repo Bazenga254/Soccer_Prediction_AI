@@ -222,17 +222,6 @@ function ProtectedApp() {
     )
   }
 
-  // Block access until account is activated (initial deposit required)
-  if (user && user.account_activated === false) {
-    return (
-      <div className="app">
-        <Suspense fallback={<PageLoader />}>
-          <AccountActivation />
-        </Suspense>
-      </div>
-    )
-  }
-
   return (
     <BetSlipProvider>
       <div className="app">

@@ -2760,6 +2760,13 @@ def verify_email(email: str, code: str) -> Dict:
     conn.commit()
     conn.close()
 
+    # Give 200 free starter credits
+    try:
+        import community
+        community.grant_starter_credits(user["id"], 200)
+    except Exception as e:
+        print(f"[WARN] Failed to grant starter credits to user {user['id']}: {e}")
+
     # Send welcome email after successful verification
     _send_welcome_email(email, user["display_name"])
 
@@ -2830,12 +2837,8 @@ def resend_verification_code(email: str) -> Dict:
 
 
 def _get_account_activated(user_id: int) -> bool:
-    """Check if user has activated their account (made initial deposit)."""
-    try:
-        import community
-        return community.is_account_activated(user_id)
-    except Exception:
-        return True  # Default to activated to avoid blocking
+    """All accounts are now auto-activated with 200 free credits."""
+    return True
 
 
 def _get_user_credits_total(user_id: int) -> int:
