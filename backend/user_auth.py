@@ -1329,6 +1329,11 @@ def send_first_prediction_email(to_email: str, display_name: str = "") -> bool:
 
 def send_notification_email(to_email: str, display_name: str, notif_type: str, title: str, message: str, metadata: dict = None, from_email: str = "") -> bool:
     """Send an email notification for important events. Returns True on success."""
+    # Skip high-volume notification types to conserve email quota
+    SKIP_EMAIL_TYPES = {"new_prediction", "prediction_result", "broadcast"}
+    if notif_type in SKIP_EMAIL_TYPES:
+        return True
+
     greeting = display_name or "there"
     meta = metadata or {}
 
