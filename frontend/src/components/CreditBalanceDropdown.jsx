@@ -9,7 +9,7 @@ export default function CreditBalanceDropdown() {
   const dropdownRef = useRef(null)
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { credits, costs, totalCredits, refreshCredits } = useCredits()
+  const { credits, costs, totalCredits, refreshCredits, loading } = useCredits()
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -48,7 +48,7 @@ export default function CreditBalanceDropdown() {
         title="Credit Balance"
       >
         <span className="credit-icon">&#9889;</span>
-        <span className="credit-count">{totalCredits.toLocaleString()}</span>
+        <span className="credit-count">{credits ? totalCredits.toLocaleString() : '...'}</span>
       </button>
 
       {isOpen && (
