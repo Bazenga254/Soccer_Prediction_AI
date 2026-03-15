@@ -1,10 +1,16 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { useAuth } from './AuthContext'
 import axios from 'axios'
 
 const CreditContext = createContext()
 
 export function CreditProvider({ children }) {
-  const [credits, setCredits] = useState(null)
+  const { user } = useAuth()
+  const [credits, setCredits] = useState(() => {
+    // Use credits from user profile as initial value to avoid showing 0
+    if (user?.credits) return { total_credits: user.credits }
+    return null
+  })
   const [costs, setCosts] = useState(null)
   const [loading, setLoading] = useState(true)
 
