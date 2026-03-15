@@ -2,10 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useCredits } from '../context/CreditContext'
+import axios from 'axios'
 import './CreditBalanceDropdown.css'
+
+const AD_DIRECT_LINK = 'https://omg10.com/4/10735990'
 
 export default function CreditBalanceDropdown() {
   const [isOpen, setIsOpen] = useState(false)
+  const [adLoading, setAdLoading] = useState(false)
+  const [adMessage, setAdMessage] = useState('')
   const dropdownRef = useRef(null)
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -68,10 +73,10 @@ export default function CreditBalanceDropdown() {
               <span>Purchased</span>
               <span>{(credits?.purchased_credits || 0).toLocaleString()}</span>
             </div>
-            {credits?.has_subscription && (
+            {(credits?.daily_credits > 0 || credits?.has_subscription) && (
               <>
                 <div className="credit-row">
-                  <span>Daily (Pro)</span>
+                  <span>Daily {credits?.has_subscription ? '(Pro)' : '(Free)'}</span>
                   <span>{(credits?.daily_credits || 0).toLocaleString()}</span>
                 </div>
                 {credits?.daily_expires_at && (
@@ -107,6 +112,31 @@ export default function CreditBalanceDropdown() {
           )}
 
           <div className="credit-actions">
+            <button
+              className="credit-earn-btn"
+              onClick={async () => {
+                setAdLoading(true)
+                setAdMessage('')
+                window.open(AD_DIRECT_LINK, '_blank')
+                // Wait a few seconds for the ad to register, then claim reward
+                setTimeout(async () => {
+                  try {
+                    const res = await axios.post('/api/credits/ad-reward')
+                    if (res.data.success) {
+                      setAdMessage(res.data.message)
+                      refreshCredits()
+                    }
+                  } catch (err) {
+                    setAdMessage(err.response?.data?.detail || 'Try again later')
+                  }
+                  setAdLoading(false)
+                }, 3000)
+              }}
+              disabled={adLoading}
+            >
+              {adLoading ? 'Earning...' : '🎬 Watch Ad (+10 cr)'}
+            </button>
+            {adMessage && <div className="credit-ad-msg">{adMessage}</div>}
             <button
               className="credit-add-btn"
               onClick={() => { setIsOpen(false); navigate('/upgrade') }}

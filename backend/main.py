@@ -3256,6 +3256,66 @@ class CreditDeductRequest(BaseModel):
     match_key: str = ""
 
 
+@app.post("/api/credits/ad-reward")
+async def ad_reward_credits(authorization: str = Header(None)):
+    """Reward user with credits for watching an ad. Rate limited to 5 per hour."""
+    payload = _get_current_user(authorization)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_id = payload["user_id"]
+    reward_amount = 10  # credits per ad view
+    max_per_hour = 5
+
+    # Rate limit: check how many rewards in the last hour
+    from datetime import datetime, timedelta
+    conn = community._get_db()
+    one_hour_ago = (datetime.now() - timedelta(hours=1)).isoformat()
+    recent = conn.execute(
+        "SELECT COUNT(*) as cnt FROM balance_adjustments WHERE user_id = ? AND reason = 'Ad reward' AND created_at >= ?",
+        (user_id, one_hour_ago)
+    ).fetchone()["cnt"]
+
+    if recent >= max_per_hour:
+        conn.close()
+        raise HTTPException(status_code=429, detail=f"Maximum {max_per_hour} ad rewards per hour. Try again later.")
+
+    # Grant credits
+    now = datetime.now().isoformat()
+    conn.execute("""
+        INSERT OR IGNORE INTO user_balances (user_id, balance_usd, balance_kes,
+            total_deposited_usd, total_deposited_kes, total_spent_usd, total_spent_kes,
+            credits, daily_credits, updated_at)
+        VALUES (?, 0, 0, 0, 0, 0, 0, 0, 0, ?)
+    """, (user_id, now))
+    conn.execute("UPDATE user_balances SET credits = credits + ?, updated_at = ? WHERE user_id = ?",
+                 (reward_amount, now, user_id))
+    conn.execute("""
+        INSERT INTO balance_adjustments (user_id, amount_usd, amount_kes, adjustment_type, reason, adjusted_by_id, adjusted_by_name, created_at)
+        VALUES (?, 0, 0, 'credit', 'Ad reward', 0, 'System', ?)
+    """, (user_id, now))
+    conn.commit()
+
+    # Get updated balance
+    row = conn.execute("SELECT credits, daily_credits, credits_daily_expires_at FROM user_balances WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+
+    purchased = row["credits"] if row else 0
+    daily = row["daily_credits"] if row else 0
+    daily_exp = row["credits_daily_expires_at"] if row else None
+    if daily_exp and daily_exp < now:
+        daily = 0
+
+    remaining = max_per_hour - recent - 1
+    return {
+        "success": True,
+        "reward": reward_amount,
+        "total_credits": purchased + daily,
+        "remaining_today": remaining,
+        "message": f"+{reward_amount} credits earned!"
+    }
+
+
 @app.post("/api/credits/deduct")
 async def deduct_credits(request: CreditDeductRequest, authorization: str = Header(None)):
     """Deduct credits for a specific action."""
