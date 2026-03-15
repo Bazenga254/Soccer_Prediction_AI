@@ -4570,9 +4570,9 @@ def grant_starter_credits(user_id: int, amount: int = 200):
         VALUES (?, ?, 0, 0, 0, 0, ?)
     """, (user_id, amount, now))
     conn.execute("""
-        INSERT INTO balance_adjustments (user_id, amount_usd, credits_amount, type, reason, admin_id, created_at)
-        VALUES (?, 0, ?, 'credit', 'Welcome bonus: 200 free starter credits', 0, ?)
-    """, (user_id, amount, now))
+        INSERT INTO balance_adjustments (user_id, amount_usd, amount_kes, adjustment_type, reason, adjusted_by_id, adjusted_by_name, created_at)
+        VALUES (?, 0, 0, 'credit', 'Welcome bonus: 200 free starter credits', 0, 'System', ?)
+    """, (user_id, now))
     conn.commit()
     conn.close()
     print(f"[Starter Credits] Granted {amount} free credits to user {user_id}")
