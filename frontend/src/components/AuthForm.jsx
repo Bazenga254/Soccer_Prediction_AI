@@ -8,7 +8,7 @@ import CountryPicker from './CountryPicker'
 
 const GOOGLE_CLIENT_ID = '905871526482-4i8pfv8435p4eq10226j0agks7j007ag.apps.googleusercontent.com'
 // Turnstile site key is inside Turnstile component
-const TOTAL_SIGNUP_STEPS = 6
+const TOTAL_SIGNUP_STEPS = 5
 
 export default function AuthForm({ initialMode = 'login', onClose = null, compact = false }) {
   const [mode, setMode] = useState(initialMode)
@@ -518,7 +518,7 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
   }
 
   // Step 5: Security Q&A — just advance
-  const handleStep5Next = () => {
+  const handleStep5Next = async () => {
     setError('')
     if (!securityQuestion) {
       setError('Please select a security question.')
@@ -528,7 +528,24 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
       setError('Security answer must be at least 2 characters.')
       return
     }
-    setSignupStep(6)
+    // Save personal info and complete setup
+    setSavingFinal(true)
+    setError('')
+    try {
+      await axios.put('/api/user/personal-info', {
+        full_name: fullName.trim() || undefined,
+        date_of_birth: dateOfBirth || undefined,
+        security_question: securityQuestion || undefined,
+        security_answer: securityAnswer.trim() || undefined,
+        country: country || undefined,
+      })
+      await axios.post('/api/user/accept-terms')
+      await refreshProfile()
+      navigate('/')
+    } catch (saveErr) {
+      setError(saveErr.response?.data?.detail || 'Setup failed. Please try again.')
+      setSavingFinal(false)
+    }
   }
 
   // Step 6: Phone verification
@@ -933,8 +950,8 @@ export default function AuthForm({ initialMode = 'login', onClose = null, compac
               <div className="wizard-btn-row">
                 <button type="button" className="wizard-back-btn" onClick={() => setSignupStep(4)}>&larr; Back</button>
                 <button type="button" className="gate-submit-btn wizard-next-btn" onClick={handleStep5Next}
-                  disabled={!securityQuestion || securityAnswer.trim().length < 2}>
-                  Next &rarr;
+                  disabled={!securityQuestion || securityAnswer.trim().length < 2 || savingFinal}>
+                  {savingFinal ? 'Completing...' : 'Complete Setup \u2192'}
                 </button>
               </div>
             </div>
