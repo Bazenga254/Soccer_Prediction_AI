@@ -3258,14 +3258,14 @@ class CreditDeductRequest(BaseModel):
 
 @app.post("/api/credits/ad-reward")
 async def ad_reward_credits(authorization: str = Header(None)):
-    """Reward user with credits for watching an ad. Rate limited to 10 per hour."""
+    """Reward user with credits for watching an ad. Rate limited to 20 per hour."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user_id = payload["user_id"]
     reward_amount = 10  # credits per ad view
-    max_per_hour = 10
+    max_per_hour = 20
 
     # Rate limit: check how many rewards in the last hour
     from datetime import datetime, timedelta

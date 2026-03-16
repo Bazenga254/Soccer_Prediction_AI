@@ -1084,7 +1084,7 @@ export default function JackpotAnalyzer() {
           <Link to="/upgrade" className="jackpot-locked-upgrade-btn">
             {"⚡"} Add Credits
           </Link>
-          <a href="https://www.effectivegatecpm.com/px35t7j6x1?key=3126c4ab3a7178585b0fc92972a24690"
+          <a href={['https://omg10.com/4/10735990','https://www.effectivegatecpm.com/px35t7j6x1?key=3126c4ab3a7178585b0fc92972a24690'][Math.floor(Math.random()*2)]}
              target="_blank" rel="noopener" className="jackpot-locked-upgrade-btn"
              style={{ background: 'linear-gradient(135deg, #f59e0b, #f97316)', marginTop: '8px' }}>
             {"🎬"} Watch Ad for Free Credits
