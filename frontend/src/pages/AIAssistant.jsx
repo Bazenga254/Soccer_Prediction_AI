@@ -491,9 +491,16 @@ function AIAssistant() {
                     <div className="ai-message-body">
                       {renderMessageContent(msg.content, msg.match_links)}
                       {msg.creditError && (
-                        <a href="/upgrade" className="ai-credit-link" onClick={(e) => { e.preventDefault(); navigate('/upgrade', { state: { from: 'ai-assistant' } }) }}>
-                          Click here to purchase credits {'\u27A1'}
-                        </a>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+                          <a href="/upgrade" className="ai-credit-link" onClick={(e) => { e.preventDefault(); navigate('/upgrade', { state: { from: 'ai-assistant' } }) }}>
+                            Click here to purchase credits {'\u27A1'}
+                          </a>
+                          <a href="https://www.effectivegatecpm.com/px35t7j6x1?key=3126c4ab3a7178585b0fc92972a24690"
+                             target="_blank" rel="noopener" className="ai-credit-link"
+                             style={{ color: '#f59e0b' }}>
+                            Or watch an ad for free credits {'\u{1F3AC}'}
+                          </a>
+                        </div>
                       )}
                     </div>
                     {renderMatchCards(msg.match_links)}

@@ -2916,6 +2916,11 @@ export default function MatchAnalysis() {
             <Link to="/upgrade" className="analysis-blocked-upgrade-btn">
               {"⚡"} Add Credits
             </Link>
+            <a href="https://www.effectivegatecpm.com/px35t7j6x1?key=3126c4ab3a7178585b0fc92972a24690"
+               target="_blank" rel="noopener" className="analysis-blocked-upgrade-btn"
+               style={{ background: 'linear-gradient(135deg, #f59e0b, #f97316)', marginTop: '8px' }}>
+              {"🎬"} Watch Ad for Free Credits
+            </a>
             <button className="analysis-blocked-back-btn" onClick={() => navigate(-1)}>
               ← Go Back
             </button>
