@@ -9,6 +9,7 @@ import { CreditProvider } from './context/CreditContext'
 import { CurrencyProvider } from './context/CurrencyContext'
 import { ThemeProvider } from './context/ThemeContext'
 import OfflineBanner from './components/OfflineBanner'
+import AdManager from './components/AdManager'
 import './App.css'
 
 // Retry dynamic imports once by clearing SW caches and reloading on chunk failure
@@ -284,6 +285,7 @@ function App() {
       <CreditProvider>
       <CurrencyProvider>
       <AuthProvider>
+        <AdManager />
         <Suspense fallback={null}>
           <LanguageBanner />
           <CookieConsent />
