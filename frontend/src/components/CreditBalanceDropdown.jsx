@@ -14,6 +14,7 @@ export default function CreditBalanceDropdown() {
   const [isOpen, setIsOpen] = useState(false)
   const [adLoading, setAdLoading] = useState(false)
   const [adMessage, setAdMessage] = useState('')
+  const [adCountdown, setAdCountdown] = useState(0)
   const dropdownRef = useRef(null)
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -28,6 +29,30 @@ export default function CreditBalanceDropdown() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  // 12-second countdown timer for ad watching
+  useEffect(() => {
+    if (adCountdown <= 0) return
+    if (adCountdown === 1) {
+      // Countdown finished — claim reward
+      (async () => {
+        try {
+          const res = await axios.post('/api/credits/ad-reward')
+          if (res.data.success) {
+            setAdMessage(res.data.message)
+            refreshCredits()
+          }
+        } catch (err) {
+          setAdMessage(err.response?.data?.detail || 'Try again later')
+        }
+        setAdLoading(false)
+        setAdCountdown(0)
+      })()
+      return
+    }
+    const timer = setTimeout(() => setAdCountdown(c => c - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [adCountdown])
 
   const handleOpen = () => {
     if (!isOpen) refreshCredits()
@@ -120,24 +145,16 @@ export default function CreditBalanceDropdown() {
               onClick={async () => {
                 setAdLoading(true)
                 setAdMessage('')
+                setAdCountdown(12)
                 window.open(AD_LINKS[Math.floor(Math.random() * AD_LINKS.length)], '_blank')
-                // Wait a few seconds for the ad to register, then claim reward
-                setTimeout(async () => {
-                  try {
-                    const res = await axios.post('/api/credits/ad-reward')
-                    if (res.data.success) {
-                      setAdMessage(res.data.message)
-                      refreshCredits()
-                    }
-                  } catch (err) {
-                    setAdMessage(err.response?.data?.detail || 'Try again later')
-                  }
-                  setAdLoading(false)
-                }, 3000)
               }}
               disabled={adLoading}
             >
-              {adLoading ? 'Earning...' : '🎬 Watch Ad (+10 cr)'}
+              {adLoading && adCountdown > 0
+                ? `⏳ Watching... ${adCountdown}s`
+                : adLoading
+                ? 'Crediting...'
+                : '🎬 Watch Ad (+10 cr)'}
             </button>
             {adMessage && <div className="credit-ad-msg">{adMessage}</div>}
             <button
