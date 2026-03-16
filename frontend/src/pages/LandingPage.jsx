@@ -141,7 +141,8 @@ export default function LandingPage() {
     'Match tracking & goal alerts',
     'Community analysis feed',
     '40+ leagues worldwide',
-    'Account activation: KES 35',
+    '100 free credits daily',
+    'Earn more credits by watching ads',
   ]
 
   const PRO_FEATURES = pricing?.plans?.[weeklyKey]?.features || [
