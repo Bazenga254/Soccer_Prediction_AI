@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 
 /**
- * AdManager — loads ad scripts only for free-tier, non-admin users.
+ * AdManager — loads Monetag ad scripts only for free-tier, non-admin users.
  * Waits for auth to resolve before loading any ads to prevent
  * ads from briefly appearing for PRO/admin users.
  */
@@ -30,16 +30,6 @@ export default function AdManager() {
     monetagScript.dataset.zone = '10735977'
     monetagScript.src = 'https://gizokraijaw.net/vignette.min.js'
     document.body.appendChild(monetagScript)
-
-    // AdSterra Social Bar
-    const adsterraScript = document.createElement('script')
-    adsterraScript.src = 'https://pl28924111.effectivegatecpm.com/8b/22/dc/8b22dc04466fc7989c3ddaec6e94e1ae.js'
-    document.head.appendChild(adsterraScript)
-
-    // AdSterra Popunder
-    const popunderScript = document.createElement('script')
-    popunderScript.src = 'https://pl28928358.effectivegatecpm.com/56/ce/60/56ce60644eae3fecf24e692cb319ca92.js'
-    document.head.appendChild(popunderScript)
   }, [user, loading])
 
   return null
