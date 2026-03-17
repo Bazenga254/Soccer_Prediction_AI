@@ -257,6 +257,49 @@ def build_match_context() -> str:
     except Exception as e:
         print(f"[AI Assistant] Error loading stored predictions: {e}")
 
+    # 3. Add live league standings from top leagues
+    try:
+        import asyncio
+        from football_api import fetch_standings
+
+        top_leagues = [
+            ("PL", "Premier League"),
+            ("PD", "La Liga"),
+            ("SA", "Serie A"),
+            ("BL1", "Bundesliga"),
+            ("FL1", "Ligue 1"),
+        ]
+
+        standings_parts = []
+        loop = asyncio.new_event_loop()
+        for code, name in top_leagues:
+            try:
+                standings = loop.run_until_complete(fetch_standings(code))
+                if standings and len(standings) > 0:
+                    table_lines = [f"\n{name} Standings:"]
+                    for team in standings[:20]:
+                        pos = team.get("position", "?")
+                        team_name = team.get("name", "?")
+                        pts = team.get("points", "?")
+                        played = team.get("played", "?")
+                        won = team.get("wins", "?")
+                        drawn = team.get("draws", "?")
+                        lost = team.get("losses", "?")
+                        gf = team.get("goals_scored", "?")
+                        ga = team.get("goals_conceded", "?")
+                        gd = team.get("goal_difference", "?")
+                        table_lines.append(f"  #{pos} {team_name} | Pts:{pts} | P:{played} W:{won} D:{drawn} L:{lost} | GF:{gf} GA:{ga} GD:{gd}")
+                    standings_parts.append("\n".join(table_lines))
+            except Exception as e:
+                print(f"[AI Assistant] Error loading {name} standings: {e}")
+        loop.close()
+
+        if standings_parts:
+            parts.append(f"\n\n=== LIVE LEAGUE STANDINGS (Updated) ===")
+            parts.extend(standings_parts)
+    except Exception as e:
+        print(f"[AI Assistant] Error loading standings: {e}")
+
     if not parts:
         return "No match analysis data is available for today yet. Matches are analyzed as they become available."
 
@@ -296,6 +339,22 @@ Use web search to ENHANCE and CROSS-CHECK the platform data with the latest info
 ## IMPORTANT: Stick to Football Only
 - Only use web search for football/soccer related queries
 - If a user asks about non-football topics, politely redirect them: "I'm specialized in football analysis. How can I help you with today's matches?"
+
+## General Football Knowledge
+You are an EXPERT football analyst with deep knowledge of:
+- All major leagues (Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Champions League, etc.)
+- All teams, their squads, managers, playing styles, and histories
+- Current standings, title races, relegation battles, and qualification scenarios
+- Transfer windows, player stats, injuries, and suspensions
+- Historical records, rivalry context, and tactical analysis
+
+When a user asks general football questions (e.g., "Can Arsenal win the league?", "Who is the top scorer?", "How has Barcelona been playing?"), you MUST:
+1. Use your football knowledge AND web search to give a comprehensive, informed answer
+2. Reference current standings, recent form, remaining fixtures, and key factors
+3. Provide your expert analysis and opinion
+4. If relevant, link to platform match data for upcoming games involving those teams
+
+NEVER say "I don't know which team that is" or refuse to answer a football question. You know every professional football team in the world.
 
 ## Your Capabilities
 - Recommend matches from today's analyzed data with confidence scores
@@ -508,7 +567,7 @@ async def chat(user_id: int, conversation_id: str, message: str) -> Dict:
                 model="gpt-4o-mini",
                 tools=[{"type": "web_search_preview"}],
                 input=[
-                    {"role": "system", "content": "You are Spark AI Assistant, a football/soccer analyst ONLY. You MUST refuse to answer any question not related to football/soccer. If the user asks about politics, science, history, coding, celebrities, or ANY non-football topic, respond ONLY with: 'I'm a football analysis assistant and can only help with football-related questions. Try asking me about today's matches, predictions, or betting strategies!' Do NOT answer the non-football question at all. For football topics: use platform match data as your foundation, use web search to cross-check injuries/lineups/news, never fabricate predictions, and include [MATCH_CARD] links."},
+                    {"role": "system", "content": "You are Spark AI Assistant, an expert football/soccer analyst. You have deep knowledge of ALL football teams, leagues, players, managers, standings, title races, and history worldwide. You MUST answer ANY football-related question comprehensively — including general questions like 'Can Arsenal win the league?', 'Who is the top scorer?', or 'How has Barcelona been playing?'. Use web search to get current data, standings, and news. Only refuse non-football topics (politics, science, coding, etc.) with: 'I specialize in football analysis. How can I help you with football?' For match-specific analysis: use platform match data as your foundation, cross-check with web search, never fabricate predictions, and include [MATCH_CARD] links when discussing analyzed matches."},
                 ] + messages,
             )
 

@@ -11,10 +11,9 @@ export default function AdManager() {
 
   useEffect(() => {
     // Skip ads for: admins, pro users, employee/staff, or admin pages
-    if (!user) return
-    if (user.is_admin) return
-    if (user.tier === 'pro') return
-    if (user.is_staff) return
+    if (user?.is_admin) return
+    if (user?.tier === 'pro') return
+    if (user?.is_staff) return
     if (location.pathname.includes('spark-ctrl')) return
     if (location.pathname.includes('/employee')) return
 

@@ -254,25 +254,47 @@ export default function Header({ user, logout }) {
             <span className="comp-flag">{'\u{1F4F0}'}</span>
             <span className="comp-name">{t('nav.news', 'News')}</span>
           </Link>
-          {user && !user.is_admin && (
+          {user && !user.is_admin && user.tier !== 'pro' && (
             <button
               className="competition-tab earn-credits-tab"
-              onClick={async () => {
-                const adLinks = [
-                  'https://omg10.com/4/10735990',
-                  'https://www.effectivegatecpm.com/px35t7j6x1?key=3126c4ab3a7178585b0fc92972a24690'
-                ]
-                window.open(adLinks[Math.floor(Math.random() * adLinks.length)], '_blank')
-                setTimeout(async () => {
-                  try {
-                    const res = await axios.post('/api/credits/ad-reward')
-                    if (res.data.success) {
-                      alert(`+${res.data.reward} credits earned! (${res.data.remaining_today} rewards left this hour)`)
+              id="earn-credits-nav-btn"
+              onClick={() => {
+                const btn = document.getElementById('earn-credits-nav-btn')
+                if (btn.dataset.counting === 'true') return
+                // 70% Monetag, 30% AdSterra
+                const adUrl = Math.random() < 0.7
+                  ? 'https://omg10.com/4/10735990'
+                  : 'https://www.effectivegatecpm.com/px35t7j6x1?key=3126c4ab3a7178585b0fc92972a24690'
+                window.open(adUrl, '_blank')
+                btn.dataset.counting = 'true'
+                const originalText = btn.querySelector('.comp-name').textContent
+                let countdown = 12
+                btn.querySelector('.comp-name').textContent = `Wait ${countdown}s...`
+                btn.style.opacity = '0.6'
+                btn.style.pointerEvents = 'none'
+                const timer = setInterval(async () => {
+                  countdown--
+                  if (countdown > 0) {
+                    btn.querySelector('.comp-name').textContent = `Wait ${countdown}s...`
+                  } else {
+                    clearInterval(timer)
+                    try {
+                      const res = await axios.post('/api/credits/ad-reward')
+                      if (res.data.success) {
+                        btn.querySelector('.comp-name').textContent = `+${res.data.reward} earned!`
+                        setTimeout(() => { btn.querySelector('.comp-name').textContent = originalText }, 2000)
+                      } else {
+                        btn.querySelector('.comp-name').textContent = originalText
+                      }
+                    } catch (err) {
+                      btn.querySelector('.comp-name').textContent = err.response?.data?.detail || 'Try later'
+                      setTimeout(() => { btn.querySelector('.comp-name').textContent = originalText }, 2000)
                     }
-                  } catch (err) {
-                    alert(err.response?.data?.detail || 'Try again later')
+                    btn.style.opacity = '1'
+                    btn.style.pointerEvents = 'auto'
+                    btn.dataset.counting = 'false'
                   }
-                }, 3000)
+                }, 1000)
               }}
             >
               <span className="comp-flag">{'\u{1F3AC}'}</span>
