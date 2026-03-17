@@ -508,6 +508,75 @@ def _extract_match_links(text: str) -> List[Dict]:
     return links
 
 
+def _check_standings_query(message: str):
+    """If user asks for league standings, return formatted data directly from API."""
+    import re
+    msg = message.lower().strip()
+
+    # Map keywords to league codes
+    league_map = {
+        'epl': ('PL', 'English Premier League'),
+        'premier league': ('PL', 'English Premier League'),
+        'prem': ('PL', 'English Premier League'),
+        'la liga': ('PD', 'La Liga'),
+        'serie a': ('SA', 'Serie A'),
+        'bundesliga': ('BL1', 'Bundesliga'),
+        'ligue 1': ('FL1', 'Ligue 1'),
+    }
+
+    # Check if it's a standings question
+    standings_keywords = ['standing', 'standings', 'table', 'league table', 'positions', 'who is top', 'who is first', 'who leads']
+    is_standings = any(kw in msg for kw in standings_keywords)
+    if not is_standings:
+        return None
+
+    # Detect which league
+    detected_league = None
+    for keyword, (code, name) in league_map.items():
+        if keyword in msg:
+            detected_league = (code, name)
+            break
+
+    # Default to Premier League if no league specified
+    if not detected_league:
+        detected_league = ('PL', 'English Premier League')
+
+    code, league_name = detected_league
+
+    try:
+        import asyncio
+        from football_api import fetch_standings
+        loop = asyncio.new_event_loop()
+        standings = loop.run_until_complete(fetch_standings(code))
+        loop.close()
+
+        if not standings:
+            return None
+
+        today = datetime.now().strftime('%B %d, %Y')
+        lines = [f"Here are the current **{league_name}** standings as of {today}:\n"]
+        lines.append("| Pos | Team | Pts | P | W | D | L | GF | GA | GD |")
+        lines.append("|-----|------|-----|---|---|---|---|----|----|-----|")
+
+        for team in standings:
+            pos = team.get("position", "?")
+            name = team.get("name", "?")
+            pts = team.get("points", "?")
+            played = team.get("played", "?")
+            w = team.get("wins", "?")
+            d = team.get("draws", "?")
+            l = team.get("losses", "?")
+            gf = team.get("goals_scored", "?")
+            ga = team.get("goals_conceded", "?")
+            gd = team.get("goal_difference", "?")
+            lines.append(f"| {pos} | {name} | {pts} | {played} | {w} | {d} | {l} | {gf} | {ga} | {gd} |")
+
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[AI Assistant] Standings direct query error: {e}")
+        return None
+
+
 async def chat(user_id: int, conversation_id: str, message: str) -> Dict:
     """Process a chat message and return AI response."""
     api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -548,6 +617,19 @@ async def chat(user_id: int, conversation_id: str, message: str) -> Dict:
     # Build context
     match_context = build_match_context()
     system_prompt = SYSTEM_PROMPT.replace("{match_context}", match_context)
+
+    # Direct standings response — bypass GPT for accuracy
+    standings_response = _check_standings_query(message)
+    if standings_response:
+        # Save assistant response
+        conn2 = _get_db()
+        conn2.execute(
+            "INSERT INTO ai_messages (conversation_id, role, content, created_at) VALUES (?, 'assistant', ?, ?)",
+            (conversation_id, standings_response, datetime.now().isoformat())
+        )
+        conn2.commit()
+        conn2.close()
+        return {"text": standings_response, "match_links": [], "conversation_id": conversation_id}
 
     # Build message history for OpenAI
     messages = [{"role": "user", "content": system_prompt}]
