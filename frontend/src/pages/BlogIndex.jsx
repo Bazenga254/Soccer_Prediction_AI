@@ -26,6 +26,36 @@ const CATEGORY_COLORS = {
   documentation: '#6366f1',
 }
 
+const CATEGORY_ICONS = {
+  general: '\u26BD',
+  predictions: '\uD83C\uDFAF',
+  tips: '\uD83D\uDCA1',
+  tutorials: '\uD83D\uDCDA',
+  updates: '\uD83D\uDD14',
+  documentation: '\uD83D\uDCC4',
+  guides: '\uD83D\uDCD6',
+  analysis: '\uD83D\uDCCA',
+  transfers: '\uD83D\uDD04',
+  injuries: '\uD83C\uDFE5',
+  results: '\uD83C\uDFC6',
+  'match-updates': '\uD83D\uDCE2',
+}
+
+const CATEGORY_GRADIENTS = {
+  general: 'linear-gradient(135deg, #1e3a5f, #0f172a)',
+  predictions: 'linear-gradient(135deg, #7f1d1d, #1a0505)',
+  tips: 'linear-gradient(135deg, #14532d, #052e16)',
+  tutorials: 'linear-gradient(135deg, #581c87, #1e1b4b)',
+  updates: 'linear-gradient(135deg, #78350f, #1c1917)',
+  documentation: 'linear-gradient(135deg, #312e81, #0f172a)',
+  guides: 'linear-gradient(135deg, #1e3a5f, #0c1524)',
+  analysis: 'linear-gradient(135deg, #164e63, #0f172a)',
+  transfers: 'linear-gradient(135deg, #065f46, #0f172a)',
+  injuries: 'linear-gradient(135deg, #7f1d1d, #0f172a)',
+  results: 'linear-gradient(135deg, #854d0e, #0f172a)',
+  'match-updates': 'linear-gradient(135deg, #1e40af, #0f172a)',
+}
+
 function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 }
@@ -109,7 +139,9 @@ export default function BlogIndex() {
                       {featured.cover_image ? (
                         <img src={featured.cover_image} alt={featured.title} />
                       ) : (
-                        <div className="blog-featured-placeholder" />
+                        <div className="blog-featured-placeholder" style={{ background: CATEGORY_GRADIENTS[featured.category] || CATEGORY_GRADIENTS.general }}>
+                          {CATEGORY_ICONS[featured.category] || '\u26BD'}
+                        </div>
                       )}
                     </div>
                     <div className="blog-featured-content">
@@ -145,7 +177,9 @@ export default function BlogIndex() {
                           {article.cover_image ? (
                             <img src={article.cover_image} alt={article.title} loading="lazy" />
                           ) : (
-                            <div className="blog-card-placeholder" />
+                            <div className="blog-card-placeholder" style={{ background: CATEGORY_GRADIENTS[article.category] || CATEGORY_GRADIENTS.general }}>
+                              {CATEGORY_ICONS[article.category] || '\u26BD'}
+                            </div>
                           )}
                           <span
                             className="blog-badge blog-badge-overlay"
