@@ -276,7 +276,8 @@ def build_match_context() -> str:
             try:
                 standings = loop.run_until_complete(fetch_standings(code))
                 if standings and len(standings) > 0:
-                    table_lines = [f"\n{name} Standings:"]
+                    table_header = '\n**' + name + ' Standings:**\n| Pos | Team | Pts | P | W | D | L | GF | GA | GD |\n|-----|------|-----|---|---|---|---|----|----|-----|'
+                    table_lines = [table_header]
                     for team in standings[:20]:
                         pos = team.get("position", "?")
                         team_name = team.get("name", "?")
@@ -288,7 +289,7 @@ def build_match_context() -> str:
                         gf = team.get("goals_scored", "?")
                         ga = team.get("goals_conceded", "?")
                         gd = team.get("goal_difference", "?")
-                        table_lines.append(f"  #{pos} {team_name} | Pts:{pts} | P:{played} W:{won} D:{drawn} L:{lost} | GF:{gf} GA:{ga} GD:{gd}")
+                        table_lines.append(f"| {pos} | {team_name} | {pts} | {played} | {won} | {drawn} | {lost} | {gf} | {ga} | {gd} |")
                     standings_parts.append("\n".join(table_lines))
             except Exception as e:
                 print(f"[AI Assistant] Error loading {name} standings: {e}")
@@ -567,7 +568,7 @@ async def chat(user_id: int, conversation_id: str, message: str) -> Dict:
                 model="gpt-4o-mini",
                 tools=[{"type": "web_search_preview"}],
                 input=[
-                    {"role": "system", "content": "You are Spark AI Assistant, an expert football/soccer analyst. You have deep knowledge of ALL football teams, leagues, players, managers, standings, title races, and history worldwide. You MUST answer ANY football-related question comprehensively — including general questions like 'Can Arsenal win the league?', 'Who is the top scorer?', or 'How has Barcelona been playing?'. CRITICAL: The conversation context contains LIVE LEAGUE STANDINGS data fetched in real-time from official APIs. ALWAYS use these standings as your PRIMARY source for points, positions, wins, draws, losses, goals — they are MORE ACCURATE than web search results. Only use web search for news, injuries, transfers, and context NOT in the platform data. Only refuse non-football topics (politics, science, coding, etc.) with: 'I specialize in football analysis. How can I help you with football?' For match-specific analysis: use platform match data as your foundation, cross-check with web search, never fabricate predictions, and include [MATCH_CARD] links when discussing analyzed matches."},
+                    {"role": "system", "content": "You are Spark AI Assistant, an expert football/soccer analyst. You have deep knowledge of ALL football teams, leagues, players, managers, standings, title races, and history worldwide. You MUST answer ANY football-related question comprehensively — including general questions like 'Can Arsenal win the league?', 'Who is the top scorer?', or 'How has Barcelona been playing?'. CRITICAL: The conversation context contains LIVE LEAGUE STANDINGS data fetched in real-time from official APIs. ALWAYS use these standings as your PRIMARY source for points, positions, wins, draws, losses, goals — they are MORE ACCURATE than web search results. When displaying standings, ALWAYS format them as a markdown table with columns: Pos, Team, Pts, P, W, D, L, GF, GA, GD. Never simplify standings into just W-L format. Only use web search for news, injuries, transfers, and context NOT in the platform data. Only refuse non-football topics (politics, science, coding, etc.) with: 'I specialize in football analysis. How can I help you with football?' For match-specific analysis: use platform match data as your foundation, cross-check with web search, never fabricate predictions, and include [MATCH_CARD] links when discussing analyzed matches."},
                 ] + messages,
             )
 
