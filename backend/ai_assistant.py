@@ -141,7 +141,7 @@ def delete_conversation(conversation_id: str, user_id: int) -> bool:
 # Match context builder
 # ---------------------------------------------------------------------------
 
-def build_match_context() -> str:
+async def build_match_context() -> str:
     """Build context from today's predictions and available match data."""
     parts = []
 
@@ -259,7 +259,6 @@ def build_match_context() -> str:
 
     # 3. Add live league standings from top leagues
     try:
-        import asyncio
         from football_api import fetch_standings
 
         top_leagues = [
@@ -271,10 +270,9 @@ def build_match_context() -> str:
         ]
 
         standings_parts = []
-        loop = asyncio.new_event_loop()
         for code, name in top_leagues:
             try:
-                standings = loop.run_until_complete(fetch_standings(code))
+                standings = await fetch_standings(code)
                 if standings and len(standings) > 0:
                     table_header = '\n**' + name + ' Standings:**\n| Pos | Team | Pts | P | W | D | L | GF | GA | GD |\n|-----|------|-----|---|---|---|---|----|----|-----|'
                     table_lines = [table_header]
@@ -293,7 +291,6 @@ def build_match_context() -> str:
                     standings_parts.append("\n".join(table_lines))
             except Exception as e:
                 print(f"[AI Assistant] Error loading {name} standings: {e}")
-        loop.close()
 
         if standings_parts:
             parts.append(f"\n\n=== LIVE LEAGUE STANDINGS (Updated) ===")
@@ -508,9 +505,8 @@ def _extract_match_links(text: str) -> List[Dict]:
     return links
 
 
-def _check_standings_query(message: str):
+async def _check_standings_query(message: str):
     """If user asks for league standings, return formatted data directly from API."""
-    import re
     msg = message.lower().strip()
 
     # Map keywords to league codes
@@ -544,13 +540,11 @@ def _check_standings_query(message: str):
     code, league_name = detected_league
 
     try:
-        import asyncio
         from football_api import fetch_standings
-        loop = asyncio.new_event_loop()
-        standings = loop.run_until_complete(fetch_standings(code))
-        loop.close()
+        standings = await fetch_standings(code)
 
         if not standings:
+            print(f"[AI Assistant] No standings data returned for {code}")
             return None
 
         today = datetime.now().strftime('%B %d, %Y')
@@ -571,9 +565,12 @@ def _check_standings_query(message: str):
             gd = team.get("goal_difference", "?")
             lines.append(f"| {pos} | {name} | {pts} | {played} | {w} | {d} | {l} | {gf} | {ga} | {gd} |")
 
+        print(f"[AI Assistant] Standings intercepted for {league_name} - {len(standings)} teams, top team: {standings[0].get('name')} {standings[0].get('points')}pts")
         return "\n".join(lines)
     except Exception as e:
         print(f"[AI Assistant] Standings direct query error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -615,11 +612,11 @@ async def chat(user_id: int, conversation_id: str, message: str) -> Dict:
     conn.close()
 
     # Build context
-    match_context = build_match_context()
+    match_context = await build_match_context()
     system_prompt = SYSTEM_PROMPT.replace("{match_context}", match_context)
 
     # Direct standings response — bypass GPT for accuracy
-    standings_response = _check_standings_query(message)
+    standings_response = await _check_standings_query(message)
     if standings_response:
         # Save assistant response
         conn2 = _get_db()
