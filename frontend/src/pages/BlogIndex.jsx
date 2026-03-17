@@ -17,6 +17,19 @@ const CATEGORIES = [
   { key: 'documentation', label: 'Documentation' },
 ]
 
+const CATEGORY_COLORS = {
+  general: '#3b82f6',
+  predictions: '#ef4444',
+  tips: '#22c55e',
+  tutorials: '#a855f7',
+  updates: '#f59e0b',
+  documentation: '#6366f1',
+}
+
+function formatDate(dateStr) {
+  return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
 export default function BlogIndex() {
   const { t, i18n } = useTranslation()
   const currentLang = i18n.language?.split('-')[0] || 'en'
@@ -46,6 +59,9 @@ export default function BlogIndex() {
     }
   }
 
+  const featured = articles[0]
+  const rest = articles.slice(1)
+
   return (
     <>
       <SEOHead
@@ -64,11 +80,6 @@ export default function BlogIndex() {
 
         <main className="seo-page-content blog-page-content">
           <div className="blog-container">
-            <div className="blog-hero">
-              <h1>Soccer Betting Tips & Match Previews</h1>
-              <p>Expert analysis and guides powered by AI</p>
-            </div>
-
             {/* Category Filters */}
             <div className="blog-categories">
               {CATEGORIES.map(cat => (
@@ -90,33 +101,71 @@ export default function BlogIndex() {
             ) : articles.length === 0 ? (
               <p className="blog-empty">No articles found.</p>
             ) : (
-              <div className="blog-grid">
-                {articles.map(article => (
-                  <Link key={article.slug} to={`/blog/${article.slug}`} className="blog-card">
-                    {article.cover_image && (
-                      <div className="blog-card-image">
-                        <img src={article.cover_image} alt={article.title} loading="lazy" />
-                      </div>
-                    )}
-                    <div className="blog-card-content">
-                      <span className="blog-card-category">{article.category}</span>
-                      <h2 className="blog-card-title">{article.title}</h2>
-                      <p className="blog-card-excerpt">{article.excerpt}</p>
-                      <div className="blog-card-meta">
-                        <span className="blog-card-date">{new Date(article.published_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                        {Array.isArray(article.tags) && article.tags.length > 0 && (
-                          <div className="blog-card-tags">
-                            {article.tags.slice(0, 3).map(tag => (
+              <>
+                {/* Featured Hero Article */}
+                {featured && (
+                  <Link to={`/blog/${featured.slug}`} className="blog-featured">
+                    <div className="blog-featured-image">
+                      {featured.cover_image ? (
+                        <img src={featured.cover_image} alt={featured.title} />
+                      ) : (
+                        <div className="blog-featured-placeholder" />
+                      )}
+                    </div>
+                    <div className="blog-featured-content">
+                      <span
+                        className="blog-badge"
+                        style={{ background: CATEGORY_COLORS[featured.category] || '#3b82f6' }}
+                      >
+                        {featured.category}
+                      </span>
+                      <h1 className="blog-featured-title">{featured.title}</h1>
+                      <p className="blog-featured-excerpt">{featured.excerpt}</p>
+                      <div className="blog-featured-meta">
+                        <span className="blog-featured-date">{formatDate(featured.published_at)}</span>
+                        {Array.isArray(featured.tags) && featured.tags.length > 0 && (
+                          <div className="blog-featured-tags">
+                            {featured.tags.slice(0, 3).map(tag => (
                               <span key={tag} className="blog-tag">{tag}</span>
                             ))}
                           </div>
                         )}
                       </div>
+                      <span className="blog-featured-cta">Read full article &rarr;</span>
                     </div>
-                    <span className="blog-card-arrow">Read more &rarr;</span>
                   </Link>
-                ))}
-              </div>
+                )}
+
+                {/* Grid of remaining articles */}
+                {rest.length > 0 && (
+                  <div className="blog-grid">
+                    {rest.map(article => (
+                      <Link key={article.slug} to={`/blog/${article.slug}`} className="blog-card">
+                        <div className="blog-card-image">
+                          {article.cover_image ? (
+                            <img src={article.cover_image} alt={article.title} loading="lazy" />
+                          ) : (
+                            <div className="blog-card-placeholder" />
+                          )}
+                          <span
+                            className="blog-badge blog-badge-overlay"
+                            style={{ background: CATEGORY_COLORS[article.category] || '#3b82f6' }}
+                          >
+                            {article.category}
+                          </span>
+                        </div>
+                        <div className="blog-card-content">
+                          <h2 className="blog-card-title">{article.title}</h2>
+                          <p className="blog-card-excerpt">{article.excerpt}</p>
+                          <div className="blog-card-meta">
+                            <span className="blog-card-date">{formatDate(article.published_at)}</span>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </main>
