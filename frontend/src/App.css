@@ -26399,6 +26399,55 @@ html, body {
   margin-bottom: 4px;
 }
 
+/* AI Standings Table */
+.ai-table-wrapper {
+  overflow-x: auto;
+  margin: 8px 0;
+  border-radius: 8px;
+}
+
+.ai-standings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ai-standings-table th {
+  background: rgba(99, 102, 241, 0.3);
+  color: #e2e8f0;
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.ai-standings-table td {
+  padding: 6px 10px;
+  color: #cbd5e1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
+}
+
+.ai-standings-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ai-standings-table tbody tr:nth-child(-n+4) td:first-child {
+  color: #34d399;
+  font-weight: 600;
+}
+
+.ai-standings-table tbody tr:nth-last-child(-n+3) td:first-child {
+  color: #f87171;
+  font-weight: 600;
+}
+
 /* Match Cards */
 .ai-match-cards {
   display: flex;

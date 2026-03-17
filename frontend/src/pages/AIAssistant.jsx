@@ -277,20 +277,63 @@ function AIAssistant() {
     const lines = cleanContent.split('\n')
     const elements = []
     let currentList = []
+    let tableRows = []
+
+    const flushList = (key) => {
+      if (currentList.length > 0) {
+        elements.push(
+          <ul key={key} className="ai-msg-list">
+            {currentList.map((item, j) => <li key={j}>{renderBoldText(item)}</li>)}
+          </ul>
+        )
+        currentList = []
+      }
+    }
+
+    const flushTable = (key) => {
+      if (tableRows.length > 0) {
+        const headerCells = tableRows[0]
+        const bodyRows = tableRows.slice(1)
+        elements.push(
+          <div key={key} className="ai-table-wrapper">
+            <table className="ai-standings-table">
+              <thead>
+                <tr>{headerCells.map((cell, j) => <th key={j}>{cell.trim()}</th>)}</tr>
+              </thead>
+              <tbody>
+                {bodyRows.map((row, ri) => (
+                  <tr key={ri}>{row.map((cell, j) => <td key={j}>{cell.trim()}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+        tableRows = []
+      }
+    }
+
+    const isTableRow = (line) => line.trim().startsWith('|') && line.trim().endsWith('|')
+    const isSeparator = (line) => /^\|[\s\-:|]+\|$/.test(line.trim())
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
+
+      // Table rows
+      if (isTableRow(line)) {
+        flushList(`list-${i}`)
+        if (isSeparator(line)) continue // skip separator row
+        const cells = line.split('|').slice(1, -1) // remove first/last empty splits
+        tableRows.push(cells)
+        continue
+      }
+
+      // If we were in a table, flush it
+      flushTable(`table-${i}`)
+
       if (line.startsWith('- ') || line.startsWith('* ')) {
         currentList.push(line.slice(2))
       } else {
-        if (currentList.length > 0) {
-          elements.push(
-            <ul key={`list-${i}`} className="ai-msg-list">
-              {currentList.map((item, j) => <li key={j}>{renderBoldText(item)}</li>)}
-            </ul>
-          )
-          currentList = []
-        }
+        flushList(`list-${i}`)
         if (line.startsWith('### ')) {
           elements.push(<h4 key={i} className="ai-msg-h4">{line.slice(4)}</h4>)
         } else if (line.startsWith('## ')) {
@@ -303,13 +346,8 @@ function AIAssistant() {
       }
     }
 
-    if (currentList.length > 0) {
-      elements.push(
-        <ul key="list-end" className="ai-msg-list">
-          {currentList.map((item, j) => <li key={j}>{renderBoldText(item)}</li>)}
-        </ul>
-      )
-    }
+    flushList('list-end')
+    flushTable('table-end')
     return elements
   }
 
