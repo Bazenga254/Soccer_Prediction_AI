@@ -693,3 +693,23 @@
   color: #22c55e;
   white-space: nowrap;
 }
+
+/* === No-image card variants === */
+.blog-featured-no-img .blog-featured-content {
+  padding: 40px 36px;
+}
+
+.blog-card-no-img {
+  display: flex;
+  flex-direction: column;
+}
+
+.blog-card-no-img-header {
+  padding: 12px 16px;
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 12px 12px 0 0;
+}
+
+.blog-card-no-img .blog-card-content {
+  flex: 1;
+}

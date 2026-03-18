@@ -289,7 +289,15 @@ def list_published(category: str = None, post_type: str = None) -> List[Dict]:
     results = []
     for r in rows:
         d = dict(r)
-        d.pop("body", None)  # Don't send body in list
+        body = d.pop("body", None) or ""  # Don't send body in list
+        # Extract first image from body as thumbnail if no cover_image
+        if not d.get("cover_image"):
+            import re
+            img_match = re.search(r'!\[.*?\]\((.*?)\)|<img[^>]+src=["\']([^"\']+)', body)
+            if img_match:
+                d["thumbnail"] = img_match.group(1) or img_match.group(2)
+        if not d.get("thumbnail"):
+            d["thumbnail"] = d.get("cover_image") or None
         d["tags"] = _parse_tags(d.get("tags", ""))
         d["teams"] = _parse_tags(d.get("teams", ""))
         results.append(d)

@@ -1,10 +1,11 @@
 import { isSoundEnabled } from '../sounds'
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
 import { useCredits } from '../context/CreditContext'
 import LiveChatPopup from '../components/LiveChatPopup'
+import InlineAdBanner from '../components/InlineAdBanner'
 import axios from 'axios'
 
 // Match tracking notifications
@@ -735,7 +736,9 @@ export default function LiveScores() {
       ) : (
         <div className="live-leagues-container">
           {groupedMatches.map((group, gIdx) => (
-            <div key={gIdx} className="live-league-group">
+            <React.Fragment key={gIdx}>
+            {gIdx > 0 && gIdx % 3 === 0 && <InlineAdBanner slot={gIdx} />}
+            <div className="live-league-group">
               <div className="league-group-header">
                 {group.flag ? (
                   <img src={group.flag} alt="" className="league-group-flag" />
@@ -1116,6 +1119,7 @@ export default function LiveScores() {
                 })}
               </div>
             </div>
+            </React.Fragment>
           ))}
         </div>
       )}

@@ -10,6 +10,7 @@ import { CurrencyProvider } from './context/CurrencyContext'
 import { ThemeProvider } from './context/ThemeContext'
 import OfflineBanner from './components/OfflineBanner'
 import AdManager from './components/AdManager'
+import StickyBottomAd from './components/StickyBottomAd'
 import './App.css'
 
 // Retry dynamic imports once by clearing SW caches and reloading on chunk failure
@@ -286,6 +287,7 @@ function App() {
       <CurrencyProvider>
       <AuthProvider>
         <AdManager />
+        <StickyBottomAd />
         <Suspense fallback={null}>
           <LanguageBanner />
           <CookieConsent />

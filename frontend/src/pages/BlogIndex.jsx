@@ -134,16 +134,12 @@ export default function BlogIndex() {
               <>
                 {/* Featured Hero Article */}
                 {featured && (
-                  <Link to={`/blog/${featured.slug}`} className="blog-featured">
-                    <div className="blog-featured-image">
-                      {featured.cover_image ? (
-                        <img src={featured.cover_image} alt={featured.title} />
-                      ) : (
-                        <div className="blog-featured-placeholder" style={{ background: CATEGORY_GRADIENTS[featured.category] || CATEGORY_GRADIENTS.general }}>
-                          {CATEGORY_ICONS[featured.category] || '\u26BD'}
-                        </div>
-                      )}
-                    </div>
+                  <Link to={`/blog/${featured.slug}`} className={`blog-featured ${!(featured.thumbnail || featured.cover_image) ? 'blog-featured-no-img' : ''}`}>
+                    {(featured.thumbnail || featured.cover_image) && (
+                      <div className="blog-featured-image">
+                        <img src={featured.thumbnail || featured.cover_image} alt={featured.title} />
+                      </div>
+                    )}
                     <div className="blog-featured-content">
                       <span
                         className="blog-badge"
@@ -172,22 +168,27 @@ export default function BlogIndex() {
                 {rest.length > 0 && (
                   <div className="blog-grid">
                     {rest.map(article => (
-                      <Link key={article.slug} to={`/blog/${article.slug}`} className="blog-card">
-                        <div className="blog-card-image">
-                          {article.cover_image ? (
-                            <img src={article.cover_image} alt={article.title} loading="lazy" />
-                          ) : (
-                            <div className="blog-card-placeholder" style={{ background: CATEGORY_GRADIENTS[article.category] || CATEGORY_GRADIENTS.general }}>
-                              {CATEGORY_ICONS[article.category] || '\u26BD'}
-                            </div>
-                          )}
-                          <span
-                            className="blog-badge blog-badge-overlay"
-                            style={{ background: CATEGORY_COLORS[article.category] || '#3b82f6' }}
-                          >
-                            {article.category}
-                          </span>
-                        </div>
+                      <Link key={article.slug} to={`/blog/${article.slug}`} className={`blog-card ${!(article.thumbnail || article.cover_image) ? 'blog-card-no-img' : ''}`}>
+                        {(article.thumbnail || article.cover_image) ? (
+                          <div className="blog-card-image">
+                            <img src={article.thumbnail || article.cover_image} alt={article.title} loading="lazy" />
+                            <span
+                              className="blog-badge blog-badge-overlay"
+                              style={{ background: CATEGORY_COLORS[article.category] || '#3b82f6' }}
+                            >
+                              {article.category}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="blog-card-no-img-header" style={{ borderLeft: `3px solid ${CATEGORY_COLORS[article.category] || '#3b82f6'}` }}>
+                            <span
+                              className="blog-badge"
+                              style={{ background: CATEGORY_COLORS[article.category] || '#3b82f6' }}
+                            >
+                              {article.category}
+                            </span>
+                          </div>
+                        )}
                         <div className="blog-card-content">
                           <h2 className="blog-card-title">{article.title}</h2>
                           <p className="blog-card-excerpt">{article.excerpt}</p>
