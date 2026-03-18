@@ -15,6 +15,7 @@ export default function CreditBalanceDropdown() {
   const [adLoading, setAdLoading] = useState(false)
   const [adMessage, setAdMessage] = useState('')
   const [adCountdown, setAdCountdown] = useState(0)
+  const [adsRemaining, setAdsRemaining] = useState(null)
   const dropdownRef = useRef(null)
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -40,6 +41,7 @@ export default function CreditBalanceDropdown() {
           const res = await axios.post('/api/credits/ad-reward')
           if (res.data.success) {
             setAdMessage(res.data.message)
+            setAdsRemaining(res.data.remaining_today)
             refreshCredits()
           }
         } catch (err) {
@@ -157,6 +159,13 @@ export default function CreditBalanceDropdown() {
                 : '🎬 Watch Ad (+10 cr)'}
             </button>
             {adMessage && <div className="credit-ad-msg">{adMessage}</div>}
+            {adsRemaining !== null && (
+              <div className="credit-ad-remaining">
+                {adsRemaining > 0
+                  ? `${adsRemaining} ads remaining this hour`
+                  : 'No ads remaining — resets in 1 hour'}
+              </div>
+            )}
             <button
               className="credit-add-btn"
               onClick={() => { setIsOpen(false); navigate('/upgrade') }}

@@ -177,6 +177,14 @@
   padding: 2px 0;
 }
 
+.credit-ad-remaining {
+  width: 100%;
+  text-align: center;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  padding: 2px 0 4px;
+}
+
 .credit-add-btn {
   flex: 1;
   padding: 8px 12px;

@@ -26,10 +26,18 @@ export default function AdManager() {
     scriptsLoaded.current = true
 
     // Monetag Vignette (zone 10735977)
-    const monetagScript = document.createElement('script')
-    monetagScript.dataset.zone = '10735977'
-    monetagScript.src = 'https://gizokraijaw.net/vignette.min.js'
-    document.body.appendChild(monetagScript)
+    const vignetteScript = document.createElement('script')
+    vignetteScript.dataset.zone = '10735977'
+    vignetteScript.src = 'https://gizokraijaw.net/vignette.min.js'
+    document.body.appendChild(vignetteScript)
+
+    // Monetag Multitag (zone 220950) — auto-rotates best ad formats
+    const multitagScript = document.createElement('script')
+    multitagScript.dataset.zone = '220950'
+    multitagScript.src = 'https://quge5.com/88/tag.min.js'
+    multitagScript.async = true
+    multitagScript.dataset.cfasync = 'false'
+    document.body.appendChild(multitagScript)
   }, [user, loading])
 
   return null
