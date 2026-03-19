@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
 import { useCredits } from '../context/CreditContext'
 import LiveChatPopup from '../components/LiveChatPopup'
-import InlineAdBanner from '../components/InlineAdBanner'
+// import InlineAdBanner from '../components/InlineAdBanner'  // Removed — no passive ads
 import axios from 'axios'
 
 // Match tracking notifications
@@ -737,7 +737,7 @@ export default function LiveScores() {
         <div className="live-leagues-container">
           {groupedMatches.map((group, gIdx) => (
             <React.Fragment key={gIdx}>
-            {gIdx > 0 && gIdx % 3 === 0 && <InlineAdBanner slot={gIdx} />}
+            {/* InlineAdBanner removed — no passive ads */}
             <div className="live-league-group">
               <div className="league-group-header">
                 {group.flag ? (

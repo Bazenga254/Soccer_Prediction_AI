@@ -9,6 +9,7 @@ import './Blog.css'
 
 const CATEGORIES = [
   { key: null, label: 'All' },
+  { key: 'news', label: 'News', isType: true },
   { key: 'general', label: 'General' },
   { key: 'predictions', label: 'Predictions' },
   { key: 'tips', label: 'Tips' },
@@ -24,6 +25,11 @@ const CATEGORY_COLORS = {
   tutorials: '#a855f7',
   updates: '#f59e0b',
   documentation: '#6366f1',
+  news: '#ec4899',
+  transfers: '#10b981',
+  injuries: '#f43f5e',
+  results: '#eab308',
+  'match-updates': '#0ea5e9',
 }
 
 const CATEGORY_ICONS = {
@@ -66,16 +72,31 @@ export default function BlogIndex() {
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)
   const [category, setCategory] = useState(null)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [authModal, setAuthModal] = useState({ open: false, mode: 'signup' })
 
   useEffect(() => {
     setLoading(true)
-    const url = category ? `/api/blog?category=${category}` : '/api/blog'
+    const cat = CATEGORIES.find(c => c.key === category)
+    const params = [`page=${page}`, 'limit=10']
+    if (cat?.isType) {
+      params.push(`type=${category}`)
+    } else if (category) {
+      params.push(`category=${category}`)
+    }
+    const url = `/api/blog?${params.join('&')}`
     axios.get(url)
-      .then(res => setArticles(res.data.articles || []))
+      .then(res => {
+        setArticles(res.data.articles || [])
+        setTotalPages(res.data.pages || 1)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [category])
+  }, [category, page])
+
+  // Reset to page 1 when category changes
+  useEffect(() => { setPage(1) }, [category])
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -198,6 +219,37 @@ export default function BlogIndex() {
                         </div>
                       </Link>
                     ))}
+                  </div>
+                )}
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="blog-pagination">
+                    <button
+                      className="blog-page-btn"
+                      disabled={page <= 1}
+                      onClick={() => { setPage(p => p - 1); window.scrollTo(0, 0) }}
+                    >
+                      &larr; Previous
+                    </button>
+                    <div className="blog-page-numbers">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                        <button
+                          key={p}
+                          className={`blog-page-num ${p === page ? 'active' : ''}`}
+                          onClick={() => { setPage(p); window.scrollTo(0, 0) }}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      className="blog-page-btn"
+                      disabled={page >= totalPages}
+                      onClick={() => { setPage(p => p + 1); window.scrollTo(0, 0) }}
+                    >
+                      Next &rarr;
+                    </button>
                   </div>
                 )}
               </>

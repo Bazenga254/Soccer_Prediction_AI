@@ -7,14 +7,30 @@ import sqlite3
 import os
 import uuid
 import shutil
+import logging
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = "community.db"
 UPLOADS_DIR = Path(__file__).parent / "uploads" / "blog"
 
 EAT = timezone(timedelta(hours=3))
+
+
+def _ping_google_async(slug: str):
+    """Ping Google Indexing API in a background thread (non-blocking)."""
+    def _do_ping():
+        try:
+            from google_indexing import notify_blog_published
+            result = notify_blog_published(slug)
+            logger.info("Google Indexing ping for /blog/%s: %s", slug, result)
+        except Exception as e:
+            logger.warning("Google Indexing ping failed for /blog/%s: %s", slug, e)
+    threading.Thread(target=_do_ping, daemon=True).start()
 
 
 def _get_db():
@@ -141,6 +157,10 @@ def create_post(title: str, excerpt: str = "", body: str = "",
     post_id = conn.execute("SELECT id FROM blog_posts WHERE slug = ?", (slug,)).fetchone()["id"]
     conn.close()
 
+    # Ping Google Indexing API if published
+    if status == "published":
+        _ping_google_async(slug)
+
     return {"success": True, "id": post_id, "slug": slug}
 
 
@@ -181,6 +201,12 @@ def update_post(post_id: int, **fields) -> Dict:
 
     conn.execute(f"UPDATE blog_posts SET {', '.join(updates)} WHERE id = ?", params)
     conn.commit()
+
+    # Ping Google if post is now published
+    slug = fields.get("slug") or post["slug"]
+    if fields.get("status") == "published":
+        _ping_google_async(slug)
+
     conn.close()
     return {"success": True}
 

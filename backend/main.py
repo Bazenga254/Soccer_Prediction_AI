@@ -3258,14 +3258,14 @@ class CreditDeductRequest(BaseModel):
 
 @app.post("/api/credits/ad-reward")
 async def ad_reward_credits(authorization: str = Header(None)):
-    """Reward user with credits for watching an ad. Rate limited to 20 per hour."""
+    """Reward user with credits for watching an ad. Rate limited to 5 per hour."""
     payload = _get_current_user(authorization)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user_id = payload["user_id"]
     reward_amount = 10  # credits per ad view
-    max_per_hour = 20
+    max_per_hour = 5
 
     # Rate limit: check how many rewards in the last hour
     from datetime import datetime, timedelta
@@ -6397,6 +6397,21 @@ ul{padding-left:20px}
 # =====================================================================
 
 
+@app.get("/robots.txt")
+async def robots_txt():
+    """Serve robots.txt for search engines."""
+    from fastapi.responses import PlainTextResponse
+    content = """User-agent: *
+Allow: /
+Disallow: /spark-ctrl/
+Disallow: /employee/
+Disallow: /api/
+
+Sitemap: https://spark-ai-prediction.com/sitemap.xml
+"""
+    return PlainTextResponse(content)
+
+
 @app.get("/sitemap.xml")
 async def sitemap_xml():
     """Generate dynamic XML sitemap with hreflang for multilingual SEO."""
@@ -6679,10 +6694,45 @@ async def get_all_league_slugs():
 
 
 @app.get("/api/blog")
-async def get_blog_articles(category: str = None, lang: str = "en"):
-    """Return published blog articles, optionally filtered by category. No auth required."""
-    articles = blog.list_published(category=category, post_type="blog")
-    return {"articles": articles, "total": len(articles)}
+async def get_blog_articles(category: str = None, lang: str = "en", type: str = None, page: int = 1, limit: int = 10):
+    """Return published blog articles, optionally filtered by category/type. No auth required."""
+    if type == "news":
+        articles = blog.list_published(category=category, post_type="news")
+    elif type == "blog":
+        articles = blog.list_published(category=category, post_type="blog")
+    else:
+        # 'All' — return both blog and news combined, sorted by date
+        blog_articles = blog.list_published(category=category, post_type="blog")
+        news_articles = blog.list_published(category=category, post_type="news")
+        articles = sorted(blog_articles + news_articles, key=lambda a: a.get("published_at", ""), reverse=True)
+    total = len(articles)
+    start = (page - 1) * limit
+    end = start + limit
+    return {"articles": articles[start:end], "total": total, "page": page, "pages": (total + limit - 1) // limit}
+
+
+@app.post("/api/admin/reindex")
+async def admin_reindex(authorization: str = Header(None)):
+    """Admin-only: submit all published blog URLs to Google Indexing API."""
+    payload = _get_current_user(authorization)
+    if not payload or not payload.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    from google_indexing import notify_blog_published, notify_page_updated
+    blog_posts = blog.list_published(post_type="blog")
+    news_posts = blog.list_published(post_type="news")
+    articles = (blog_posts + news_posts)[:50]  # Limit to 50 per batch (API quota)
+    results = []
+    for a in articles:
+        r = notify_blog_published(a["slug"])
+        results.append({"slug": a["slug"], "result": r})
+
+    # Also index key pages
+    for path in ["/", "/today", "/blog", "/live", "/docs"]:
+        r = notify_page_updated(path)
+        results.append({"path": path, "result": r})
+
+    return {"submitted": len(results), "results": results}
 
 
 @app.get("/api/news")

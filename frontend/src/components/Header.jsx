@@ -261,8 +261,11 @@ export default function Header({ user, logout }) {
               onClick={() => {
                 const btn = document.getElementById('earn-credits-nav-btn')
                 if (btn.dataset.counting === 'true') return
-                // Monetag smartlink only
-                window.open('https://omg10.com/4/10735990', '_blank')
+                // 50/50 Monetag + AdSterra smartlink rotation
+                const adUrl = Math.random() < 0.5
+                  ? 'https://omg10.com/4/10735990'
+                  : 'https://www.effectivegatecpm.com/px35t7j6x1?key=3126c4ab3a7178585b0fc92972a24690'
+                window.open(adUrl, '_blank')
                 btn.dataset.counting = 'true'
                 const originalText = btn.querySelector('.comp-name').textContent
                 let countdown = 12

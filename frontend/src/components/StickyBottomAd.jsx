@@ -23,6 +23,8 @@ export default function StickyBottomAd() {
   if (loading) return null
   if (user?.is_admin || user?.tier === 'pro' || user?.is_staff) return null
   if (dismissed) return null
+  // No sticky ad on landing/marketing pages
+  if (location.pathname === '/' || location.pathname === '/pricing' || location.pathname === '/blog') return null
 
   const msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)]
   const link = AD_LINKS[Math.floor(Math.random() * AD_LINKS.length)]
